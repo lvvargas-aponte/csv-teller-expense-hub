@@ -12,6 +12,7 @@
 .env
 backend/*.json
 #node modules
-/node_modules/
+*/node_modules/
 #csv_imports
 csv_imports/
+/backend/venv/

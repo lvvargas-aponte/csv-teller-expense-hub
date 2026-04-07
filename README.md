@@ -1,69 +1,55 @@
-# Bank Statement & Shared Expense Tracker - Setup Guide
+# Bank Statement & Shared Expense Tracker
 
 ## 🎯 Overview
 This app helps you:
-- Pull transactions from Teller.io (auto-connected banks)
+- Pull transactions from already-connected Teller.io bank accounts
 - Auto-import CSV files from Discover & Barclays
 - Review and mark shared expenses
 - Send approved expenses directly to Google Sheets
 
+---
+
 ## 📋 Prerequisites
 
-1. **Google Cloud Service Account**
-   - Go to [Google Cloud Console](https://console.cloud.google.com)
-   - Create a new project or select existing
-   - Enable Google Sheets API
-   - Create Service Account credentials
-   - Download JSON key file as `credentials.json`
-   - Share your Google Sheet with the service account email
+### 1. Google Cloud Service Account
+- Go to [Google Cloud Console](https://console.cloud.google.com)
+- Create a new project or select an existing one
+- Enable the **Google Sheets API**
+- Create a **Service Account** and download the JSON key as `credentials.json`
+- Place `credentials.json` in the `backend/` folder
+- Share your Google Sheet with the service account email (found in `credentials.json` as `client_email`)
 
-2. **Teller.io Account**
-   - Sign up at [Teller.io](https://teller.io)
-   - Get your Application ID and Private Key
+### 2. Teller.io Account
+- Sign up at [Teller.io](https://teller.io) and get your **Application ID**
+- Connect your bank accounts using the Teller Connect flow (`scripts/teller/teller-connect-app.js`) to obtain **access tokens**
+- Access tokens are stored in `TELLER_API_KEY` (comma-separated if you have multiple banks)
 
-3. **Google Sheet Setup**
-   - Create a Google Sheet with these headers (using YOUR names):
-     `Transaction Date | Description | Amount | Who | What | [PERSON_1_NAME] Owes | [PERSON_2_NAME] Owes | Notes`
-   - Example: If you set `PERSON_1_NAME=Alice` and `PERSON_2_NAME=Bob`, your headers should be:
-     `Transaction Date | Description | Amount | Who | What | Alice Owes | Bob Owes | Notes`
-   - Copy the Sheet ID from the URL (the long string between `/d/` and `/edit`)
+### 3. Google Sheet Setup
+- Create a Google Sheet with these headers (swap in your actual names):
 
-## 🚀 Installation
+  `Transaction Date | Description | Amount | Who | What | [PERSON_1_NAME] Owes | [PERSON_2_NAME] Owes | Notes`
 
-### 1. Clone and Setup
+- Copy the Sheet ID from the URL — the string between `/d/` and `/edit`
 
-```bash
-git clone https://github.com/lvvargas-aponte/csv-teller-expense-hub.git
-cd csv-teller-expense-hub
-```
+---
 
-### 2. Setup Google Credentials
+## ⚙️ Environment Variables
 
-Download your service account JSON from Google Cloud Console and save it as `credentials.json` in the backend folder.
-
-**Important:** Make sure to share your Google Sheet with the service account email (found in credentials.json as `client_email`)
-
-### 3. Configure Environment
-
-Create `.env` file in the backend folder (see example above). **Customize the person names** to match your household!
-
-### 1. Environment Variables
-
-Create a `.env` file in the backend folder:
+Create a `.env` file in the `backend/` folder:
 
 ```bash
-# Teller API Configuration
+# Teller API
 TELLER_ENVIRONMENT=development
-TELLER_API_KEY=your_teller_api_key
 TELLER_APP_ID=your_app_id
+TELLER_API_KEY=token_bank1,token_bank2   # comma-separated if multiple banks
 TELLER_CERT_PATH=path/to/certificate.pem
 TELLER_KEY_PATH=path/to/private_key.pem
 
-# Google Sheets Configuration
+# Google Sheets
 SPREADSHEET_ID=your_google_sheet_id
-SHEET_NAME=Sheet1  # Optional: name of the tab in your Google Sheet
+SHEET_NAME=Sheet1   # optional: name of the tab
 
-# Person Names (customize for your household/roommates)
+# Customize for your household
 PERSON_1_NAME=Alice
 PERSON_2_NAME=Bob
 
@@ -71,122 +57,202 @@ PERSON_2_NAME=Bob
 CSV_WATCH_FOLDER=./csv_imports
 ```
 
-**Customize Person Names:**
-- Replace `Alice` and `Bob` with your actual names
-- These will appear in the Google Sheet headers (e.g., "Alice Owes", "Bob Owes")
-- This makes the app shareable - anyone can use their own names!
+> **Person names** appear as column headers in your Google Sheet (e.g. "Alice Owes", "Bob Owes"). Set them to whatever makes sense for your household.
 
-### 3. Build and Run with Docker
+---
+
+## 🚀 Running the App
+
+You can run locally without Docker, or use Docker — pick whichever is simpler for you.
+
+---
+
+### Option A: Local (No Docker)
+
+**Requirements:** Python 3.10+, Node 18+
+
+#### Backend
 
 ```bash
-# Build and start all services
-docker-compose up --build
+cd backend
 
-# Or run in detached mode
-docker-compose up -d
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the API server
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 4. Start CSV Watcher (Optional)
+Backend runs at **http://localhost:8000**
+
+#### Frontend
 
 In a separate terminal:
 
 ```bash
-# Make script executable
-chmod +x run_csv_watcher.sh
+cd frontend
 
-# Run the watcher
+# Install dependencies
+npm install
+
+# Start the dev server
+npm start
+```
+
+Frontend runs at **http://localhost:3000**
+
+#### CSV Watcher (Optional)
+
+In a third terminal, if you want the watch-folder auto-import:
+
+```bash
+chmod +x run_csv_watcher.sh
 ./run_csv_watcher.sh
 ```
+
+---
+
+### Option B: Docker
+
+**Requirements:** Docker + Docker Compose
+
+```bash
+# Build and start everything
+docker-compose up --build
+
+# Or run in the background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
+```
+
+Frontend: **http://localhost:3000** — Backend: **http://localhost:8000**
+
+To also run the CSV watcher with Docker:
+
+```bash
+chmod +x run_csv_watcher.sh
+./run_csv_watcher.sh
+```
+
+---
 
 ## 📂 Project Structure
 
 ```
 .
 ├── docker-compose.yml
+├── run_csv_watcher.sh
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── main.py
+│   ├── backend_main.py
 │   ├── csv_parser.py
 │   ├── gsheet_integration.py
-│   ├── csv_watcher.py
-│   ├── credentials.json  # Add this
-│   └── .env  # Add this
+│   ├── csv_watcher_script.py
+│   ├── credentials.json     # ← add this (do not commit)
+│   └── .env                 # ← add this (do not commit)
 ├── frontend/
 │   ├── Dockerfile
-│   ├── package.json
+│   ├── package_json.json
 │   └── src/
 │       └── App.js
-└── csv_imports/  # Created automatically
-    ├── processed/  # Successfully imported files
-    └── failed/     # Failed imports
+├── scripts/
+│   └── teller/
+│       ├── index.js               # monthly sync scheduler
+│       ├── teller-connect-app.js  # one-time bank connection helper
+│       └── setup-env.js
+└── csv_imports/             # created automatically
+    ├── processed/
+    └── failed/
 ```
+
+---
 
 ## 🔄 Workflow
 
-### Option 1: Manual CSV Upload
-1. Open app at http://localhost:3000
-2. Click "Upload CSV"
-3. Select Discover or Barclays CSV file
-4. Transactions appear in review table
+### Importing Transactions
 
-### Option 2: Auto-Import (Watch Folder)
-1. Start the CSV watcher script
-2. Drop CSV files into `csv_imports/` folder
-3. Files are automatically processed
-4. Successful files move to `csv_imports/processed/`
-5. Failed files move to `csv_imports/failed/` with error logs
+**CSV Upload (manual)**
+1. Open the app at http://localhost:3000
+2. Click **Upload CSV** and select a Discover or Barclays CSV file
+3. Transactions appear in the review table
 
-### Option 3: Teller.io (Auto-fetch)
-1. Click "Connect Account" in the app
-2. Complete Teller authentication flow
-3. Select accounts to import
-4. Transactions automatically populate
+**Watch Folder (auto)**
+1. Start the CSV watcher
+2. Drop CSV files into `csv_imports/`
+3. Successfully processed files move to `csv_imports/processed/`, failures to `csv_imports/failed/`
+
+**Teller.io (already-connected banks)**
+
+Call the sync endpoint to pull from all connected accounts at once:
+
+```bash
+curl -X POST http://localhost:8000/api/teller/sync
+```
+
+This reads every access token in `TELLER_API_KEY`, fetches all accounts and transactions, and loads them into the review queue — deduplicating anything already there. You can hit this on startup or add a "Refresh from Banks" button in the frontend.
 
 ### Review & Send
-1. Review all transactions in the table
-2. Click "50/50" for equal split, or "Edit" for custom split
-3. Fill in Who/What/Notes as needed
-4. Click "📊 Send to GSheet" when ready
-5. Transactions are sent to your Google Sheet and cleared from review
 
-## 🛠️ Testing
+1. Review transactions in the table
+2. Click **50/50** for an equal split, or **Edit** for a custom split
+3. Fill in Who / What / Notes as needed
+4. Click **📊 Send to GSheet** — shared transactions are sent to your Google Sheet and cleared from the queue
 
-### Verify Google Sheet Connection
+---
+
+## 🛠️ Useful Commands
+
 ```bash
+# Verify Google Sheet connection
 curl http://localhost:8000/api/gsheet/verify
-```
 
-### Test CSV Upload
-```bash
+# Test CSV upload
 curl -X POST http://localhost:8000/api/upload-csv \
   -F "file=@your_statement.csv"
+
+# Pull latest transactions from connected banks
+curl -X POST http://localhost:8000/api/teller/sync
+
+# View all transactions currently in the queue
+curl http://localhost:8000/api/transactions/all
 ```
 
-## 🐳 Kubernetes Deployment
-
-Coming soon! The app is containerized and ready for k8s deployment.
+---
 
 ## 🔍 Troubleshooting
 
 **Google Sheets not working?**
-- Make sure you shared the sheet with the service account email (found in your credentials JSON as `client_email`)
-- Verify SPREADSHEET_ID is correct (from the URL between `/d/` and `/edit`)
-- Check that credentials.json is in the backend folder
-- Test with: `curl http://localhost:8000/api/gsheet/verify`
+- Confirm `credentials.json` is in the `backend/` folder
+- Confirm the sheet is shared with the `client_email` from `credentials.json`
+- Confirm `SPREADSHEET_ID` matches the URL between `/d/` and `/edit`
+- Run `curl http://localhost:8000/api/gsheet/verify` to check the connection
 
-**CSV files not processing?**
-- Check backend logs: `docker-compose logs backend`
-- Verify CSV format matches Discover/Barclays structure
-- Check `csv_imports/failed/` folder for error logs
+**CSV files not parsing?**
+- With Docker: `docker-compose logs backend`
+- Without Docker: check the terminal running uvicorn
+- Check `csv_imports/failed/` for error logs
 
-**Teller.io not connecting?**
-- Verify TELLER_APPLICATION_ID and TELLER_PRIVATE_KEY
-- Check if using correct environment (sandbox vs production)
+**Teller.io not pulling transactions?**
+- Confirm `TELLER_API_KEY` in `.env` contains your actual **access token(s)** (not your App ID)
+- If you have multiple banks, separate tokens with commas: `token1,token2`
+- Check the environment matches where you enrolled (`sandbox` vs `development`)
+- For cert errors, confirm `TELLER_CERT_PATH` and `TELLER_KEY_PATH` point to your downloaded Teller certificates
+
+---
 
 ## 📝 Notes
 
-- In-memory storage: Transactions exist only until sent to Google Sheet
-- No database needed - this is a review-and-send workflow
-- CSV watcher processes files one at a time
-- Teller.io transactions merge with CSV transactions in one view
+- **No database** — transactions live in memory until sent to Google Sheets. Restarting the app clears the queue.
+- All transaction sources (Teller + CSVs) appear together in one review table.
+- The CSV watcher processes files one at a time.
+- MIT License — feel free to fork and adapt for your household.

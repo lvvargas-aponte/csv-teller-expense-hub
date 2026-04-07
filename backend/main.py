@@ -6,8 +6,10 @@ import os
 from typing import List, Dict, Any, Optional
 import base64
 import json
-from csv_parser import parse_csv, Transaction, transactions_to_google_sheet_format, BankType
+from csv_parser import parse_csv, Transaction as CsvTransaction, transactions_to_google_sheet_format, BankType
 from gsheet_integration import append_to_sheet, get_sheet_headers
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 app = FastAPI(title="Bank Statement API", version="1.0.0")
 
@@ -22,7 +24,8 @@ app.add_middleware(
 
 # Environment variables
 TELLER_APP_ID = os.getenv("TELLER_APP_ID")
-TELLER_API_KEY = os.getenv("TELLER_API_KEY")
+_raw_teller_key = os.getenv("TELLER_API_KEY", "")
+TELLER_ACCESS_TOKENS = [t.strip() for t in _raw_teller_key.split(",") if t.strip()]
 TELLER_ENVIRONMENT = os.getenv("TELLER_ENVIRONMENT", "development")
 TELLER_CERT_PATH = os.getenv("TELLER_CERT_PATH")
 TELLER_KEY_PATH = os.getenv("TELLER_KEY_PATH")
@@ -30,6 +33,25 @@ SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 SHEET_NAME = os.getenv("SHEET_NAME")
 PERSON_1_NAME = os.getenv("PERSON_1_NAME", "Person 1")
 PERSON_2_NAME = os.getenv("PERSON_2_NAME", "Person 2")
+
+# Build mTLS cert tuple once at startup — Teller requires client certs in non-sandbox mode
+_TELLER_CERT = None
+if TELLER_CERT_PATH and TELLER_KEY_PATH:
+    if os.path.exists(TELLER_CERT_PATH) and os.path.exists(TELLER_KEY_PATH):
+        _TELLER_CERT = (TELLER_CERT_PATH, TELLER_KEY_PATH)
+        print(f"[Teller] mTLS certificates loaded: {TELLER_CERT_PATH}")
+    else:
+        print(f"[Teller] WARNING: cert paths set but files not found — running without mTLS")
+else:
+    print(f"[Teller] No certificates configured (sandbox mode or not required)")
+
+
+def teller_client() -> httpx.AsyncClient:
+    """Return an httpx client pre-configured with Teller mTLS certs and a sensible timeout."""
+    kwargs = {"timeout": httpx.Timeout(30.0, connect=10.0)}
+    if _TELLER_CERT:
+        kwargs["cert"] = _TELLER_CERT
+    return httpx.AsyncClient(**kwargs)
 
 # Teller API base URL
 TELLER_BASE_URL = "https://api.teller.io"
@@ -44,16 +66,6 @@ class Account(BaseModel):
     subtype: str
     balance: Dict[str, Any]
     institution: Dict[str, Any]
-
-class Transaction(BaseModel):
-    id: str
-    account_id: str
-    amount: str
-    date: str
-    description: str
-    details: Dict[str, Any]
-    status: str
-    type: str
 
 class TransactionUpdate(BaseModel):
     is_shared: bool
@@ -78,17 +90,13 @@ async def health_check():
 async def create_connect_token(request: ConnectTokenRequest):
     """Generate a Teller Connect token for account linking"""
 
-    if not TELLER_APP_ID or not TELLER_API_KEY:
+    if not TELLER_APP_ID:
         raise HTTPException(
             status_code=500,
-            detail="Teller API credentials not configured"
+            detail="TELLER_APP_ID not configured"
         )
 
-    # Create basic auth header
-    credentials = base64.b64encode(f"{TELLER_APP_ID}:{TELLER_API_KEY}".encode()).decode()
-
     headers = {
-        "Authorization": f"Basic {credentials}",
         "Content-Type": "application/json"
     }
 
@@ -97,7 +105,7 @@ async def create_connect_token(request: ConnectTokenRequest):
         "application_id": TELLER_APP_ID
     }
 
-    async with httpx.AsyncClient() as client:
+    async with teller_client() as client:
         try:
             response = await client.post(
                 f"{TELLER_BASE_URL}/connect/token",
@@ -115,101 +123,239 @@ async def create_connect_token(request: ConnectTokenRequest):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Connection error: {str(e)}")
 
-@app.get("/api/accounts", response_model=List[Account])
-async def get_accounts(access_token: str):
-    """Fetch user's bank accounts"""
+@app.get("/api/accounts")
+async def get_accounts():
+    """Fetch bank accounts across all stored access tokens (reads TELLER_API_KEY from env)"""
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
+    if not TELLER_ACCESS_TOKENS:
+        raise HTTPException(
+            status_code=500,
+            detail="No Teller access tokens configured. Set TELLER_API_KEY in your .env file."
+        )
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{TELLER_BASE_URL}/accounts",
-                headers=headers,
-                timeout=30.0
-            )
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Failed to fetch accounts: {e.response.text}"
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Connection error: {str(e)}")
+    all_accounts = []
+    async with teller_client() as client:
+        for token in TELLER_ACCESS_TOKENS:
+            try:
+                response = await client.get(
+                    f"{TELLER_BASE_URL}/accounts",
+                    auth=(token, ""),
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                accounts = response.json()
+                # Tag each account with which token owns it (needed for transaction fetches)
+                for acct in accounts:
+                    acct["_teller_token"] = token
+                all_accounts.extend(accounts)
+            except httpx.HTTPStatusError as e:
+                print(f"[Teller] Token {token[:8]}... failed ({e.response.status_code}): {e.response.text}")
+            except Exception as e:
+                print(f"[Teller] Token {token[:8]}... error: {str(e)}")
+
+    return all_accounts
+
 
 @app.get("/api/accounts/{account_id}/transactions", response_model=List[Dict])
-async def get_transactions(account_id: str, access_token: str, count: int = 100):
-    """Fetch transactions for a specific account and add to review queue"""
+async def get_transactions(account_id: str, count: int = 100, access_token: Optional[str] = None):
+    """Fetch transactions for a specific account using stored tokens (or optional override token)"""
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
+    # Prefer an explicitly passed token; fall back to first stored token
+    tokens_to_try = ([access_token] if access_token else []) + TELLER_ACCESS_TOKENS
+    if not tokens_to_try:
+        raise HTTPException(status_code=500, detail="No Teller access token available.")
 
-    params = {"count": min(count, 500)}  # Limit to max 500
+    params = {"count": min(count, 500)}
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{TELLER_BASE_URL}/accounts/{account_id}/transactions",
-                headers=headers,
-                params=params,
-                timeout=30.0
-            )
-            response.raise_for_status()
-            teller_transactions = response.json()
-
-            # Convert Teller transactions to our format and store
-            for t in teller_transactions:
-                from csv_parser import Transaction, BankType
-
-                transaction = Transaction(
-                    date=t.get('date', ''),
-                    description=t.get('description', ''),
-                    amount=float(t.get('amount', 0)),
-                    source=BankType.TELLER,
-                    transaction_id=t.get('id'),
-                    category=t.get('details', {}).get('category')
+    async with teller_client() as client:
+        for token in tokens_to_try:
+            try:
+                response = await client.get(
+                    f"{TELLER_BASE_URL}/accounts/{account_id}/transactions",
+                    auth=(token, ""),
+                    params=params,
+                    timeout=30.0
                 )
-                stored_transactions[transaction.transaction_id] = transaction.to_dict()
+                response.raise_for_status()
+                teller_transactions = response.json()
 
-            return teller_transactions
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Failed to fetch transactions: {e.response.text}"
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Connection error: {str(e)}")
+                for t in teller_transactions:
+                    transaction = CsvTransaction(
+                        date=t.get("date", ""),
+                        description=t.get("description", ""),
+                        amount=float(t.get("amount", 0)),
+                        source=BankType.TELLER,
+                        transaction_id=t.get("id"),
+                        category=t.get("details", {}).get("category"),
+                    )
+                    stored_transactions[transaction.transaction_id] = transaction.to_dict()
+
+                return teller_transactions
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (401, 403):
+                    continue  # try next token
+                raise HTTPException(status_code=e.response.status_code,
+                                    detail=f"Failed to fetch transactions: {e.response.text}")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Connection error: {str(e)}")
+
+    raise HTTPException(status_code=401, detail="No valid Teller token found for this account.")
+
 
 @app.get("/api/accounts/{account_id}/balance")
-async def get_balance(account_id: str, access_token: str):
-    """Get account balance"""
+async def get_balance(account_id: str, access_token: Optional[str] = None):
+    """Get account balance using stored tokens (or optional override token)"""
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
+    tokens_to_try = ([access_token] if access_token else []) + TELLER_ACCESS_TOKENS
+    if not tokens_to_try:
+        raise HTTPException(status_code=500, detail="No Teller access token available.")
+
+    async with teller_client() as client:
+        for token in tokens_to_try:
+            try:
+                response = await client.get(
+                    f"{TELLER_BASE_URL}/accounts/{account_id}/balances",
+                    auth=(token, ""),
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (401, 403):
+                    continue
+                raise HTTPException(status_code=e.response.status_code,
+                                    detail=f"Failed to fetch balance: {e.response.text}")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to fetch balance: {str(e)}")
+
+    raise HTTPException(status_code=401, detail="No valid Teller token found for this account.")
+
+
+class TellerSyncRequest(BaseModel):
+    from_date: Optional[str] = None   # YYYY-MM-DD; if omitted, defaults to first day of previous month
+    to_date: Optional[str] = None     # YYYY-MM-DD; if omitted, defaults to last day of previous month
+    count: int = 500                  # max transactions to fetch per account before date filtering
+
+
+def _previous_month_range():
+    """Return (from_date, to_date) strings for the previous calendar month — mirrors index.js logic."""
+    from datetime import date
+    today = date.today()
+    # last day of previous month
+    last = date(today.year, today.month, 1) - __import__('datetime').timedelta(days=1)
+    first = date(last.year, last.month, 1)
+    return first.isoformat(), last.isoformat()
+
+
+@app.post("/api/teller/sync")
+async def sync_teller_transactions(req: TellerSyncRequest = None):
+    """Pull transactions from ALL stored access tokens, filtered by date range.
+
+    Mirrors the date-range logic from scripts/teller/index.js:
+    - Teller returns all transactions; we filter client-side by date (same as JS).
+    - Defaults to the previous calendar month when no dates are provided.
+    - Skips duplicates already in the review queue.
+    """
+    if req is None:
+        req = TellerSyncRequest()
+
+    if not TELLER_ACCESS_TOKENS:
+        raise HTTPException(
+            status_code=500,
+            detail="No Teller access tokens configured. Set TELLER_API_KEY in your .env file."
+        )
+
+    # Resolve date range — default to previous month exactly like index.js
+    from_date, to_date = _previous_month_range()
+    if req.from_date:
+        from_date = req.from_date
+    if req.to_date:
+        to_date = req.to_date
+
+    total_fetched = 0
+    total_added = 0
+    results = []
+
+    async with teller_client() as client:
+        for token in TELLER_ACCESS_TOKENS:
+            masked = f"{token[:8]}...{token[-4:]}"
+            try:
+                acct_resp = await client.get(
+                    f"{TELLER_BASE_URL}/accounts",
+                    auth=(token, ""),
+                    timeout=30.0,
+                )
+                acct_resp.raise_for_status()
+                accounts = acct_resp.json()
+
+                for account in accounts:
+                    acct_name = (
+                        f"{account.get('institution', {}).get('name', 'Bank')} "
+                        f"– {account.get('name', account['id'])}"
+                    )
+                    try:
+                        txn_resp = await client.get(
+                            f"{TELLER_BASE_URL}/accounts/{account['id']}/transactions",
+                            auth=(token, ""),
+                            params={"count": min(req.count, 500)},
+                            timeout=30.0,
+                        )
+                        txn_resp.raise_for_status()
+                        all_txns = txn_resp.json()
+
+                        # Client-side date filter — exactly like index.js getTellerTransactions()
+                        filtered = [
+                            t for t in all_txns
+                            if from_date <= t.get("date", "") <= to_date
+                        ]
+
+                        added = 0
+                        for t in filtered:
+                            txn = CsvTransaction(
+                                date=t.get("date", ""),
+                                description=t.get("description", ""),
+                                amount=float(t.get("amount", 0)),
+                                source=BankType.TELLER,
+                                transaction_id=t.get("id"),
+                                category=t.get("details", {}).get("category"),
+                            )
+                            if txn.transaction_id not in stored_transactions:
+                                stored_transactions[txn.transaction_id] = txn.to_dict()
+                                added += 1
+
+                        total_fetched += len(filtered)
+                        total_added += added
+                        results.append({
+                            "account": acct_name,
+                            "fetched": len(filtered),
+                            "new": added,
+                            "date_range": f"{from_date} → {to_date}",
+                        })
+
+                    except Exception as e:
+                        enrollment_status = ""
+                        if hasattr(e, "response") and e.response is not None:
+                            enrollment_status = e.response.headers.get("teller-enrollment-status", "")
+                        results.append({
+                            "account": acct_name,
+                            "error": str(e),
+                            "enrollment_status": enrollment_status or None,
+                        })
+
+            except httpx.HTTPStatusError as e:
+                results.append({"token": masked, "error": f"Auth failed ({e.response.status_code}): {e.response.text}"})
+            except Exception as e:
+                results.append({"token": masked, "error": str(e)})
+
+    return {
+        "message": f"Teller sync complete. {total_added} new transactions added ({from_date} → {to_date}).",
+        "from_date": from_date,
+        "to_date": to_date,
+        "total_fetched": total_fetched,
+        "total_new": total_added,
+        "details": results,
     }
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{TELLER_BASE_URL}/accounts/{account_id}/balances",
-                headers=headers,
-                timeout=30.0
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to fetch balance: {str(e)}")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 @app.post("/api/upload-csv")
 async def upload_csv(file: UploadFile = File(...)):
@@ -237,6 +383,49 @@ async def upload_csv(file: UploadFile = File(...)):
 async def get_all_transactions():
     """Get all transactions (CSV + Teller combined)"""
     return list(stored_transactions.values())
+
+class BulkTransactionUpdate(BaseModel):
+    transaction_ids: List[str]
+    is_shared: bool
+    who: Optional[str] = None
+    what: Optional[str] = None
+    notes: Optional[str] = None
+    split_evenly: bool = True  # if True, auto-calculate 50/50 from each transaction's amount
+
+@app.put("/api/transactions/bulk")
+async def bulk_update_transactions(update: BulkTransactionUpdate):
+    """Mark multiple transactions as shared or personal at once"""
+    updated = []
+    not_found = []
+
+    for tid in update.transaction_ids:
+        if tid not in stored_transactions:
+            not_found.append(tid)
+            continue
+
+        t = stored_transactions[tid]
+        t["is_shared"] = update.is_shared
+        t["who"] = update.who or t.get("who", "")
+        t["what"] = update.what or t.get("what", "")
+        t["notes"] = update.notes or t.get("notes", "")
+
+        if update.is_shared and update.split_evenly:
+            half = round(abs(float(t.get("amount", 0))) / 2, 2)
+            t["person_1_owes"] = half
+            t["person_2_owes"] = half
+        elif not update.is_shared:
+            t["person_1_owes"] = 0.0
+            t["person_2_owes"] = 0.0
+
+        stored_transactions[tid] = t
+        updated.append(t)
+
+    return {
+        "updated": len(updated),
+        "not_found": not_found,
+        "transactions": updated
+    }
+
 
 @app.put("/api/transactions/{transaction_id}")
 async def update_transaction(transaction_id: str, update: TransactionUpdate):
@@ -354,3 +543,7 @@ async def get_person_names():
         "person_1": PERSON_1_NAME,
         "person_2": PERSON_2_NAME
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

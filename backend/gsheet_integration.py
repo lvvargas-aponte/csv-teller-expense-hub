@@ -153,8 +153,8 @@ class TransactionFormatter:
             transaction.get('amount', 0),
             transaction.get('who', ''),
             transaction.get('what', ''),
-            transaction.get('person_1_owes', transaction.get('valeria_owes', 0)),  # Backward compat
-            transaction.get('person_2_owes', transaction.get('christy_owes', 0)),  # Backward compat
+            transaction.get('person_1_owes', transaction.get('person1_owes', 0)),  # Backward compat
+            transaction.get('person_2_owes', transaction.get('person2_owes', 0)),  # Backward compat
             transaction.get('notes', '')
         ]
 

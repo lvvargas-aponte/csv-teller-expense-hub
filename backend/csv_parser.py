@@ -3,6 +3,7 @@ CSV Parser Module
 """
 import csv
 import io
+import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from enum import Enum
@@ -37,8 +38,8 @@ class Transaction:
     is_shared: bool = False
     who: Optional[str] = None
     what: Optional[str] = None
-    valeria_owes: float = 0.0
-    christy_owes: float = 0.0
+    person_1_owes: float = 0.0
+    person_2_owes: float = 0.0
     notes: str = ""
 
     def __post_init__(self):
@@ -146,28 +147,39 @@ class BarclaysParser(CSVParser):
         return BankType.BARCLAYS
 
     def parse(self, content: str) -> List[Transaction]:
-        """Parse Barclays CSV format"""
+        """Parse Barclays CSV format.
+
+        Barclays CSVs have metadata rows at the top before the real headers:
+            Barclays Bank Delaware
+            Account Number: XXXXXXXXXXXXXXXX
+            Account Balance as of ...:  $X.XX
+            (blank)
+            Transaction Date,Description,Category,Amount   <- real header
+        """
         transactions = []
         reader = csv.reader(io.StringIO(content))
 
-        # Skip header row
-        headers = next(reader, None)
-        if not headers:
+        # Scan until we find the real header row
+        for row in reader:
+            if row and row[0].strip() == 'Transaction Date':
+                break  # next rows are data
+        else:
+            logger.warning("Could not find Barclays header row")
             return transactions
 
+        # Columns: 0=Transaction Date, 1=Description, 2=Category, 3=Amount
         for row in reader:
             try:
-                if len(row) < 3:
+                if len(row) < 4:
                     continue
 
-                # Clean and parse amount
-                amount_str = row[2].strip() if len(row) > 2 else "0"
-                amount_str = amount_str.replace('$', '').replace(',', '').replace('£', '')
+                amount_str = row[3].strip().replace('$', '').replace(',', '').replace('£', '')
                 amount = float(amount_str) if amount_str else 0.0
 
                 transaction = Transaction(
                     date=row[0].strip(),
-                    description=row[1].strip() if len(row) > 1 else "",
+                    description=row[1].strip(),
+                    category=row[2].strip(),  # DEBIT / CREDIT
                     amount=amount,
                     source=BankType.BARCLAYS
                 )
@@ -306,6 +318,8 @@ def parse_csv(content: str, filename: str = "") -> List[Transaction]:
 
 def transactions_to_google_sheet_format(transactions: List[Transaction]) -> List[Dict[str, Any]]:
     """Convert transactions to Google Sheet format"""
+    person_1 = os.getenv('PERSON_1_NAME', 'Person 1')
+    person_2 = os.getenv('PERSON_2_NAME', 'Person 2')
     rows = []
     for t in transactions:
         if t.is_shared:  # Only export shared expenses
@@ -315,8 +329,8 @@ def transactions_to_google_sheet_format(transactions: List[Transaction]) -> List
                 "Amount": t.amount,
                 "Who": t.who or "",
                 "What": t.what or "",
-                "Valeria Owes": t.valeria_owes,
-                "Christy Owes": t.christy_owes,
+                f"{person_1} Owes": t.person_1_owes,
+                f"{person_2} Owes": t.person_2_owes,
                 "Notes": t.notes
             })
     return rows
