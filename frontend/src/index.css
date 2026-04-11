@@ -224,6 +224,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 .txn-desc        { font-weight: 500; }
 .txn-desc-sub    { font-size: 12px; color: #10b981; }
 .txn-desc-note   { font-size: 12px; color: var(--text-muted); }
+.txn-desc-cat    { font-size: 12px; color: var(--text-muted); }
 
 .txn-type-badge {
   margin-left: 6px;
@@ -424,6 +425,24 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 }
 
 .preset-group { display: flex; gap: 8px; margin-bottom: 20px; }
+
+/* ── Accounts Modal ──────────────────────────────────────────────────────── */
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.account-row:last-child { border-bottom: none; }
+
+.account-row-info { flex: 1; min-width: 0; }
+.account-row-name { font-weight: 600; font-size: 14px; }
+.account-row-sub  { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.account-row-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.account-row-confirm-label { font-size: 13px; color: var(--text-subtle); }
 
 .split-btn {
   padding: 9px 12px;

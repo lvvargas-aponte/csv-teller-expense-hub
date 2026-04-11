@@ -36,12 +36,16 @@ export const calculateHalf = (amount) =>
   parseFloat((Math.abs(parseFloat(amount)) / 2).toFixed(2));
 
 export const formatAccountType = (type) => ({
-  checking:     'Checking',
-  savings:      'Savings',
-  credit:       'Credit Card',
-  credit_card:  'Credit Card',
-  money_market: 'Money Market',
+  checking:        'Checking',
+  savings:         'Savings',
+  money_market:    'Money Market',
+  credit_card:     'Credit Card',
+  line_of_credit:  'Line of Credit',
+  credit:          'Credit Card',
 }[type] || type);
+
+export const formatCategory = (cat) =>
+  (cat || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 export function txnMonthKey(dateStr) {
   if (!dateStr) return null;

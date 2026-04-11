@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { fmt$, fmtDate, channelLabel, CHANNEL_COLOR, formatAccountType } from '../utils/formatting';
+import { fmt$, fmtDate, channelLabel, CHANNEL_COLOR, formatAccountType, formatCategory } from '../utils/formatting';
 
 export default function TxnRow({ txn, otherPersonName, isSelected, onToggle, onQuickMark, onEdit, onNote }) {
   const [marking, setMarking] = useState(false);
@@ -23,6 +23,9 @@ export default function TxnRow({ txn, otherPersonName, isSelected, onToggle, onQ
       <td className="td-date">{fmtDate(txn.date)}</td>
       <td>
         <div className="txn-desc">{txn.description}</div>
+        {txn.category && (
+          <div className="txn-desc-cat">{formatCategory(txn.category)}</div>
+        )}
       </td>
       <td className="td-amount">
         {fmt$(txn.amount)}

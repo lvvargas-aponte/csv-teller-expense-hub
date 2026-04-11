@@ -7,8 +7,9 @@ import StatCard   from './components/StatCard';
 import TxnRow     from './components/TxnRow';
 import EditModal  from './components/EditModal';
 import NoteModal  from './components/NoteModal';
-import SyncModal  from './components/SyncModal';
-import SyncToast  from './components/SyncToast';
+import SyncModal     from './components/SyncModal';
+import SyncToast     from './components/SyncToast';
+import AccountsModal from './components/AccountsModal';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -21,7 +22,8 @@ export default function App() {
   const [uploading,     setUploading]     = useState(false);
   const [error,         setError]         = useState(null);
   const [syncToast,     setSyncToast]     = useState(null);
-  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showSyncModal,     setShowSyncModal]     = useState(false);
+  const [showAccountsModal, setShowAccountsModal] = useState(false);
   const [selected,      setSelected]      = useState(new Set());
   const [filterInstitution, setFilterInstitution] = useState('all');
   const [filterShared,  setFilterShared]  = useState('all');
@@ -263,11 +265,19 @@ export default function App() {
             </button>
 
             <button type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setShowAccountsModal(true)}
+                    title="Manage linked bank accounts"
+            >
+              🏦 Accounts
+            </button>
+
+            <button type="button"
                     className="btn btn-teller"
                     onClick={() => setShowSyncModal(true)}
                     disabled={syncing}
             >
-              {syncing ? <><Spin /> Syncing…</> : '🏦 Sync Banks'}
+              {syncing ? <><Spin /> Syncing…</> : '⟳ Sync Banks'}
             </button>
 
             <label className="btn btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
@@ -390,7 +400,8 @@ export default function App() {
         </div>
       </main>
 
-      {showSyncModal && <SyncModal onSync={syncTeller} onClose={() => setShowSyncModal(false)} />}
+      {showSyncModal     && <SyncModal onSync={syncTeller} onClose={() => setShowSyncModal(false)} />}
+      {showAccountsModal && <AccountsModal onClose={() => setShowAccountsModal(false)} />}
       {editingTxn    && <EditModal txn={editingTxn} personNames={personNames} onSave={saveEdit} onClose={() => setEditingTxn(null)} />}
       {notingTxn     && <NoteModal txn={notingTxn} onSave={saveNote} onClose={() => setNotingTxn(null)} />}
       {syncToast     && <SyncToast result={syncToast} onClose={() => setSyncToast(null)} />}

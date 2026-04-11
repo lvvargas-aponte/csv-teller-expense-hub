@@ -209,6 +209,7 @@ async def get_accounts():
             detail="No Teller access tokens configured. Set TELLER_API_KEY in your .env file.",
         )
 
+    seen_ids: set = set()
     all_accounts = []
     async with teller_client() as client:
         for token in TELLER_ACCESS_TOKENS:
@@ -220,8 +221,10 @@ async def get_accounts():
                 response.raise_for_status()
                 accounts = response.json()
                 for acct in accounts:
-                    acct["_teller_token"] = token
-                all_accounts.extend(accounts)
+                    if acct["id"] not in seen_ids:
+                        seen_ids.add(acct["id"])
+                        acct["_teller_token"] = token
+                        all_accounts.append(acct)
             except httpx.HTTPStatusError as e:
                 logger.warning(
                     f"[Teller] Token {token[:8]}... failed ({e.response.status_code}): {e.response.text}"
@@ -359,7 +362,70 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
 
                         added = 0
                         acct_institution = account.get("institution", {}).get("name", "")
-                        acct_type = account.get("type", "")
+                        acct_type     = account.get("subtype", "") or account.get("type", "")
+                        acct_category = account.get("type", "")   # broad: "depository" | "credit"
+
+                        # Build running_balance sequence so we can infer CR/DR for depository
+                        # accounts, where balance up = deposit (credit), balance down = withdrawal (debit).
+                        # Credit accounts are excluded: their balance represents debt as a negative
+                        # number, so a payment (money out) increases the balance and would be
+                        # mislabelled as "credit" by the delta logic.
+                        #
+                        # IMPORTANT: Do NOT sort by date here. Teller's running_balance is only
+                        # valid in Teller's native sequence. Sorting by date scrambles same-day
+                        # transactions and breaks the balance chain (e.g. two payments on the same
+                        # date end up in the wrong order, making the delta report the wrong sign).
+                        # Teller returns transactions newest-first; reversing gives oldest-first,
+                        # which preserves the running_balance chain correctly.
+                        all_txns_sorted = list(reversed(all_txns))
+                        balance_seq = [
+                            (t["id"], float(t["running_balance"]))
+                            for t in all_txns_sorted
+                            if t.get("running_balance") is not None
+                        ]
+                        balance_index = {tid: i for i, (tid, _) in enumerate(balance_seq)}
+
+                        def infer_txn_type(t, raw_amount):
+                            tid = t.get("id")
+                            idx = balance_index.get(tid)
+                            teller_type = t.get("type", "")  # e.g. "card_payment", "ach", "transfer"
+                            desc = t.get("description", "")
+
+                            # Depository accounts: running_balance delta is the most reliable signal.
+                            if acct_category == "depository" and idx is not None and idx > 0:
+                                prev_bal = balance_seq[idx - 1][1]
+                                curr_bal = balance_seq[idx][1]
+                                result = "credit" if curr_bal > prev_bal else "debit"
+                                print(f"[CR/DR] DELTA  | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} | idx={idx} prev={prev_bal:.2f} curr={curr_bal:.2f} → {result}")
+                                return result
+
+                            # Credit accounts: amount sign distinguishes charges (+) from
+                            # credits (−). But negative amounts can be either a merchant
+                            # refund OR a bill payment from the cardholder's bank.
+                            # Heuristic: Teller uses type "card_payment" for both charges and
+                            # merchant refunds (card-originated). Bill payments arrive via ACH /
+                            # transfer / wire — a different type. If negative AND not card_payment,
+                            # treat as a bill payment → debit (money left the cardholder's wallet).
+                            if acct_category == "credit" and raw_amount < 0:
+                                if teller_type == "card_payment":
+                                    print(f"[CR/DR] CREDIT_REFUND | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} → credit")
+                                    return "credit"   # merchant refund
+                                print(f"[CR/DR] CREDIT_PMT   | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} → debit")
+                                return "debit"        # bill payment from bank
+
+                            # Fallback when running_balance is unavailable (pending txns,
+                            # or first transaction in the window with no prior balance).
+                            # Sign convention differs by account category:
+                            #   depository: negative = withdrawal (debit), positive = deposit (credit)
+                            #   credit:     negative = refund/payment (credit), positive = charge (debit)
+                            if acct_category == "depository":
+                                result = "debit" if raw_amount < 0 else "credit"
+                                print(f"[CR/DR] FALLBACK| {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} idx={idx} → {result}")
+                                return result
+                            result = "credit" if raw_amount < 0 else "debit"
+                            print(f"[CR/DR] FALLBACK| {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} idx={idx} → {result}")
+                            return result
+
                         for t in filtered:
                             raw_amount = float(t.get("amount", 0))
                             txn = CsvTransaction(
@@ -370,12 +436,20 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
                                 transaction_id=t.get("id"),
                                 category=t.get("details", {}).get("category"),
                                 institution=acct_institution,
-                                transaction_type="credit" if raw_amount < 0 else "debit",
+                                transaction_type=infer_txn_type(t, raw_amount),
                                 account_type=acct_type,
                             )
                             if txn.transaction_id not in stored_transactions:
                                 stored_transactions[txn.transaction_id] = txn.to_dict()
                                 added += 1
+                            else:
+                                # Upsert Teller-derived fields so logic fixes apply on re-sync
+                                # without requiring a backend restart. User-edited fields are
+                                # preserved (is_shared, who, what, notes, person_1_owes, person_2_owes).
+                                existing = stored_transactions[txn.transaction_id]
+                                for field in ("transaction_type", "account_type", "category",
+                                              "institution", "description", "amount", "date"):
+                                    existing[field] = getattr(txn, field)
 
                         total_fetched += len(filtered)
                         total_added += added
@@ -413,6 +487,33 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
         "total_new": total_added,
         "details": results,
     }
+
+
+@app.delete("/api/accounts/{account_id}")
+async def delete_account(account_id: str):
+    """Disconnect a specific Teller account from its enrollment."""
+    if not TELLER_ACCESS_TOKENS:
+        raise HTTPException(status_code=500, detail="No Teller access tokens configured.")
+
+    async with teller_client() as client:
+        for token in TELLER_ACCESS_TOKENS:
+            try:
+                resp = await client.delete(
+                    f"{TELLER_BASE_URL}/accounts/{account_id}",
+                    auth=(token, ""),
+                )
+                if resp.status_code in (200, 204):
+                    return {"deleted": account_id}
+                if resp.status_code in (401, 403):
+                    continue
+                resp.raise_for_status()
+            except httpx.HTTPStatusError:
+                continue
+            except Exception as e:
+                logger.warning(f"[Teller] Error deleting account {account_id}: {e}")
+                continue
+
+    raise HTTPException(status_code=404, detail="Account not found or no valid token could disconnect it.")
 
 
 @app.post("/api/upload-csv")
