@@ -3,15 +3,19 @@ CSV Parser Module
 """
 import csv
 import io
-import os
-from datetime import datetime
 from typing import List, Dict, Any, Optional
 from enum import Enum
 from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
 import logging
 
+from config import PERSON_1_NAME, PERSON_2_NAME
+
 logger = logging.getLogger(__name__)
+
+# Module-level counter to disambiguate duplicate transactions within a single parse run.
+# Keyed on the base ID string; value is the number of times that base has been seen.
+_id_counter: Dict[str, int] = {}
 
 
 class BankType(str, Enum):
@@ -41,6 +45,9 @@ class Transaction:
     person_1_owes: float = 0.0
     person_2_owes: float = 0.0
     notes: str = ""
+    institution: str = ""
+    transaction_type: str = "debit"   # "credit" | "debit"
+    account_type: str = ""            # "checking" | "savings" | "credit_card" | "credit" | ...
 
     def __post_init__(self):
         """Generate transaction ID if not provided"""
@@ -48,13 +55,35 @@ class Transaction:
             self.transaction_id = self._generate_id()
 
     def _generate_id(self) -> str:
-        """Generate unique transaction ID"""
-        desc_snippet = self.description[:20] if self.description else ""
-        return f"{self.source}_{self.date}_{self.amount}_{desc_snippet}"
+        """Generate a unique transaction ID.
+
+        The first occurrence of a given (source, date, amount, description) combination
+        uses the plain base key.  Subsequent duplicates within the same process run get
+        an incrementing numeric suffix so identical transactions on the same day are kept
+        as separate records rather than silently overwriting each other.
+        """
+        import re
+        desc_snippet = (self.description or "")[:20]
+        # Use .value so we get "discover" not "BankType.DISCOVER" on Python <3.11.
+        # Replace "/" in dates, then strip any non-URL-safe character from the description
+        # (e.g. "#" is a URL fragment delimiter and silently truncates the path in browsers).
+        safe_date = (self.date or "").replace("/", "-")
+        safe_desc = re.sub(r"[^A-Za-z0-9._-]", "_", desc_snippet)
+        base = f"{self.source.value}_{safe_date}_{self.amount}_{safe_desc}"
+        _id_counter[base] = _id_counter.get(base, 0) + 1
+        count = _id_counter[base]
+        return base if count == 1 else f"{base}_{count}"
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
-        return asdict(self)
+        """Convert to dictionary.
+
+        Adds 'id' as an alias for 'transaction_id' so the frontend
+        can use txn.id consistently (the stored_transactions dict is
+        still keyed by transaction_id internally).
+        """
+        d = asdict(self)
+        d['id'] = self.transaction_id  # frontend expects 'id'
+        return d
 
 
 class BankDetector:
@@ -86,6 +115,9 @@ class BankDetector:
         # Check headers
         if "trans. date" in headers_lower and "post date" in headers_lower:
             return BankType.DISCOVER
+
+        if "transaction date" in headers_lower and "category" in headers_lower:
+            return BankType.BARCLAYS
 
         return BankType.UNKNOWN
 
@@ -122,13 +154,17 @@ class DiscoverParser(CSVParser):
 
         for row in reader:
             try:
+                raw_amount = float(row.get('Amount', 0))
                 transaction = Transaction(
                     date=row.get('Trans. Date', '').strip(),
                     description=row.get('Description', '').strip(),
-                    amount=float(row.get('Amount', 0)),
+                    amount=abs(raw_amount),
                     source=BankType.DISCOVER,
                     post_date=row.get('Post Date', '').strip(),
-                    category=row.get('Category', '').strip()
+                    category=row.get('Category', '').strip(),
+                    institution="Discover",
+                    transaction_type="credit" if raw_amount < 0 else "debit",
+                    account_type="credit_card",
                 )
                 transactions.append(transaction)
             except (ValueError, KeyError) as e:
@@ -164,8 +200,10 @@ class BarclaysParser(CSVParser):
             if row and row[0].strip() == 'Transaction Date':
                 break  # next rows are data
         else:
-            logger.warning("Could not find Barclays header row")
-            return transactions
+            raise ValueError(
+                "Barclays CSV: could not find header row 'Transaction Date'. "
+                "Check the file format — expected a row starting with 'Transaction Date'."
+            )
 
         # Columns: 0=Transaction Date, 1=Description, 2=Category, 3=Amount
         for row in reader:
@@ -174,14 +212,19 @@ class BarclaysParser(CSVParser):
                     continue
 
                 amount_str = row[3].strip().replace('$', '').replace(',', '').replace('£', '')
-                amount = float(amount_str) if amount_str else 0.0
+                raw_amount = float(amount_str) if amount_str else 0.0
+                category = row[2].strip()
+                transaction_type = "credit" if category.upper() == "CREDIT" or raw_amount < 0 else "debit"
 
                 transaction = Transaction(
                     date=row[0].strip(),
                     description=row[1].strip(),
-                    category=row[2].strip(),  # DEBIT / CREDIT
-                    amount=amount,
-                    source=BankType.BARCLAYS
+                    category=category,  # DEBIT / CREDIT
+                    amount=abs(raw_amount),
+                    source=BankType.BARCLAYS,
+                    institution="Barclays",
+                    transaction_type=transaction_type,
+                    account_type="credit_card",
                 )
                 transactions.append(transaction)
             except (ValueError, IndexError) as e:
@@ -212,6 +255,8 @@ class GenericParser(CSVParser):
             amount = None
 
             for key in row.keys():
+                if not key:
+                    continue
                 key_lower = key.lower().strip()
                 if 'date' in key_lower and not date:
                     date = row[key].strip()
@@ -291,12 +336,26 @@ class CSVProcessorService:
             logger.warning("Empty CSV content provided")
             return []
 
-        # Detect bank type
+        # Reset per-run counter so the same file always produces the same IDs
+        # regardless of how many times it has been uploaded in this session.
+        _id_counter.clear()
+
+        # Detect bank type — scan lines to find the real header row, skipping
+        # any metadata preamble (e.g. Barclays has 4 info lines before headers)
         lines = content.strip().split('\n')
         if not lines:
             return []
 
-        headers = lines[0].split(',')
+        header_line = lines[0]
+        for line in lines:
+            stripped = line.strip()
+            # A real header row has multiple comma-separated non-numeric fields
+            parts = [p.strip().strip('"') for p in stripped.split(',')]
+            if len(parts) >= 3 and not any(c.isdigit() for c in parts[0]):
+                header_line = stripped
+                break
+
+        headers = [h.strip().strip('"') for h in header_line.split(',')]
         bank_type = self.detector.detect(headers, filename)
 
         logger.info(f"Detected bank type: {bank_type} for file: {filename}")
@@ -317,20 +376,18 @@ def parse_csv(content: str, filename: str = "") -> List[Transaction]:
 
 
 def transactions_to_google_sheet_format(transactions: List[Transaction]) -> List[Dict[str, Any]]:
-    """Convert transactions to Google Sheet format"""
-    person_1 = os.getenv('PERSON_1_NAME', 'Person 1')
-    person_2 = os.getenv('PERSON_2_NAME', 'Person 2')
+    """Convert transactions to Google Sheet format (shared expenses only)."""
     rows = []
     for t in transactions:
-        if t.is_shared:  # Only export shared expenses
+        if t.is_shared:
             rows.append({
                 "Transaction Date": t.date,
                 "Description": t.description,
                 "Amount": t.amount,
                 "Who": t.who or "",
                 "What": t.what or "",
-                f"{person_1} Owes": t.person_1_owes,
-                f"{person_2} Owes": t.person_2_owes,
-                "Notes": t.notes
+                f"{PERSON_1_NAME} Owes": t.person_1_owes,
+                f"{PERSON_2_NAME} Owes": t.person_2_owes,
+                "Notes": t.notes,
             })
     return rows

@@ -54,9 +54,14 @@ docker-compose up -d
 
 1. - [ ] Open browser to http://localhost:3000
 2. - [ ] Click "Upload CSV" and test with a bank statement
-3. - [ ] Mark a transaction as shared (click "50/50")
-4. - [ ] Click "📊 Send to GSheet"
-5. - [ ] Check your Google Sheet - the transaction should appear!
+3. - [ ] Mark a transaction as shared using the **50/50** toggle button in the row
+   - Credit transactions (refunds/returns) show a **CR** badge next to the amount
+   - The **Split** column shows what Person 2 owes
+4. - [ ] Click **🧮** on a row to open the split editor (adjust amounts or recalculate 50/50)
+5. - [ ] Click **🗒️** on a row to add a note; the icon becomes **📝** once a note exists
+6. - [ ] Toggle between light and dark mode with the **☀️/🌙** button in the header
+7. - [ ] Click "📊 Send to Sheet"
+8. - [ ] Check your Google Sheet — the transaction should appear!
 
 ## ✅ Optional: CSV Auto-Import
 

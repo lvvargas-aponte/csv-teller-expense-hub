@@ -1,16 +1,16 @@
-version: '3.8'
-
 services:
   backend:
     build: ./backend
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      - TELLER_APPLICATION_ID=${TELLER_APPLICATION_ID}
-      - TELLER_PRIVATE_KEY=${TELLER_PRIVATE_KEY}
-      - TELLER_ENVIRONMENT=${TELLER_ENVIRONMENT:-sandbox}
+      - TELLER_CERT_PATH=/app/certs/certificate.pem
+      - TELLER_KEY_PATH=/app/certs/private_key.pem
     volumes:
       - ./backend:/app
+      - ./certs:/app/certs:ro
     networks:
       - app-network
 
@@ -20,6 +20,10 @@ services:
       - "3000:3000"
     environment:
       - REACT_APP_BACKEND_URL=http://localhost:8000
+      - HOST=0.0.0.0
+      # Use polling for file-watch hot-reload — inotify is unreliable in Docker
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
     volumes:
       - ./frontend:/app
       - /app/node_modules

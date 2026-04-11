@@ -8,31 +8,51 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import logging
 
-# Setup logging
+from config import PERSON_1_NAME, PERSON_2_NAME, CREDENTIALS_FILE
+
 logger = logging.getLogger(__name__)
 
-# Constants
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
 ]
-CREDENTIALS_FILE = 'credentials.json'
 
+
+# ---------------------------------------------------------------------------
+# Custom exceptions — allow callers to distinguish error categories
+# ---------------------------------------------------------------------------
+
+class GoogleSheetsError(Exception):
+    """Base class for Google Sheets errors"""
+
+
+class AuthenticationError(GoogleSheetsError):
+    """Raised when credentials are invalid or missing"""
+
+
+class SheetNotFoundError(GoogleSheetsError):
+    """Raised when the spreadsheet or worksheet cannot be found"""
+
+
+class AppendError(GoogleSheetsError):
+    """Raised when appending rows to the sheet fails"""
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def get_expected_headers() -> List[str]:
-    """Get expected headers with person names from environment"""
-    person_1 = os.getenv('PERSON_1_NAME', 'Person 1')
-    person_2 = os.getenv('PERSON_2_NAME', 'Person 2')
-
+    """Get expected headers using configured person names."""
     return [
         "Transaction Date",
         "Description",
         "Amount",
         "Who",
         "What",
-        f"{person_1} Owes",
-        f"{person_2} Owes",
-        "Notes"
+        f"{PERSON_1_NAME} Owes",
+        f"{PERSON_2_NAME} Owes",
+        "Notes",
     ]
 
 
@@ -45,83 +65,79 @@ class SheetConfig:
     @classmethod
     def from_env(cls):
         """Create config from environment variables"""
-        spreadsheet_id = os.getenv('SPREADSHEET_ID')
-        sheet_name = os.getenv('SHEET_NAME')
-
-        if not spreadsheet_id:
+        from config import SPREADSHEET_ID, SHEET_NAME
+        if not SPREADSHEET_ID:
             raise ValueError("SPREADSHEET_ID environment variable not set")
-
-        return cls(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
+        return cls(spreadsheet_id=SPREADSHEET_ID, sheet_name=SHEET_NAME)
 
 
 class GoogleSheetsClient:
-    """
-    Single Responsibility: Handle Google Sheets authentication and client creation
-    """
+    """Handle Google Sheets authentication and client creation."""
 
-    def __init__(self, credentials_file: str = CREDENTIALS_FILE):
-        self.credentials_file = credentials_file
+    def __init__(self, credentials_file=None):
+        # Default to the absolute path from config so this works from any cwd
+        self.credentials_file = str(credentials_file or CREDENTIALS_FILE)
         self._client = None
 
     def get_client(self) -> gspread.Client:
-        """Get or create authenticated Google Sheets client"""
+        """Get or create authenticated Google Sheets client."""
         if self._client is None:
             self._client = self._authenticate()
         return self._client
 
     def _authenticate(self) -> gspread.Client:
-        """Authenticate with Google Sheets API"""
+        """Authenticate with Google Sheets API."""
         if not os.path.exists(self.credentials_file):
-            raise FileNotFoundError(
+            raise AuthenticationError(
                 f"Google credentials file not found: {self.credentials_file}\n"
                 "Please download your service account JSON from Google Cloud Console\n"
-                f"and save it as '{self.credentials_file}' in the backend folder."
+                f"and save it as 'credentials.json' in the backend folder."
             )
 
         try:
             creds = Credentials.from_service_account_file(
                 self.credentials_file,
-                scopes=SCOPES
+                scopes=SCOPES,
             )
             return gspread.authorize(creds)
         except Exception as e:
             logger.error(f"Failed to authenticate with Google: {str(e)}")
-            raise ValueError(f"Failed to authenticate with Google: {str(e)}")
+            raise AuthenticationError(f"Failed to authenticate with Google: {str(e)}") from e
 
 
 class SheetRepository:
-    """
-    Single Responsibility: Handle worksheet operations
-    Open/Closed Principle: Easy to extend with new sheet operations
-    """
+    """Handle worksheet read/write operations."""
 
     def __init__(self, client: GoogleSheetsClient):
         self.client = client
 
     def get_worksheet(self, config: SheetConfig):
-        """Get worksheet from spreadsheet"""
+        """Get worksheet from spreadsheet."""
         try:
             gc = self.client.get_client()
             spreadsheet = gc.open_by_key(config.spreadsheet_id)
-
             if config.sheet_name:
                 return spreadsheet.worksheet(config.sheet_name)
             return spreadsheet.sheet1
+        except (AuthenticationError, GoogleSheetsError):
+            raise
         except Exception as e:
             logger.error(f"Failed to access worksheet: {str(e)}")
-            raise Exception(f"Failed to access worksheet: {str(e)}")
+            raise SheetNotFoundError(f"Failed to access worksheet: {str(e)}") from e
 
     def get_headers(self, config: SheetConfig) -> List[str]:
-        """Get headers from the sheet"""
+        """Get headers from the sheet."""
         try:
             worksheet = self.get_worksheet(config)
             return worksheet.row_values(1)
+        except (AuthenticationError, SheetNotFoundError):
+            raise
         except Exception as e:
             logger.error(f"Failed to read sheet headers: {str(e)}")
-            raise Exception(f"Failed to read sheet headers: {str(e)}")
+            raise SheetNotFoundError(f"Failed to read sheet headers: {str(e)}") from e
 
     def append_rows(self, config: SheetConfig, rows: List[List[Any]]) -> int:
-        """Append rows to the sheet"""
+        """Append rows to the sheet."""
         if not rows:
             return 0
 
@@ -130,47 +146,36 @@ class SheetRepository:
             worksheet.append_rows(rows, value_input_option='USER_ENTERED')
             logger.info(f"Successfully appended {len(rows)} rows to sheet")
             return len(rows)
+        except (AuthenticationError, SheetNotFoundError):
+            raise
         except Exception as e:
             logger.error(f"Failed to append rows: {str(e)}")
-            raise Exception(f"Failed to append rows: {str(e)}")
+            raise AppendError(f"Failed to append rows to Google Sheet: {str(e)}") from e
 
 
 class TransactionFormatter:
-    """
-    Single Responsibility: Format transactions for Google Sheets
-    Dependency Inversion: Depends on abstractions (Dict) not concrete implementations
-    """
-
-    def __init__(self):
-        self.person_1 = os.getenv('PERSON_1_NAME', 'Person 1')
-        self.person_2 = os.getenv('PERSON_2_NAME', 'Person 2')
+    """Format transactions as Google Sheets row lists."""
 
     def format_for_sheet(self, transaction: Dict[str, Any]) -> List[Any]:
-        """Format a single transaction for Google Sheets"""
+        """Format a single transaction dict into a row list."""
         return [
             transaction.get('date', ''),
             transaction.get('description', ''),
             transaction.get('amount', 0),
             transaction.get('who', ''),
             transaction.get('what', ''),
-            transaction.get('person_1_owes', transaction.get('person1_owes', 0)),  # Backward compat
-            transaction.get('person_2_owes', transaction.get('person2_owes', 0)),  # Backward compat
-            transaction.get('notes', '')
+            transaction.get('person_1_owes', transaction.get('person1_owes', 0)),  # backward compat
+            transaction.get('person_2_owes', transaction.get('person2_owes', 0)),  # backward compat
+            transaction.get('notes', ''),
         ]
 
     def format_batch(self, transactions: List[Dict[str, Any]]) -> List[List[Any]]:
-        """Format multiple transactions for Google Sheets"""
-        return [
-            self.format_for_sheet(t)
-            for t in transactions
-        ]
+        """Format multiple transaction dicts into a list of row lists."""
+        return [self.format_for_sheet(t) for t in transactions]
 
 
 class GoogleSheetsService:
-    """
-    Facade: Provides simplified interface for Google Sheets operations
-    Interface Segregation: Clients only depend on methods they use
-    """
+    """Facade — simplified interface for Google Sheets operations."""
 
     def __init__(self, config: SheetConfig):
         self.config = config
@@ -179,15 +184,7 @@ class GoogleSheetsService:
         self.formatter = TransactionFormatter()
 
     def append_transactions(self, transactions: List[Dict[str, Any]]) -> int:
-        """
-        Append transactions to Google Sheet
-
-        Args:
-            transactions: List of transaction dictionaries
-
-        Returns:
-            Number of rows appended
-        """
+        """Append transactions to Google Sheet. Returns number of rows appended."""
         if not transactions:
             logger.warning("No transactions to append")
             return 0
@@ -196,33 +193,29 @@ class GoogleSheetsService:
         return self.repository.append_rows(self.config, rows)
 
     def verify_headers(self) -> Dict[str, Any]:
-        """
-        Verify sheet headers match expected format
-
-        Returns:
-            Dictionary with verification results
-        """
+        """Verify sheet headers match expected format."""
         headers = self.repository.get_headers(self.config)
         expected_headers = get_expected_headers()
-        headers_match = headers == expected_headers
-
         return {
             "connected": True,
             "sheet_id": self.config.spreadsheet_id,
             "sheet_name": self.config.sheet_name or "Default",
             "headers": headers,
-            "headers_match": headers_match,
-            "expected_headers": expected_headers
+            "headers_match": headers == expected_headers,
+            "expected_headers": expected_headers,
         }
 
 
-# Convenience functions for backward compatibility
+# ---------------------------------------------------------------------------
+# Convenience functions
+# ---------------------------------------------------------------------------
+
 def append_to_sheet(
         spreadsheet_id: str,
         transactions: List[Dict[str, Any]],
-        sheet_name: Optional[str] = None
+        sheet_name: Optional[str] = None,
 ) -> int:
-    """Append transactions to Google Sheet"""
+    """Append transactions to Google Sheet."""
     config = SheetConfig(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
     service = GoogleSheetsService(config)
     return service.append_transactions(transactions)
@@ -230,9 +223,9 @@ def append_to_sheet(
 
 def get_sheet_headers(
         spreadsheet_id: str,
-        sheet_name: Optional[str] = None
+        sheet_name: Optional[str] = None,
 ) -> List[str]:
-    """Get headers from Google Sheet"""
+    """Get headers from Google Sheet."""
     config = SheetConfig(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
     service = GoogleSheetsService(config)
     return service.repository.get_headers(config)

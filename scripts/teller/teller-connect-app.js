@@ -4,8 +4,18 @@
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
+const path = require('path');
 const https = require('https');
-require('dotenv').config();
+
+const PROJECT_ROOT = path.resolve(__dirname, '../..');
+const ENV_PATH = path.join(PROJECT_ROOT, '.env');
+require('dotenv').config({ path: ENV_PATH });
+
+// Resolve a path from .env relative to the project root (where .env and certs/ live).
+function resolvePath(p) {
+    if (!p) return null;
+    return path.isAbsolute(p) ? p : path.join(PROJECT_ROOT, p);
+}
 
 const app = express();
 const PORT = 3000;
@@ -20,8 +30,8 @@ if (TELLER_ENV !== 'sandbox') {
     if (process.env.TELLER_CERT_PATH && process.env.TELLER_KEY_PATH) {
         try {
             httpsAgent = new https.Agent({
-                cert: fs.readFileSync(process.env.TELLER_CERT_PATH),
-                key: fs.readFileSync(process.env.TELLER_KEY_PATH)
+                cert: fs.readFileSync(resolvePath(process.env.TELLER_CERT_PATH)),
+                key: fs.readFileSync(resolvePath(process.env.TELLER_KEY_PATH))
             });
             console.log('✅ Teller certificates loaded for development/production mode');
         } catch (error) {
@@ -240,8 +250,8 @@ app.post('/save-token', (req, res) => {
     let envContent = '';
     let existingTokens = [];
 
-    if (fs.existsSync('.env')) {
-        envContent = fs.readFileSync('.env', 'utf8');
+    if (fs.existsSync(ENV_PATH)) {
+        envContent = fs.readFileSync(ENV_PATH, 'utf8');
         const tokenMatch = envContent.match(/TELLER_API_KEY=([^\n]+)/);
 
         if (tokenMatch) {
@@ -255,7 +265,7 @@ app.post('/save-token', (req, res) => {
                 const newTokenLine = `TELLER_API_KEY=${existingTokens.join(',')}`;
                 envContent = envContent.replace(/TELLER_API_KEY=[^\n]+/, newTokenLine);
 
-                fs.writeFileSync('.env', envContent);
+                fs.writeFileSync(ENV_PATH, envContent);
 
                 console.log('✅ Token added to .env file');
                 console.log(`📊 Total tokens: ${existingTokens.length}\n`);
@@ -265,21 +275,22 @@ app.post('/save-token', (req, res) => {
         } else {
             // TELLER_API_KEY doesn't exist, add it
             envContent += `\n# Teller Access Tokens\nTELLER_API_KEY=${accessToken}\n`;
-            fs.writeFileSync('.env', envContent);
+            fs.writeFileSync(ENV_PATH, envContent);
             console.log('✅ Token added to .env file\n');
             existingTokens.push(accessToken);
         }
     } else {
         console.log('⚠️  .env file not found, creating new one...');
         envContent = `TELLER_API_KEY=${accessToken}\nTELLER_ENVIRONMENT=${environment || 'sandbox'}\n`;
-        fs.writeFileSync('.env', envContent);
+        fs.writeFileSync(ENV_PATH, envContent);
         console.log('✅ Created .env file with token\n');
         existingTokens.push(accessToken);
     }
 
-    // Also append to tokens log file for backup
+    // Also append to tokens log file for backup (next to the .env)
+    const LOG_PATH = path.resolve(__dirname, '../../teller-tokens.log');
     const logEntry = `${new Date().toISOString()} | Env: ${environment || 'sandbox'} | Enrollment: ${enrollmentId} | Token: ${accessToken}\n`;
-    fs.appendFileSync('teller-tokens.log', logEntry);
+    fs.appendFileSync(LOG_PATH, logEntry);
     console.log('💾 Token backed up to teller-tokens.log\n');
 
     console.log('Current tokens in .env:');

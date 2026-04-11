@@ -1,18 +1,30 @@
-# Default ignored files
-/.idea/shelf/
-/workspace.xml
-# Editor-based HTTP Client requests
-/httpRequests/
-# Datasource local storage ignored files
-/dataSources/
-/dataSources.local.xml
-#local only files/folders
+# ── IDE ──────────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.Python
+backend/venv/
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+node_modules/
+frontend/build/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+*.json.local
+backend/*.json
+
+# ── Local data ────────────────────────────────────────────────────────────────
+csv_imports/
 /certs/
 /misc/
-.env
-backend/*.json
-#node modules
-*/node_modules/
-#csv_imports
-csv_imports/
-/backend/venv/

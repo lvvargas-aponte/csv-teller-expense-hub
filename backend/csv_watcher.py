@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CSV Watch Folder Script
-Monitors a folder for new CSV files and automatically uploads them to the backend
+Monitors a folder for new CSV files and automatically uploads them to the backend.
 """
 
 import os
@@ -19,23 +19,69 @@ WATCH_FOLDER = os.getenv('CSV_WATCH_FOLDER', './csv_imports')
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:8000')
 PROCESSED_FOLDER = os.path.join(WATCH_FOLDER, 'processed')
 FAILED_FOLDER = os.path.join(WATCH_FOLDER, 'failed')
+PROCESSED_LOG = os.path.join(PROCESSED_FOLDER, '.processed_log')
+
+MAX_RETRIES = 3
 
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
 )
 logger = logging.getLogger(__name__)
 
 
+def _wait_for_file_stable(filepath: str, poll_interval: float = 0.2, timeout: float = 5.0) -> bool:
+    """Return True when the file size stops changing; False if the file never stabilises.
+
+    Polls every *poll_interval* seconds and considers the file ready when its size
+    is the same on two consecutive reads.  Falls back to False after *timeout* seconds
+    so callers are never stuck indefinitely.
+    """
+    deadline = time.monotonic() + timeout
+    prev_size = -1
+    while time.monotonic() < deadline:
+        try:
+            size = os.path.getsize(filepath)
+        except OSError:
+            return False
+        if size == prev_size and size > 0:
+            return True
+        prev_size = size
+        time.sleep(poll_interval)
+    return False
+
+
 class CSVHandler(FileSystemEventHandler):
-    """Handler for CSV file events"""
+    """Handler for CSV file system events."""
 
     def __init__(self):
-        self.processed_files = set()
+        self.processed_files: set = self._load_processed_log()
+
+    # ------------------------------------------------------------------
+    # Processed-log persistence
+    # ------------------------------------------------------------------
+
+    def _load_processed_log(self) -> set:
+        """Load the set of already-processed file paths from disk."""
+        if not os.path.exists(PROCESSED_LOG):
+            return set()
+        with open(PROCESSED_LOG) as f:
+            return {line.strip() for line in f if line.strip()}
+
+    def _record_processed(self, filepath: str):
+        """Append *filepath* to the on-disk log and the in-memory set."""
+        os.makedirs(PROCESSED_FOLDER, exist_ok=True)
+        with open(PROCESSED_LOG, 'a') as f:
+            f.write(filepath + '\n')
+        self.processed_files.add(filepath)
+
+    # ------------------------------------------------------------------
+    # Event handler
+    # ------------------------------------------------------------------
 
     def on_created(self, event):
-        """Called when a file is created in the watch folder"""
+        """Called when a file is created in the watch folder."""
         if event.is_directory:
             return
 
@@ -45,52 +91,76 @@ class CSVHandler(FileSystemEventHandler):
             return
 
         if filepath in self.processed_files:
+            logger.info(f"Skipping already-processed file: {filepath}")
             return
 
-        # Wait a moment to ensure file is fully written
-        time.sleep(1)
+        # Wait until the file has finished writing before touching it
+        if not _wait_for_file_stable(filepath):
+            logger.warning(
+                f"File did not stabilise within 5 s, skipping: {filepath}"
+            )
+            return
 
         self.process_csv(filepath)
 
-    def process_csv(self, filepath):
-        """Upload CSV to backend, then move to processed or failed folder"""
+    # ------------------------------------------------------------------
+    # Upload with retry
+    # ------------------------------------------------------------------
+
+    def process_csv(self, filepath: str):
+        """Upload CSV to backend with exponential-backoff retries, then move it."""
         logger.info(f"Processing new CSV: {filepath}")
 
-        try:
-            # Keep the with-block tight — close the handle before moving (critical on Windows)
-            with open(filepath, 'rb') as f:
-                files = {'file': (os.path.basename(filepath), f, 'text/csv')}
-                response = requests.post(
-                    f"{BACKEND_URL}/api/upload-csv",
-                    files=files,
-                    timeout=30
+        last_error: str = ""
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                with open(filepath, 'rb') as f:
+                    files = {'file': (os.path.basename(filepath), f, 'text/csv')}
+                    response = requests.post(
+                        f"{BACKEND_URL}/api/upload-csv",
+                        files=files,
+                        timeout=30,
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+
+                logger.info(
+                    f"Success: Parsed {result['count']} transactions "
+                    f"from {os.path.basename(filepath)}"
                 )
-                response.raise_for_status()
-                result = response.json()
+                self.move_to_processed(filepath)
+                self._record_processed(filepath)
+                return  # done
 
-            # File handle is now closed — safe to move on all platforms
-            logger.info(f"Success: Parsed {result['count']} transactions from {os.path.basename(filepath)}")
-            self.move_to_processed(filepath)
-            self.processed_files.add(filepath)
+            except requests.exceptions.RequestException as e:
+                last_error = str(e)
+                wait = 2 ** (attempt - 1)  # 1 s, 2 s, 4 s
+                if attempt < MAX_RETRIES:
+                    logger.warning(
+                        f"Attempt {attempt}/{MAX_RETRIES} failed for "
+                        f"{os.path.basename(filepath)}, retrying in {wait}s: {e}"
+                    )
+                    time.sleep(wait)
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"Unexpected error processing {os.path.basename(filepath)}: {e}")
+                break  # non-recoverable, go straight to failed
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to upload {os.path.basename(filepath)}: {str(e)}")
-            self.move_to_failed(filepath, str(e))
-        except Exception as e:
-            logger.error(f"Error processing {os.path.basename(filepath)}: {str(e)}")
-            self.move_to_failed(filepath, str(e))
+        logger.error(
+            f"All {MAX_RETRIES} attempts failed for {os.path.basename(filepath)}: {last_error}"
+        )
+        self.move_to_failed(filepath, last_error)
 
     # ------------------------------------------------------------------
     # File movement helpers
     # ------------------------------------------------------------------
 
     def _move_file(self, filepath: str, dest_folder: str) -> str:
-        """
-        Copy filepath into dest_folder and remove the original.
+        """Copy *filepath* into *dest_folder* then delete the original.
 
-        Uses copy+delete instead of os.rename so it works across drives
-        and avoids Windows file-lock errors. Appends a timestamp to the
-        filename if a file with the same name already exists in dest_folder.
+        Uses copy+delete instead of os.rename so it works across drives and
+        avoids Windows file-lock errors.  Appends a timestamp to the filename
+        when a file with the same name already exists in *dest_folder*.
 
         Returns the final destination path.
         """
@@ -108,7 +178,7 @@ class CSVHandler(FileSystemEventHandler):
         return dest
 
     def move_to_processed(self, filepath: str):
-        """Move a successfully processed file to the processed folder"""
+        """Move a successfully processed file to the processed folder."""
         try:
             dest = self._move_file(filepath, PROCESSED_FOLDER)
             logger.info(f"Moved to processed: {dest}")
@@ -116,7 +186,7 @@ class CSVHandler(FileSystemEventHandler):
             logger.error(f"Failed to move file to processed folder: {str(e)}")
 
     def move_to_failed(self, filepath: str, error: str):
-        """Move a failed file to the failed folder and write an error log alongside it"""
+        """Move a failed file to the failed folder and write an error log alongside it."""
         try:
             dest = self._move_file(filepath, FAILED_FOLDER)
 
@@ -132,7 +202,7 @@ class CSVHandler(FileSystemEventHandler):
 
 
 def process_existing_files(handler: CSVHandler):
-    """Process any CSV files already sitting in the watch folder at startup"""
+    """Process any CSV files already sitting in the watch folder at startup."""
     logger.info(f"Checking for existing CSV files in {WATCH_FOLDER}")
 
     if not os.path.exists(WATCH_FOLDER):
@@ -148,13 +218,17 @@ def process_existing_files(handler: CSVHandler):
     if csv_files:
         logger.info(f"Found {len(csv_files)} existing CSV file(s)")
         for filename in csv_files:
-            handler.process_csv(os.path.join(WATCH_FOLDER, filename))
+            filepath = os.path.join(WATCH_FOLDER, filename)
+            if filepath in handler.processed_files:
+                logger.info(f"Skipping already-processed file: {filename}")
+                continue
+            handler.process_csv(filepath)
     else:
         logger.info("No existing CSV files found")
 
 
 def main():
-    """Main function to start the file watcher"""
+    """Main function to start the file watcher."""
     logger.info("=" * 60)
     logger.info("CSV Watch Folder Script Started")
     logger.info("=" * 60)
