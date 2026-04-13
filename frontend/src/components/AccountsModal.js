@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Backdrop from './Backdrop';
 import Spin from './Spin';
@@ -18,27 +18,22 @@ export default function AccountsModal({ onClose }) {
   const [tellerConfig,  setTellerConfig]  = useState(null);
   const [configError,   setConfigError]   = useState(null);
 
-  useEffect(() => {
+  const refreshAccounts = useCallback(() => {
+    setLoading(true);
+    setError(null);
     axios.get(`${API}/api/accounts`)
-      .then((res) => setAccounts(res.data))
+      .then((r) => setAccounts(r.data))
       .catch(() => setError('Could not load accounts — is the backend running?'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { refreshAccounts(); }, [refreshAccounts]);
 
   useEffect(() => {
     axios.get(`${API}/api/config/teller`)
       .then((res) => setTellerConfig(res.data))
       .catch((e) => setConfigError(e.response?.data?.detail || e.message));
   }, []);
-
-  const refreshAccounts = () => {
-    setLoading(true);
-    setError(null);
-    axios.get(`${API}/api/accounts`)
-      .then((r) => setAccounts(r.data))
-      .catch(() => setError('Could not refresh accounts.'))
-      .finally(() => setLoading(false));
-  };
 
   const handleDisconnect = async (acctId) => {
     setDeleting(acctId);

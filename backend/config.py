@@ -29,7 +29,8 @@ TELLER_KEY_PATH: str | None = _resolve_path(os.getenv("TELLER_KEY_PATH"))
 SPREADSHEET_ID: str | None = os.getenv("SPREADSHEET_ID")
 SHEET_NAME: str | None = os.getenv("SHEET_NAME")
 # Absolute path relative to this file so it works regardless of the working directory
-CREDENTIALS_FILE: Path = Path(__file__).parent / "teller-gsheet-sync-95735ec3262e.json"
+_credentials_filename: str = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
+CREDENTIALS_FILE: Path = Path(__file__).parent / _credentials_filename
 
 # Person names for shared-expense splits
 PERSON_1_NAME: str = os.getenv("PERSON_1_NAME", "Person 1")

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import Backdrop from './Backdrop';
 import Spin from './Spin';
@@ -59,12 +59,12 @@ export default function SyncModal({ onSync, onClose }) {
   };
 
   // Group accounts by institution for display
-  const byInstitution = accounts.reduce((groups, acct) => {
+  const byInstitution = useMemo(() => accounts.reduce((groups, acct) => {
     const inst = acct.institution?.name || '—';
     if (!groups[inst]) groups[inst] = [];
     groups[inst].push(acct);
     return groups;
-  }, {});
+  }, {}), [accounts]);
 
   const handleSync = () => {
     // null selected means accounts failed to load — send no filter (sync all)

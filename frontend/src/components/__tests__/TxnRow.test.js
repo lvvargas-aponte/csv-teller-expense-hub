@@ -22,18 +22,17 @@ const baseTxn = {
   what: '',
 };
 
-const personNames = { person_1: 'Alice', person_2: 'Bob' };
-
 function renderRow(overrides = {}, handlers = {}) {
   return render(
     <table><tbody>
       <TxnRow
         txn={{ ...baseTxn, ...overrides }}
-        personNames={personNames}
+        otherPersonName="Bob"
         isSelected={false}
         onToggle={jest.fn()}
         onQuickMark={jest.fn().mockResolvedValue()}
         onEdit={jest.fn()}
+        onNote={jest.fn()}
         {...handlers}
       />
     </tbody></table>
@@ -60,20 +59,23 @@ test('shows "shared" badge when is_shared is true', () => {
   expect(screen.getByText('shared')).toBeInTheDocument();
 });
 
-test('shows person owed amounts when shared', () => {
-  renderRow({ is_shared: true, person_1_owes: 2.25, person_2_owes: 2.25 });
-  expect(screen.getByText(/Alice/)).toBeInTheDocument();
+test('shows other person owed amount when shared', () => {
+  renderRow({ is_shared: true, person_2_owes: 2.25 });
+  // TxnRow shows only the other person (otherPersonName) and their owed amount
   expect(screen.getByText(/Bob/)).toBeInTheDocument();
+  expect(screen.getByText(/\$2\.25/)).toBeInTheDocument();
 });
 
-test('shows "what" label when shared and what is set', () => {
-  renderRow({ is_shared: true, what: 'Groceries', person_1_owes: 0, person_2_owes: 0 });
-  expect(screen.getByText('Groceries')).toBeInTheDocument();
+test('shows formatted category when category is set', () => {
+  renderRow({ category: 'food_and_drink' });
+  // formatCategory converts underscores to spaces and title-cases each word
+  expect(screen.getByText('Food And Drink')).toBeInTheDocument();
 });
 
-test('shows notes when present', () => {
+test('shows 📝 note icon when notes are present', () => {
   renderRow({ notes: 'Split with roommate' });
-  expect(screen.getByText('Split with roommate')).toBeInTheDocument();
+  // When notes exist the icon changes from 🗒️ to 📝
+  expect(screen.getByTitle('Split with roommate')).toBeInTheDocument();
 });
 
 test('calls onQuickMark with (txn, true) when 50/50 button clicked', async () => {
@@ -96,10 +98,10 @@ test('calls onQuickMark with (txn, false) when Personal button clicked', async (
   ));
 });
 
-test('calls onEdit when Edit button is clicked', () => {
+test('calls onEdit when the adjust-split button is clicked', () => {
   const mockEdit = jest.fn();
   renderRow({}, { onEdit: mockEdit });
-  fireEvent.click(screen.getByText('Edit'));
+  fireEvent.click(screen.getByTitle('Adjust split'));
   expect(mockEdit).toHaveBeenCalled();
 });
 
@@ -112,17 +114,6 @@ test('calls onToggle when checkbox is clicked', () => {
 });
 
 test('checkbox is checked when isSelected is true', () => {
-  render(
-    <table><tbody>
-      <TxnRow
-        txn={baseTxn}
-        personNames={personNames}
-        isSelected={true}
-        onToggle={jest.fn()}
-        onQuickMark={jest.fn()}
-        onEdit={jest.fn()}
-      />
-    </tbody></table>
-  );
+  renderRow({}, { isSelected: true });
   expect(screen.getByRole('checkbox')).toBeChecked();
 });

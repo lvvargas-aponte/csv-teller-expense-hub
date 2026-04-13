@@ -171,10 +171,6 @@ def _log_token_event(*, token: str, enrollment_id: str, institution: str, note: 
 # Pydantic models
 # ---------------------------------------------------------------------------
 
-class ConnectTokenRequest(BaseModel):
-    user_id: str
-
-
 class RegisterTokenRequest(BaseModel):
     access_token: str
     enrollment_id: str
@@ -256,6 +252,80 @@ def _parse_month_key(date_str: str) -> Optional[str]:
         except ValueError:
             continue
     return None
+
+
+def _error_account_entry(token: str, status_code: Optional[int] = None) -> dict:
+    """Build a placeholder account dict for a token that failed to authenticate."""
+    return {
+        "id": f"_error_{token[:8]}{token[-4:]}",
+        "name": "Unknown account",
+        "type": "",
+        "subtype": "",
+        "institution": {"name": "—"},
+        "balance": {},
+        "_connection_error": True,
+        "_error_status": status_code,
+        "_enrollment_id": _get_enrollment_id(token),
+    }
+
+
+def infer_txn_type(
+    t: dict,
+    raw_amount: float,
+    *,
+    acct_category: str,
+    balance_seq: list,
+    balance_index: dict,
+) -> str:
+    """Infer whether a transaction is a credit or debit from available signals.
+
+    Priority order:
+      1. Running-balance delta (depository accounts only, when available)
+      2. Teller type + amount sign heuristic (credit accounts)
+      3. Amount sign fallback (when running_balance is missing)
+    """
+    tid = t.get("id")
+    idx = balance_index.get(tid)
+    teller_type = t.get("type", "")
+    desc = t.get("description", "")
+
+    # Depository: balance delta is the most reliable signal.
+    if acct_category == "depository" and idx is not None and idx > 0:
+        prev_bal = balance_seq[idx - 1][1]
+        curr_bal = balance_seq[idx][1]
+        result = "credit" if curr_bal > prev_bal else "debit"
+        logger.debug(
+            f"[CR/DR] DELTA  | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} "
+            f"raw={raw_amount:+.2f} | idx={idx} prev={prev_bal:.2f} curr={curr_bal:.2f} → {result}"
+        )
+        return result
+
+    # Credit accounts: amount sign + Teller type.
+    # card_payment with negative amount = merchant refund; ACH/transfer = bill payment (money out).
+    if acct_category == "credit" and raw_amount < 0:
+        if teller_type == "card_payment":
+            logger.debug(
+                f"[CR/DR] CREDIT_REFUND | {desc!r:50s} | acct={acct_category} "
+                f"teller_type={teller_type!r} raw={raw_amount:+.2f} → credit"
+            )
+            return "credit"
+        logger.debug(
+            f"[CR/DR] CREDIT_PMT   | {desc!r:50s} | acct={acct_category} "
+            f"teller_type={teller_type!r} raw={raw_amount:+.2f} → debit"
+        )
+        return "debit"
+
+    # Fallback: amount sign convention differs by account category.
+    if acct_category == "depository":
+        result = "debit" if raw_amount < 0 else "credit"
+    else:
+        result = "credit" if raw_amount < 0 else "debit"
+    logger.debug(
+        f"[CR/DR] FALLBACK| {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} "
+        f"raw={raw_amount:+.2f} idx={idx} → {result}"
+    )
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -342,48 +412,11 @@ async def replace_teller_token(req: ReplaceTokenRequest):
     return {"replaced": True, "total_tokens": len(TELLER_ACCESS_TOKENS)}
 
 
-@app.post("/api/connect-token")
-async def create_connect_token(request: ConnectTokenRequest):
-    """Generate a Teller Connect token for account linking"""
-    if not TELLER_APP_ID:
-        raise HTTPException(status_code=500, detail="TELLER_APP_ID not configured")
-
-    async with teller_client() as client:
-        try:
-            response = await client.post(
-                f"{TELLER_BASE_URL}/connect/token",
-                headers={"Content-Type": "application/json"},
-                json={"user_id": request.user_id, "application_id": TELLER_APP_ID},
-            )
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Teller API error: {e.response.text}",
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Connection error: {str(e)}")
-
-
 @app.get("/api/accounts")
 async def get_accounts():
     """Fetch bank accounts across all stored access tokens"""
     if not TELLER_ACCESS_TOKENS:
         return []
-
-    def _error_entry(token: str, status_code=None) -> dict:
-        return {
-            "id": f"_error_{token[:8]}{token[-4:]}",
-            "name": "Unknown account",
-            "type": "",
-            "subtype": "",
-            "institution": {"name": "—"},
-            "balance": {},
-            "_connection_error": True,
-            "_error_status": status_code,
-            "_enrollment_id": _get_enrollment_id(token),
-        }
 
     seen_ids: set = set()
     all_accounts = []
@@ -405,10 +438,10 @@ async def get_accounts():
                 logger.warning(
                     f"[Teller] Token {token[:8]}... failed ({e.response.status_code}): {e.response.text}"
                 )
-                all_accounts.append(_error_entry(token, e.response.status_code))
+                all_accounts.append(_error_account_entry(token, e.response.status_code))
             except Exception as e:
-                logger.warning(f"[Teller] Token {token[:8]}... error: {str(e)}")
-                all_accounts.append(_error_entry(token))
+                logger.warning(f"[Teller] Token {token[:8]}...{token[-4:]} error: {str(e)}")
+                all_accounts.append(_error_account_entry(token))
 
     return all_accounts
 
@@ -565,58 +598,22 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
                         ]
                         balance_index = {tid: i for i, (tid, _) in enumerate(balance_seq)}
 
-                        def infer_txn_type(t, raw_amount):
-                            tid = t.get("id")
-                            idx = balance_index.get(tid)
-                            teller_type = t.get("type", "")  # e.g. "card_payment", "ach", "transfer"
-                            desc = t.get("description", "")
-
-                            # Depository accounts: running_balance delta is the most reliable signal.
-                            if acct_category == "depository" and idx is not None and idx > 0:
-                                prev_bal = balance_seq[idx - 1][1]
-                                curr_bal = balance_seq[idx][1]
-                                result = "credit" if curr_bal > prev_bal else "debit"
-                                logger.debug(f"[CR/DR] DELTA  | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} | idx={idx} prev={prev_bal:.2f} curr={curr_bal:.2f} → {result}")
-                                return result
-
-                            # Credit accounts: amount sign distinguishes charges (+) from
-                            # credits (−). But negative amounts can be either a merchant
-                            # refund OR a bill payment from the cardholder's bank.
-                            # Heuristic: Teller uses type "card_payment" for both charges and
-                            # merchant refunds (card-originated). Bill payments arrive via ACH /
-                            # transfer / wire — a different type. If negative AND not card_payment,
-                            # treat as a bill payment → debit (money left the cardholder's wallet).
-                            if acct_category == "credit" and raw_amount < 0:
-                                if teller_type == "card_payment":
-                                    logger.debug(f"[CR/DR] CREDIT_REFUND | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} → credit")
-                                    return "credit"   # merchant refund
-                                logger.debug(f"[CR/DR] CREDIT_PMT   | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} → debit")
-                                return "debit"        # bill payment from bank
-
-                            # Fallback when running_balance is unavailable (pending txns,
-                            # or first transaction in the window with no prior balance).
-                            # Sign convention differs by account category:
-                            #   depository: negative = withdrawal (debit), positive = deposit (credit)
-                            #   credit:     negative = refund/payment (credit), positive = charge (debit)
-                            if acct_category == "depository":
-                                result = "debit" if raw_amount < 0 else "credit"
-                                logger.debug(f"[CR/DR] FALLBACK| {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} idx={idx} → {result}")
-                                return result
-                            result = "credit" if raw_amount < 0 else "debit"
-                            logger.debug(f"[CR/DR] FALLBACK| {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} idx={idx} → {result}")
-                            return result
-
                         for t in filtered:
-                            raw_amount = float(t.get("amount", 0))
+                            amt = float(t.get("amount", 0))
                             txn = CsvTransaction(
                                 date=t.get("date", ""),
                                 description=t.get("description", ""),
-                                amount=abs(raw_amount),
+                                amount=abs(amt),
                                 source=BankType.TELLER,
                                 transaction_id=t.get("id"),
                                 category=t.get("details", {}).get("category"),
                                 institution=acct_institution,
-                                transaction_type=infer_txn_type(t, raw_amount),
+                                transaction_type=infer_txn_type(
+                                    t, amt,
+                                    acct_category=acct_category,
+                                    balance_seq=balance_seq,
+                                    balance_index=balance_index,
+                                ),
                                 account_type=acct_type,
                             )
                             if txn.transaction_id not in stored_transactions:
@@ -791,8 +788,8 @@ async def update_transaction(transaction_id: str, update: TransactionUpdate):
 
     transaction = stored_transactions[transaction_id]
     transaction["is_shared"] = update.is_shared
-    transaction["who"] = update.who
-    transaction["what"] = update.what
+    transaction["who"] = update.who or ""
+    transaction["what"] = update.what or ""
     transaction["person_1_owes"] = update.person_1_owes or 0.0
     transaction["person_2_owes"] = update.person_2_owes or 0.0
     transaction["notes"] = update.notes or ""

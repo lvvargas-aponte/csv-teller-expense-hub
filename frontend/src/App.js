@@ -80,7 +80,7 @@ export default function App() {
       .map(([key, label]) => ({ key, label }));
   }, [transactions]);
 
-  const visible = transactions.filter((t) => {
+  const visible = React.useMemo(() => transactions.filter((t) => {
     if (filterInstitution !== 'all' && (t.institution || '') !== filterInstitution) return false;
     if (filterShared === 'shared'   && !t.is_shared) return false;
     if (filterShared === 'personal' &&  t.is_shared) return false;
@@ -89,7 +89,7 @@ export default function App() {
       if (!m || m.key !== filterMonth) return false;
     }
     return true;
-  });
+  }), [transactions, filterInstitution, filterShared, filterMonth]);
 
   const sharedCount = visible.filter((t) => t.is_shared).length;
   const sharedTotal = visible
@@ -132,7 +132,7 @@ export default function App() {
     }));
   }, []);
 
-  const bulkMark = async (isShared) => {
+  const bulkMark = useCallback(async (isShared) => {
     const ids = visible.filter((t) => selected.has(t.id)).map((t) => t.id);
     if (!ids.length) return;
     try {
@@ -146,7 +146,7 @@ export default function App() {
     } catch (e) {
       setError('Bulk update failed — please try again');
     }
-  };
+  }, [visible, selected, load]);
 
   const saveEdit = async (form) => {
     try {

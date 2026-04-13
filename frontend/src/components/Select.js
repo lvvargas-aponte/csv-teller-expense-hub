@@ -89,6 +89,7 @@ export default function Select({ value, onChange, options, placeholder, classNam
         aria-expanded={open}
         aria-controls={listId}
         aria-label={ariaLabel}
+        aria-activedescendant={open && focused !== null ? `${id}-opt-${focused}` : undefined}
         className={`custom-select__trigger ${className}`}
         onClick={() => (open ? setOpen(false) : openList())}
       >
@@ -104,7 +105,6 @@ export default function Select({ value, onChange, options, placeholder, classNam
           id={listId}
           role="listbox"
           className="custom-select__list"
-          aria-activedescendant={focused !== null ? `${id}-opt-${focused}` : undefined}
         >
           {options.map((opt, idx) => {
             const isSelected = opt.value === value;
