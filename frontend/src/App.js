@@ -10,6 +10,7 @@ import NoteModal  from './components/NoteModal';
 import SyncModal     from './components/SyncModal';
 import SyncToast     from './components/SyncToast';
 import AccountsModal from './components/AccountsModal';
+import Select        from './components/Select';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -175,11 +176,13 @@ export default function App() {
     }
   };
 
-  const syncTeller = async (fromDate, toDate) => {
+  const syncTeller = async (fromDate, toDate, accountIds) => {
     setShowSyncModal(false);
     setSyncing(true);
     try {
-      const res = await axios.post(`${API}/api/teller/sync`, { from_date: fromDate, to_date: toDate });
+      const body = { from_date: fromDate, to_date: toDate };
+      if (accountIds !== null) body.account_ids = accountIds;
+      const res = await axios.post(`${API}/api/teller/sync`, body);
       setSyncToast(res.data);
       await load();
     } catch (e) {
@@ -315,23 +318,34 @@ export default function App() {
         {/* toolbar */}
         <div className="toolbar">
           <div className="filters">
-            <select className="select" value={filterInstitution} onChange={(e) => setFilterInstitution(e.target.value)}>
-              <option value="all">All banks</option>
-              {availableInstitutions.map((inst) => (
-                <option key={inst} value={inst}>{inst}</option>
-              ))}
-            </select>
-            <select className="select" value={filterShared} onChange={(e) => setFilterShared(e.target.value)}>
-              <option value="all">All types</option>
-              <option value="shared">Shared only</option>
-              <option value="personal">Personal only</option>
-            </select>
-            <select className="select" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}>
-              <option value="all">All months</option>
-              {availableMonths.map(({ key, label }) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
+            <Select
+              aria-label="Filter by bank"
+              value={filterInstitution}
+              onChange={setFilterInstitution}
+              options={[
+                { value: 'all', label: 'All banks' },
+                ...availableInstitutions.map((inst) => ({ value: inst, label: inst })),
+              ]}
+            />
+            <Select
+              aria-label="Filter by type"
+              value={filterShared}
+              onChange={setFilterShared}
+              options={[
+                { value: 'all',      label: 'All types' },
+                { value: 'shared',   label: 'Shared only' },
+                { value: 'personal', label: 'Personal only' },
+              ]}
+            />
+            <Select
+              aria-label="Filter by month"
+              value={filterMonth}
+              onChange={setFilterMonth}
+              options={[
+                { value: 'all', label: 'All months' },
+                ...availableMonths.map(({ key, label }) => ({ value: key, label })),
+              ]}
+            />
           </div>
 
           {selectedVisibleCount > 0 && (

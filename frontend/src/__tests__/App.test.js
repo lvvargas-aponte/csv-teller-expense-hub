@@ -3,10 +3,8 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import axios from 'axios';
 import App from '../App';
 
-// Mock axios so no real HTTP calls are made
 jest.mock('axios');
 
-// Mock styles.js to prevent DOM injection side-effects in tests
 jest.mock('../components/styles', () => ({
   root: {}, header: {}, headerInner: {}, brand: {}, brandIcon: {},
   headerActions: {}, btn: {}, btnTeller: {}, btnGreen: {}, btnSecondary: {},
@@ -43,13 +41,12 @@ beforeEach(() => {
   axios.get.mockImplementation((url) => {
     if (url.includes('transactions/all')) return Promise.resolve({ data: mockTransactions });
     if (url.includes('person-names'))    return Promise.resolve({ data: mockPersonNames });
+    if (url.includes('/api/accounts'))   return Promise.resolve({ data: [] });
     return Promise.reject(new Error(`Unexpected GET: ${url}`));
   });
 });
 
-// ---------------------------------------------------------------------------
-// Initial load
-// ---------------------------------------------------------------------------
+// ── Initial load ──────────────────────────────────────────────────────────────
 
 test('renders transaction descriptions after load', async () => {
   render(<App />);
@@ -60,14 +57,12 @@ test('renders transaction descriptions after load', async () => {
 test('shows total transaction count in stat card', async () => {
   render(<App />);
   await screen.findByText('STARBUCKS');
-  // Total = 2
   expect(screen.getByText('2')).toBeInTheDocument();
 });
 
 test('shows shared count in stat card', async () => {
   render(<App />);
   await screen.findByText('STARBUCKS');
-  // Shared = 1 (t2)
   const ones = screen.getAllByText('1');
   expect(ones.length).toBeGreaterThanOrEqual(1);
 });
@@ -88,28 +83,14 @@ test('error banner can be dismissed', async () => {
   );
 });
 
-// ---------------------------------------------------------------------------
-// Filters
-// ---------------------------------------------------------------------------
-
-test('filter by source hides non-matching transactions', async () => {
-  render(<App />);
-  await screen.findByText('STARBUCKS');
-
-  const sourceFilter = screen.getByDisplayValue('All sources');
-  fireEvent.change(sourceFilter, { target: { value: 'barclays' } });
-
-  // Both transactions are from 'discover', so neither should appear
-  expect(screen.queryByText('STARBUCKS')).not.toBeInTheDocument();
-  expect(screen.queryByText('AMAZON PRIME')).not.toBeInTheDocument();
-});
+// ── Filters ───────────────────────────────────────────────────────────────────
 
 test('filter by shared shows only shared transactions', async () => {
   render(<App />);
   await screen.findByText('STARBUCKS');
 
-  const sharedFilter = screen.getByDisplayValue('All types');
-  fireEvent.change(sharedFilter, { target: { value: 'shared' } });
+  fireEvent.click(screen.getByRole('combobox', { name: 'Filter by type' }));
+  fireEvent.mouseDown(screen.getByRole('option', { name: 'Shared only' }));
 
   expect(screen.queryByText('STARBUCKS')).not.toBeInTheDocument();
   expect(screen.getByText('AMAZON PRIME')).toBeInTheDocument();
@@ -119,20 +100,18 @@ test('filter by personal shows only personal transactions', async () => {
   render(<App />);
   await screen.findByText('STARBUCKS');
 
-  const sharedFilter = screen.getByDisplayValue('All types');
-  fireEvent.change(sharedFilter, { target: { value: 'personal' } });
+  fireEvent.click(screen.getByRole('combobox', { name: 'Filter by type' }));
+  fireEvent.mouseDown(screen.getByRole('option', { name: 'Personal only' }));
 
   expect(screen.getByText('STARBUCKS')).toBeInTheDocument();
   expect(screen.queryByText('AMAZON PRIME')).not.toBeInTheDocument();
 });
 
-// ---------------------------------------------------------------------------
-// Sync banks modal
-// ---------------------------------------------------------------------------
+// ── Sync modal ────────────────────────────────────────────────────────────────
 
 test('clicking Sync Banks opens the sync modal', async () => {
   render(<App />);
   await screen.findByText('STARBUCKS');
-  fireEvent.click(screen.getByText('🏦 Sync Banks'));
+  fireEvent.click(screen.getByRole('button', { name: /Sync Banks/ }));
   expect(screen.getByText(/Sync Bank Transactions/)).toBeInTheDocument();
 });

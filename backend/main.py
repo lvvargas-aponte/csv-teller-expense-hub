@@ -1,6 +1,9 @@
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import httpx
@@ -84,12 +87,105 @@ app.add_middleware(
 # In-memory storage for parsed transactions (use a database in production)
 stored_transactions: Dict[str, Dict[str, Any]] = {}
 
+# Maps enrollment_id -> access_token so broken enrollments can be re-authenticated
+_enrollment_token_map: Dict[str, str] = {}
+
+# ---------------------------------------------------------------------------
+# Token persistence helpers  (SRP: all .env / log I/O lives here)
+# ---------------------------------------------------------------------------
+
+_ENV_PATH = Path(__file__).parent.parent / ".env"
+_LOG_PATH = Path(__file__).parent.parent / "teller-tokens.log"
+
+
+def _get_enrollment_id(token: str) -> Optional[str]:
+    """Reverse-lookup: return the enrollment_id associated with an access token."""
+    return next((eid for eid, tok in _enrollment_token_map.items() if tok == token), None)
+
+
+def _env_add_token(token: str) -> None:
+    """Append an access token to TELLER_API_KEY in .env, creating the entry if absent."""
+    try:
+        env_text = _ENV_PATH.read_text(encoding="utf-8") if _ENV_PATH.exists() else ""
+        if re.search(r"^TELLER_API_KEY=", env_text, re.MULTILINE):
+            match = re.search(r"^TELLER_API_KEY=(.*)$", env_text, re.MULTILINE)
+            existing = [t.strip() for t in (match.group(1) if match else "").split(",") if t.strip()]
+            if token not in existing:
+                existing.append(token)
+            env_text = re.sub(
+                r"^TELLER_API_KEY=.*$",
+                "TELLER_API_KEY=" + ",".join(existing),
+                env_text,
+                flags=re.MULTILINE,
+            )
+        else:
+            sep = "\n" if env_text and not env_text.endswith("\n") else ""
+            env_text = env_text + sep + f"\nTELLER_API_KEY={token}\n"
+        _ENV_PATH.write_text(env_text, encoding="utf-8")
+        logger.info("[Teller] .env updated — token added.")
+    except OSError as e:
+        logger.error(f"[Teller] Could not write to .env: {e}")
+
+
+def _env_remove_token(token: str) -> None:
+    """Remove a specific access token from TELLER_API_KEY in .env."""
+    try:
+        if not _ENV_PATH.exists():
+            return
+        env_text = _ENV_PATH.read_text(encoding="utf-8")
+        match = re.search(r"^TELLER_API_KEY=(.*)$", env_text, re.MULTILINE)
+        if match:
+            remaining = [t.strip() for t in match.group(1).split(",") if t.strip() and t.strip() != token]
+            env_text = re.sub(
+                r"^TELLER_API_KEY=.*$",
+                "TELLER_API_KEY=" + ",".join(remaining),
+                env_text,
+                flags=re.MULTILINE,
+            )
+            _ENV_PATH.write_text(env_text, encoding="utf-8")
+            logger.info("[Teller] .env updated — token removed.")
+    except OSError as e:
+        logger.error(f"[Teller] Could not update .env while removing token: {e}")
+
+
+def _log_token_event(*, token: str, enrollment_id: str, institution: str, note: str = "") -> None:
+    """Append an audit line to teller-tokens.log."""
+    try:
+        ts = datetime.now(timezone.utc).isoformat()
+        parts = [
+            ts,
+            f"Env: {TELLER_ENVIRONMENT}",
+            f"Institution: {institution}",
+            f"Enrollment: {enrollment_id}",
+            f"Token: {token}",
+        ]
+        if note:
+            parts.append(f"Note: {note}")
+        with _LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(" | ".join(parts) + "\n")
+    except OSError as e:
+        logger.warning(f"[Teller] Could not write to teller-tokens.log: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
 
 class ConnectTokenRequest(BaseModel):
     user_id: str
+
+
+class RegisterTokenRequest(BaseModel):
+    access_token: str
+    enrollment_id: str
+    institution: str = ""
+
+
+class ReplaceTokenRequest(BaseModel):
+    old_enrollment_id: str   # identifies the broken token to remove
+    new_access_token: str
+    new_enrollment_id: str
+    institution: str = ""
 
 
 class Account(BaseModel):
@@ -120,9 +216,10 @@ class BulkTransactionUpdate(BaseModel):
 
 
 class TellerSyncRequest(BaseModel):
-    from_date: Optional[str] = None   # YYYY-MM-DD; defaults to first day of previous month
-    to_date: Optional[str] = None     # YYYY-MM-DD; defaults to last day of previous month
-    count: int = 500                  # max transactions to fetch per account before date filtering
+    from_date: Optional[str] = None         # YYYY-MM-DD; defaults to first day of previous month
+    to_date: Optional[str] = None           # YYYY-MM-DD; defaults to last day of previous month
+    count: int = 500                        # max transactions to fetch per account before date filtering
+    account_ids: Optional[List[str]] = None # if set, only sync these account IDs (None = all)
 
 
 class SendToSheetRequest(BaseModel):
@@ -135,7 +232,6 @@ class SendToSheetRequest(BaseModel):
 
 def _previous_month_range():
     """Return (from_date, to_date) strings for the previous calendar month."""
-    from datetime import date, timedelta
     today = date.today()
     last = date(today.year, today.month, 1) - timedelta(days=1)
     first = date(last.year, last.month, 1)
@@ -154,7 +250,6 @@ def _decode_csv_bytes(raw: bytes) -> str:
 
 def _parse_month_key(date_str: str) -> Optional[str]:
     """Return 'YYYY-MM' from a MM/DD/YYYY or YYYY-MM-DD date string, or None."""
-    from datetime import datetime
     for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
         try:
             return datetime.strptime(date_str, fmt).strftime("%Y-%m")
@@ -174,6 +269,77 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "environment": TELLER_ENVIRONMENT}
+
+
+@app.get("/api/config/teller")
+async def get_teller_config():
+    """Expose Teller public configuration to the frontend."""
+    if not TELLER_APP_ID:
+        raise HTTPException(status_code=503, detail="TELLER_APP_ID is not configured on the server.")
+    return {"application_id": TELLER_APP_ID, "environment": TELLER_ENVIRONMENT}
+
+
+@app.post("/api/teller/register-token", status_code=201)
+async def register_teller_token(req: RegisterTokenRequest):
+    """
+    Persist a new Teller access token received from the frontend after enrollment.
+    Adds to the in-memory token list (effective immediately), persists to .env,
+    and appends an audit entry to teller-tokens.log.
+    """
+    token = req.access_token.strip()
+    if not token:
+        raise HTTPException(status_code=422, detail="access_token must not be empty.")
+
+    if token in TELLER_ACCESS_TOKENS:
+        logger.info(f"[Teller] Token {token[:8]}... already registered — skipping.")
+        return {"registered": False, "reason": "duplicate", "total_tokens": len(TELLER_ACCESS_TOKENS)}
+
+    TELLER_ACCESS_TOKENS.append(token)
+    _enrollment_token_map[req.enrollment_id] = token
+    logger.info(f"[Teller] New token {token[:8]}... added ({len(TELLER_ACCESS_TOKENS)} total).")
+
+    _env_add_token(token)
+    _log_token_event(token=token, enrollment_id=req.enrollment_id, institution=req.institution)
+
+    return {"registered": True, "total_tokens": len(TELLER_ACCESS_TOKENS)}
+
+
+@app.post("/api/teller/replace-token", status_code=200)
+async def replace_teller_token(req: ReplaceTokenRequest):
+    """
+    Replace a broken token with a fresh one obtained via Teller Connect re-auth.
+    Looks up the old token by enrollment_id, removes it, then registers the new one.
+    """
+    new_token = req.new_access_token.strip()
+    if not new_token:
+        raise HTTPException(status_code=422, detail="new_access_token must not be empty.")
+
+    # 1. Find and remove the old token
+    old_token = _enrollment_token_map.get(req.old_enrollment_id)
+    if old_token and old_token in TELLER_ACCESS_TOKENS:
+        TELLER_ACCESS_TOKENS.remove(old_token)
+        logger.info(f"[Teller] Removed stale token {old_token[:8]}... for enrollment {req.old_enrollment_id}.")
+        _env_remove_token(old_token)
+
+    # 2. Register the new token (skip if already present — same token returned by Teller)
+    if new_token not in TELLER_ACCESS_TOKENS:
+        TELLER_ACCESS_TOKENS.append(new_token)
+
+    # Update enrollment map; clean up old entry if the id changed
+    _enrollment_token_map[req.new_enrollment_id] = new_token
+    if req.old_enrollment_id != req.new_enrollment_id:
+        _enrollment_token_map.pop(req.old_enrollment_id, None)
+
+    _env_add_token(new_token)
+    _log_token_event(
+        token=new_token,
+        enrollment_id=req.new_enrollment_id,
+        institution=req.institution,
+        note=f"replaced: {req.old_enrollment_id}",
+    )
+    logger.info(f"[Teller] Token replaced for enrollment {req.old_enrollment_id} → {req.new_enrollment_id}.")
+
+    return {"replaced": True, "total_tokens": len(TELLER_ACCESS_TOKENS)}
 
 
 @app.post("/api/connect-token")
@@ -204,10 +370,20 @@ async def create_connect_token(request: ConnectTokenRequest):
 async def get_accounts():
     """Fetch bank accounts across all stored access tokens"""
     if not TELLER_ACCESS_TOKENS:
-        raise HTTPException(
-            status_code=500,
-            detail="No Teller access tokens configured. Set TELLER_API_KEY in your .env file.",
-        )
+        return []
+
+    def _error_entry(token: str, status_code=None) -> dict:
+        return {
+            "id": f"_error_{token[:8]}{token[-4:]}",
+            "name": "Unknown account",
+            "type": "",
+            "subtype": "",
+            "institution": {"name": "—"},
+            "balance": {},
+            "_connection_error": True,
+            "_error_status": status_code,
+            "_enrollment_id": _get_enrollment_id(token),
+        }
 
     seen_ids: set = set()
     all_accounts = []
@@ -229,8 +405,10 @@ async def get_accounts():
                 logger.warning(
                     f"[Teller] Token {token[:8]}... failed ({e.response.status_code}): {e.response.text}"
                 )
+                all_accounts.append(_error_entry(token, e.response.status_code))
             except Exception as e:
                 logger.warning(f"[Teller] Token {token[:8]}... error: {str(e)}")
+                all_accounts.append(_error_entry(token))
 
     return all_accounts
 
@@ -342,6 +520,8 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
                 accounts = acct_resp.json()
 
                 for account in accounts:
+                    if req.account_ids is not None and account["id"] not in req.account_ids:
+                        continue
                     acct_name = (
                         f"{account.get('institution', {}).get('name', 'Bank')} "
                         f"– {account.get('name', account['id'])}"
@@ -396,7 +576,7 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
                                 prev_bal = balance_seq[idx - 1][1]
                                 curr_bal = balance_seq[idx][1]
                                 result = "credit" if curr_bal > prev_bal else "debit"
-                                print(f"[CR/DR] DELTA  | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} | idx={idx} prev={prev_bal:.2f} curr={curr_bal:.2f} → {result}")
+                                logger.debug(f"[CR/DR] DELTA  | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} | idx={idx} prev={prev_bal:.2f} curr={curr_bal:.2f} → {result}")
                                 return result
 
                             # Credit accounts: amount sign distinguishes charges (+) from
@@ -408,9 +588,9 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
                             # treat as a bill payment → debit (money left the cardholder's wallet).
                             if acct_category == "credit" and raw_amount < 0:
                                 if teller_type == "card_payment":
-                                    print(f"[CR/DR] CREDIT_REFUND | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} → credit")
+                                    logger.debug(f"[CR/DR] CREDIT_REFUND | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} → credit")
                                     return "credit"   # merchant refund
-                                print(f"[CR/DR] CREDIT_PMT   | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} → debit")
+                                logger.debug(f"[CR/DR] CREDIT_PMT   | {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} → debit")
                                 return "debit"        # bill payment from bank
 
                             # Fallback when running_balance is unavailable (pending txns,
@@ -420,10 +600,10 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
                             #   credit:     negative = refund/payment (credit), positive = charge (debit)
                             if acct_category == "depository":
                                 result = "debit" if raw_amount < 0 else "credit"
-                                print(f"[CR/DR] FALLBACK| {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} idx={idx} → {result}")
+                                logger.debug(f"[CR/DR] FALLBACK| {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} idx={idx} → {result}")
                                 return result
                             result = "credit" if raw_amount < 0 else "debit"
-                            print(f"[CR/DR] FALLBACK| {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} idx={idx} → {result}")
+                            logger.debug(f"[CR/DR] FALLBACK| {desc!r:50s} | acct={acct_category} teller_type={teller_type!r} raw={raw_amount:+.2f} idx={idx} → {result}")
                             return result
 
                         for t in filtered:
@@ -494,6 +674,25 @@ async def delete_account(account_id: str):
     """Disconnect a specific Teller account from its enrollment."""
     if not TELLER_ACCESS_TOKENS:
         raise HTTPException(status_code=500, detail="No Teller access tokens configured.")
+
+    # Error-placeholder accounts (id starts with "_error_") have no real Teller account to
+    # call; just remove the broken token from memory and .env directly.
+    if account_id.startswith("_error_"):
+        # Find the token whose first-8 + last-4 chars match the id suffix
+        suffix = account_id[len("_error_"):]   # e.g. "tok1234abcd"
+        token_to_remove = next(
+            (t for t in TELLER_ACCESS_TOKENS if f"{t[:8]}{t[-4:]}" == suffix),
+            None,
+        )
+        if not token_to_remove:
+            raise HTTPException(status_code=404, detail="No matching token found for this error account.")
+        TELLER_ACCESS_TOKENS.remove(token_to_remove)
+        enrollment_id = _get_enrollment_id(token_to_remove)
+        if enrollment_id:
+            _enrollment_token_map.pop(enrollment_id, None)
+        _env_remove_token(token_to_remove)
+        logger.info(f"[Teller] Removed broken token {token_to_remove[:8]}... (error account deleted).")
+        return {"deleted": account_id}
 
     async with teller_client() as client:
         for token in TELLER_ACCESS_TOKENS:

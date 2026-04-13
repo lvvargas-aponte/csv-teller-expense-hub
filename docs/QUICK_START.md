@@ -7,14 +7,13 @@ Follow these steps to get csv-teller-expense-hub running:
 - [ ] Clone the repo: `git clone https://github.com/lvvargas-aponte/csv-teller-expense-hub.git`
 - [ ] Have Docker installed on your machine
 
-## ✅ Google Cloud Setup (One-time)
+## ✅ Google Cloud Setup (one-time)
 
 1. - [ ] Go to [Google Cloud Console](https://console.cloud.google.com)
 2. - [ ] Create a new project (or select existing)
-3. - [ ] Enable Google Sheets API
-4. - [ ] Create Service Account credentials
-5. - [ ] Download JSON key file
-6. - [ ] Save it as `credentials.json` in the `backend/` folder
+3. - [ ] Enable the **Google Sheets API**
+4. - [ ] Create a **Service Account** and download the JSON key
+5. - [ ] Save it as `credentials.json` in the `backend/` folder
 
 ## ✅ Google Sheet Setup
 
@@ -24,72 +23,91 @@ Follow these steps to get csv-teller-expense-hub running:
 Transaction Date | Description | Amount | Who | What | [YOUR_NAME] Owes | [PARTNER_NAME] Owes | Notes
 ```
 Replace `[YOUR_NAME]` and `[PARTNER_NAME]` with actual names (e.g., "Alice Owes | Bob Owes")
-3. - [ ] Copy the Sheet ID from the URL (between `/d/` and `/edit`)
-4. - [ ] **IMPORTANT:** Share the sheet with your service account email
-- Find the email in `credentials.json` under `client_email`
-- Click "Share" in Google Sheets
-- Paste the service account email
-- Give it "Editor" permissions
+- [ ] Copy the Sheet ID from the URL (between `/d/` and `/edit`)
+- [ ] **Share the sheet** with the service account email
+   - Find it in `credentials.json` under `client_email`
+   - Click "Share" in Google Sheets → paste the email → give "Editor" access
 
 ## ✅ Configure Environment
 
-1. - [ ] Copy `.env.example` to `.env` in the `backend/` folder
-2. - [ ] Edit `.env` and fill in:
-- [ ] `SPREADSHEET_ID` - from your Google Sheet URL
-- [ ] `PERSON_1_NAME` - your name (e.g., "Alice")
-- [ ] `PERSON_2_NAME` - your partner's/roommate's name (e.g., "Bob")
-- [ ] `TELLER_API_KEY` and `TELLER_APP_ID` (optional, for Teller.io integration)
+1. - [ ] Copy `.env.example` to `.env` in the project root
+2. - [ ] Fill in:
+   - [ ] `SPREADSHEET_ID` — from your Google Sheet URL
+   - [ ] `PERSON_1_NAME` — your name (e.g., "Alice")
+   - [ ] `PERSON_2_NAME` — your partner's/roommate's name (e.g., "Bob")
+   - [ ] `TELLER_APP_ID` — from your [Teller dashboard](https://teller.io)
+   - [ ] `TELLER_ENVIRONMENT` — `sandbox` to test, `development` or `production` for real banks
+   - [ ] Leave `TELLER_API_KEY` blank — tokens are saved automatically from the UI
 
 ## ✅ Run the App
 
 ```bash
-# Start everything with Docker
-docker-compose up --build
-
-# Or run in background
-docker-compose up -d
+docker compose up --build
 ```
 
-## ✅ Verify It's Working
+Or in the background:
 
-1. - [ ] Open browser to http://localhost:3000
-2. - [ ] Click "Upload CSV" and test with a bank statement
-3. - [ ] Mark a transaction as shared using the **50/50** toggle button in the row
-   - Credit transactions (refunds/returns) show a **CR** badge next to the amount
-   - The **Split** column shows what Person 2 owes
-4. - [ ] Click **🧮** on a row to open the split editor (adjust amounts or recalculate 50/50)
-5. - [ ] Click **🗒️** on a row to add a note; the icon becomes **📝** once a note exists
-6. - [ ] Toggle between light and dark mode with the **☀️/🌙** button in the header
-7. - [ ] Click "📊 Send to Sheet"
-8. - [ ] Check your Google Sheet — the transaction should appear!
+```bash
+docker compose up -d
+```
 
-## ✅ Optional: CSV Auto-Import
+Open **http://localhost:3000**
 
-If you want to auto-process CSV files dropped into a folder:
+## ✅ Connect Your Bank (first time)
+
+1. - [ ] Click **🏦 Accounts** in the header
+2. - [ ] Click **+ Connect a Bank**
+3. - [ ] Complete the Teller Connect popup (sandbox credentials: username `user_good`, password `pass_good`)
+4. - [ ] Your account appears in the list with an **Active** badge
+5. - [ ] Your access token is saved automatically — no `.env` editing needed
+
+## ✅ Sync & Review Transactions
+
+1. - [ ] Click **⟳ Sync Banks** in the header
+2. - [ ] Choose a date range and select which accounts to include (all checked by default)
+3. - [ ] Click **Sync** — transactions load into the review table
+4. - [ ] Mark shared expenses with the **50/50** toggle, or click **🧮** for a custom split
+5. - [ ] Add context with **🗒️** (notes) if needed
+6. - [ ] Click **📊 Send to Sheet** — shared transactions go to your Google Sheet
+
+## ✅ Optional: CSV Upload
+
+To import from a CSV bank statement:
+1. - [ ] Click **📂 Upload CSV** and select a Discover or Barclays file
+2. - [ ] Transactions appear in the review table alongside Teller ones
+
+## ✅ Optional: CSV Auto-Import (watch folder)
 
 ```bash
 chmod +x run_csv_watcher.sh
 ./run_csv_watcher.sh
 ```
 
-Now drop CSV files into `csv_imports/` folder and they'll auto-import!
+Drop CSV files into `csv_imports/` and they'll auto-import. Processed files move to `csv_imports/processed/`.
 
 ---
 
 ## 🆘 Troubleshooting
 
-**"Failed to authenticate with Google"**
-- Make sure `credentials.json` is in the `backend/` folder
-- Verify you shared the Google Sheet with the service account email
+**"Connect a Bank" button not visible?**
+- Check that `TELLER_APP_ID` is set in `.env` and the backend has been restarted
 
-**"Headers don't match"**
-- Check your Google Sheet headers match exactly: `Transaction Date | Description | Amount | Who | What | [PERSON_1_NAME] Owes | [PERSON_2_NAME] Owes | Notes`
-- The names must match what's in your `.env` file
+**Account shows "Connection Error"?**
+- Click **↺** on the row to re-authenticate with your bank
 
-**"No transactions appearing"**
-- Check backend logs: `docker-compose logs backend`
-- Verify CSV format (supports Discover and Barclays)
+**Account shows "Rate Limited"?**
+- Teller is temporarily throttling — wait a few minutes and sync again; no action needed
+
+**Google Sheets issues?**
+- Confirm `credentials.json` is in `backend/`
+- Confirm the sheet is shared with the `client_email` from `credentials.json`
+- Run `curl http://localhost:8000/api/gsheet/verify` to diagnose
+
+**Backend logs:**
+```bash
+docker compose logs backend
+```
 
 ---
 
-🎉 **You're all set!** Start uploading bank statements and tracking shared expenses!
+🎉 **You're all set!** Start syncing banks and tracking shared expenses!
