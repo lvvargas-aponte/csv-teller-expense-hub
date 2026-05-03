@@ -3,6 +3,8 @@ CSV Parser Module
 """
 import csv
 import io
+import re
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from enum import Enum
 from dataclasses import dataclass, asdict
@@ -39,12 +41,17 @@ class Transaction:
     post_date: Optional[str] = None
     category: Optional[str] = None
     transaction_id: Optional[str] = None
+    # FK to ``accounts.id`` (structured table). Populated for Teller-sourced
+    # txns by ``routers/teller.py``; NULL for CSV uploads, which don't carry
+    # account identity.
+    account_id: Optional[str] = None
     is_shared: bool = False
     who: Optional[str] = None
     what: Optional[str] = None
     person_1_owes: float = 0.0
     person_2_owes: float = 0.0
     notes: str = ""
+    reviewed: bool = False            # True once the user has acted on the txn (shared/personal/edit/note)
     institution: str = ""
     transaction_type: str = "debit"   # "credit" | "debit"
     account_type: str = ""            # "checking" | "savings" | "credit_card" | "credit" | ...
@@ -84,6 +91,30 @@ class Transaction:
         d = asdict(self)
         d['id'] = self.transaction_id  # frontend expects 'id'
         return d
+
+
+def _parse_balance_date(text: str) -> Optional[str]:
+    """Best-effort conversion of a free-form balance date to ISO-8601.
+
+    Handles the common Barclays formats ("April 10 2026", "Apr 10, 2026",
+    "04/10/2026", "2026-04-10"). Returns None when nothing matches so the
+    caller can fall back to NOW().
+    """
+    if not text:
+        return None
+    formats = (
+        "%B %d %Y", "%B %d, %Y",
+        "%b %d %Y", "%b %d, %Y",
+        "%m/%d/%Y", "%m-%d-%Y",
+        "%Y-%m-%d",
+    )
+    cleaned = text.strip().rstrip(",")
+    for fmt in formats:
+        try:
+            return datetime.strptime(cleaned, fmt).isoformat() + "+00:00"
+        except ValueError:
+            continue
+    return None
 
 
 class BankDetector:
@@ -163,7 +194,9 @@ class DiscoverParser(CSVParser):
                     post_date=row.get('Post Date', '').strip(),
                     category=row.get('Category', '').strip(),
                     institution="Discover",
-                    transaction_type="credit" if raw_amount < 0 else "debit",
+                    # Discover CSVs list charges as negative amounts and credits as positive.
+                    # "debit" = money out (expense/charge), "credit" = money in (refund/payment).
+                    transaction_type="debit" if raw_amount < 0 else "credit",
                     account_type="credit_card",
                 )
                 transactions.append(transaction)
@@ -178,6 +211,18 @@ class BarclaysParser(CSVParser):
     """
     Single Responsibility: Parse Barclays CSV format
     """
+
+    # "Account Balance as of April 10 2026:    $3083.28"
+    _BALANCE_RE = re.compile(
+        r"^\s*Account Balance as of\s+(.+?)\s*:\s*\$?\s*([\-\d,.]+)",
+        re.IGNORECASE,
+    )
+
+    def __init__(self):
+        # Populated during parse() if the preamble contains an
+        # "Account Balance as of <date>: $<amount>" line.
+        self.detected_balance: Optional[float] = None
+        self.detected_balance_date: Optional[str] = None  # ISO-8601 string
 
     def get_bank_type(self) -> BankType:
         return BankType.BARCLAYS
@@ -195,9 +240,25 @@ class BarclaysParser(CSVParser):
         transactions = []
         reader = csv.reader(io.StringIO(content))
 
-        # Scan until we find the real header row
+        # Scan preamble: capture the statement balance, then stop at header row
         for row in reader:
-            if row and row[0].strip() == 'Transaction Date':
+            if not row:
+                continue
+            first_cell = row[0].strip()
+            # Re-join in case the date itself contained commas (e.g. "Apr 10, 2026")
+            # and got split across cells by csv.reader.
+            joined = ",".join(row).strip()
+            m = self._BALANCE_RE.match(joined)
+            if m:
+                date_str = m.group(1).strip()
+                amount_str = m.group(2).replace(",", "").strip()
+                try:
+                    self.detected_balance = abs(float(amount_str))
+                except ValueError:
+                    self.detected_balance = None
+                self.detected_balance_date = _parse_balance_date(date_str)
+                continue
+            if first_cell == 'Transaction Date':
                 break  # next rows are data
         else:
             raise ValueError(
@@ -213,13 +274,19 @@ class BarclaysParser(CSVParser):
 
                 amount_str = row[3].strip().replace('$', '').replace(',', '').replace('£', '')
                 raw_amount = float(amount_str) if amount_str else 0.0
-                category = row[2].strip()
-                transaction_type = "credit" if category.upper() == "CREDIT" or raw_amount < 0 else "debit"
+                # Barclays' "Category" column is actually DEBIT/CREDIT (transaction
+                # direction), not a merchant category. It is the source of truth:
+                # DEBIT = charge/purchase (our "debit" = money out), CREDIT =
+                # payment received (our "credit" = money in). The amount sign is
+                # Barclays' ledger convention and must not be used here — DEBIT
+                # rows arrive negative, which previously flipped them to "credit".
+                direction = row[2].strip().upper()
+                transaction_type = "credit" if direction == "CREDIT" else "debit"
 
                 transaction = Transaction(
                     date=row[0].strip(),
                     description=row[1].strip(),
-                    category=category,  # DEBIT / CREDIT
+                    category=None,
                     amount=abs(raw_amount),
                     source=BankType.BARCLAYS,
                     institution="Barclays",
@@ -320,6 +387,10 @@ class CSVProcessorService:
     def __init__(self):
         self.detector = BankDetector()
         self.factory = ParserFactory()
+        # Populated by process_csv(); read-after-call to recover any
+        # statement-balance metadata embedded in the CSV preamble.
+        self.last_statement_balance: Optional[float] = None
+        self.last_statement_date: Optional[str] = None
 
     def process_csv(self, content: str, filename: str = "") -> List[Transaction]:
         """
@@ -363,6 +434,10 @@ class CSVProcessorService:
         # Get appropriate parser and parse
         parser = self.factory.create_parser(bank_type)
         transactions = parser.parse(content)
+
+        # Surface any preamble-detected metadata (currently Barclays-only).
+        self.last_statement_balance = getattr(parser, "detected_balance", None)
+        self.last_statement_date = getattr(parser, "detected_balance_date", None)
 
         logger.info(f"Parsed {len(transactions)} transactions from {filename}")
         return transactions

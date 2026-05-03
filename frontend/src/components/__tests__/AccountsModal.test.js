@@ -1,12 +1,12 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import axios from 'axios';
-import AccountsModal from '../AccountsModal';
+import AccountsModal from '../accounts/AccountsModal';
 
 jest.mock('axios');
-jest.mock('../Backdrop', () => ({ children }) => <div data-testid="backdrop">{children}</div>);
-jest.mock('../Spin', () => () => <span data-testid="spin" />);
-jest.mock('../styles', () => ({}));
+jest.mock('../ui/Backdrop', () => ({ children }) => <div data-testid="backdrop">{children}</div>);
+jest.mock('../ui/Spin', () => () => <span data-testid="spin" />);
+jest.mock('../ui/styles', () => ({}));
 jest.mock('../../utils/formatting', () => ({ formatAccountType: (t) => t }));
 
 const mockAccounts = [
@@ -262,7 +262,7 @@ function setupReconnectMocks() {
 test('shows Re-connect button for connection error accounts', async () => {
   setupReconnectMocks();
   render(<AccountsModal onClose={jest.fn()} />);
-  expect(await screen.findByRole('button', { name: "↺" })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: "Reconnect account" })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Disconnect/ })).toBeInTheDocument();
 });
 
@@ -281,7 +281,7 @@ test('Re-connect calls replace-token when enrollment_id is known', async () => {
   axios.post.mockResolvedValue({ data: { replaced: true, total_tokens: 1 } });
 
   render(<AccountsModal onClose={jest.fn()} />);
-  fireEvent.click(await screen.findByRole('button', { name: "↺" }));
+  fireEvent.click(await screen.findByRole('button', { name: "Reconnect account" }));
 
   expect(await screen.findByText(/First Bank reconnected/)).toBeInTheDocument();
   expect(axios.post).toHaveBeenCalledWith(
@@ -300,7 +300,7 @@ test('Re-connect passes enrollmentId to TellerConnect when known', async () => {
   };
 
   render(<AccountsModal onClose={jest.fn()} />);
-  fireEvent.click(await screen.findByRole('button', { name: "↺" }));
+  fireEvent.click(await screen.findByRole('button', { name: "Reconnect account" }));
 
   expect(window.TellerConnect.setup).toHaveBeenCalledWith(
     expect.objectContaining({ enrollmentId: 'enr_broken' })
@@ -329,7 +329,7 @@ test('Re-connect falls back to register-token when no enrollment_id', async () =
   axios.post.mockResolvedValue({ data: { registered: true, total_tokens: 1 } });
 
   render(<AccountsModal onClose={jest.fn()} />);
-  fireEvent.click(await screen.findByRole('button', { name: "↺" }));
+  fireEvent.click(await screen.findByRole('button', { name: "Reconnect account" }));
 
   expect(await screen.findByText(/Some Bank reconnected/)).toBeInTheDocument();
   expect(axios.post).toHaveBeenCalledWith(

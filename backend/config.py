@@ -35,3 +35,12 @@ CREDENTIALS_FILE: Path = Path(__file__).parent / _credentials_filename
 # Person names for shared-expense splits
 PERSON_1_NAME: str = os.getenv("PERSON_1_NAME", "Person 1")
 PERSON_2_NAME: str = os.getenv("PERSON_2_NAME", "Person 2")
+
+# Error verbosity — True in local dev (default), False in production
+DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
+
+# Database — Postgres + pgvector. Defaults target the `db` service in docker-compose.
+DATABASE_URL: str = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://expense:expense_dev@db:5432/expense_hub",
+)

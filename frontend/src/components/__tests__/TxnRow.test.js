@@ -1,8 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import TxnRow from '../TxnRow';
+import TxnRow from '../transactions/TxnRow';
 
-jest.mock('../styles', () => ({
+jest.mock('../ui/styles', () => ({
   row: {}, rowSelected: {}, rowShared: {},
   td: {}, badge: {}, sharedBadge: {}, personalBadge: {},
   actionGroup: {}, inlineToggle: {}, toggleBtn: {},

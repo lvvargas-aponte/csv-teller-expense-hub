@@ -4,8 +4,11 @@
 This app helps you:
 - Connect bank accounts via Teller.io and pull transactions directly from the UI
 - Auto-import CSV files from Discover & Barclays
-- Review and mark shared expenses
-- Send approved expenses directly to Google Sheets
+- Review and mark shared expenses, then send them to Google Sheets
+- Track live account balances and net worth (Teller + manually added accounts)
+- Plan debt payoff with avalanche or snowball strategy
+- Get AI-powered spending insights via a local LLM (optional)
+- Chat with a virtual finance advisor that sees your transactions, balances, and shared splits (optional)
 
 ---
 
@@ -30,6 +33,20 @@ This app helps you:
   `Transaction Date | Description | Amount | Who | What | [PERSON_1_NAME] Owes | [PERSON_2_NAME] Owes | Notes`
 
 - Copy the Sheet ID from the URL — the string between `/d/` and `/edit`
+
+### 4. Ollama (optional — for AI features)
+- Install [Ollama](https://ollama.com) and pull a model. The default is `qwen2.5:14b-instruct` — a strong open-weight model for numeric reasoning that fits comfortably on a moderate GPU (~10 GB VRAM quantized):
+  ```bash
+  ollama pull qwen2.5:14b-instruct
+  ollama serve
+  ```
+- Model options (all free, all local) — pick based on your hardware:
+  - `qwen2.5:14b-instruct` — recommended default (RTX 3060 12GB / 4070 / 4080+)
+  - `qwen2.5:7b-instruct` — lighter (~5 GB VRAM), still strong
+  - `llama3.1:8b-instruct` — proven baseline
+  - `llama3.2:3b` — CPU-friendly fallback for low-spec machines
+- Override via env vars: `OLLAMA_MODEL` (default model for insights/advice) and `OLLAMA_CHAT_MODEL` (chat model — defaults to `OLLAMA_MODEL`).
+- The app detects Ollama automatically. If it isn't running, AI features show a nudge card instead of an error.
 
 ---
 
@@ -142,6 +159,8 @@ chmod +x run_csv_watcher.sh
 ├── docker-compose.yaml
 ├── run_csv_watcher.sh
 ├── .env                         # ← create from .env.example (do not commit)
+├── docs/
+│   └── QUICK_START.md
 ├── backend/
 │   ├── Dockerfile
 │   ├── main.py
@@ -150,13 +169,24 @@ chmod +x run_csv_watcher.sh
 │   ├── gsheet_integration.py
 │   ├── csv_watcher_script.py
 │   ├── requirements.txt
+│   ├── manual_accounts.json     # ← auto-created; stores manually-added balances
 │   └── credentials.json         # ← add this (do not commit)
 ├── frontend/
 │   ├── Dockerfile
 │   ├── package.json
 │   └── src/
-│       ├── App.js
+│       ├── App.js               # shell: header, nav, routing
+│       ├── index.js
+│       ├── index.css
+│       ├── utils/
+│       │   └── formatting.js
 │       └── components/
+│           ├── FinancesPage.js  # Balances + Payoff Planner + Insights
+│           ├── AccountsModal.js
+│           ├── SyncModal.js
+│           ├── EditModal.js
+│           ├── NoteModal.js
+│           └── ...
 ├── certs/                       # Teller mTLS certificates (non-sandbox only)
 │   ├── certificate.pem
 │   └── private_key.pem
@@ -169,16 +199,22 @@ chmod +x run_csv_watcher.sh
 
 ## 🔄 Workflow
 
-### 1. Connect Bank Accounts
+The app has two pages, selectable from the tabs in the header:
 
-Click **🏦 Accounts** in the header to open the Accounts modal:
+---
+
+### Transactions page
+
+#### 1. Connect Bank Accounts
+
+Click **🏦 Accounts** in the header to open the Accounts panel:
 - Click **+ Connect a Bank** to link a new bank account through the Teller Connect popup
 - Connected accounts are listed with their status (Active / Closed / Connection Error / Rate Limited)
 - Use **↺** to re-authenticate a broken connection, or **🗑️ Disconnect** to remove an account
 
 Access tokens are saved automatically to `TELLER_API_KEY` in your `.env` and take effect immediately without a restart.
 
-### 2. Import Transactions
+#### 2. Import Transactions
 
 **Sync from banks**
 1. Click **⟳ Sync Banks** in the header
@@ -187,7 +223,7 @@ Access tokens are saved automatically to `TELLER_API_KEY` in your `.env` and tak
 4. Click **Sync** — transactions are loaded into the review queue
 
 **CSV Upload (manual)**
-1. Click **📂 Upload CSV** and select a Discover or Barclays CSV file
+1. Click **📂 Upload CSV** (on the Transactions page, above the filters) and select a Discover or Barclays CSV file
 2. Transactions appear in the review table immediately
 
 **Watch Folder (auto)**
@@ -195,12 +231,45 @@ Access tokens are saved automatically to `TELLER_API_KEY` in your `.env` and tak
 2. Drop CSV files into `csv_imports/`
 3. Successfully processed files move to `csv_imports/processed/`, failures to `csv_imports/failed/`
 
-### 3. Review & Send
+#### 3. Review & Send
 
-1. Review transactions in the table — use the filters (bank, type, month) to focus
+1. Use the filters (bank, type, month) to focus on the transactions you want
 2. Click **50/50** to mark a shared equal split, or **🧮** for a custom amount
-3. Click **🗒️** to add a note (icon becomes **📝** once saved)
-4. Click **📊 Send to Sheet** — shared transactions go to Google Sheets and are cleared from the queue
+3. Bulk-select rows and use **✓ Mark shared** or **Mark personal** to process many at once
+4. Click **🗒️** to add a note (icon becomes **📝** once saved)
+5. Click **📊 Send to Sheet** (on the Transactions page, above the filters) — shared transactions go to Google Sheets and are cleared from the queue
+
+---
+
+### Finances page
+
+#### Account Balances
+- Shows live balances pulled from all connected Teller accounts
+- Displays net worth (cash + savings minus credit debt)
+- Click **+ Add Account** to manually add a bank or account not connected via Teller — these are saved to `backend/manual_accounts.json` and persist across restarts
+- Manually added accounts show a **Manual** badge and can be removed with ✕
+
+#### Debt Payoff Planner
+- Credit accounts from Teller are pre-filled automatically; add more rows manually
+- Choose **Avalanche** (highest APR first — minimises total interest) or **Snowball** (lowest balance first — faster early wins)
+- Enter an optional extra monthly payment to see how much interest you save
+- Click **Calculate** to see the payoff date and total interest per account
+- Click **🤖 Ask AI Advisor** for personalised advice from a local Llama model (requires Ollama)
+
+#### Spending Insights
+- Click **✨ Show Insights** to load an AI-powered breakdown of your spending
+- Shows spending by category for the last 3 months, a next-month forecast, and an AI summary
+- Requires Ollama running locally (`ollama serve`); a nudge card is shown if it isn't available
+
+#### Virtual Advisor (chat)
+- Switch to the **🤖 Advisor** tab on the Finances page to chat with a household-finance advisor
+- The advisor is grounded in your real data: cached balances, last 6 months of spending, credit-card debt, and the recent shared-expense split
+- Conversations persist to `backend/conversations.json` — re-open past chats from the sidebar, delete any you don't need
+- Ask things like:
+  - *"How did our dining spending change this month?"*
+  - *"Are our shared splits fair between the two of us?"*
+  - *"Can I afford $300 extra toward my credit card debt?"*
+- Requires Ollama running locally. The chat endpoint uses `OLLAMA_CHAT_MODEL` (defaults to `OLLAMA_MODEL`).
 
 ---
 
@@ -215,6 +284,9 @@ curl http://localhost:8000/api/gsheet/verify
 
 # View all transactions in the queue
 curl http://localhost:8000/api/transactions/all
+
+# View account balances summary
+curl http://localhost:8000/api/balances/summary
 
 # Test CSV upload
 curl -X POST http://localhost:8000/api/upload-csv \
@@ -232,6 +304,11 @@ curl -X POST http://localhost:8000/api/upload-csv \
 **Bank connection shows "Connection Error"?**
 - Click **↺** on the account row to re-authenticate
 - If the error persists, disconnect and reconnect the account
+
+**Phantom or "test" accounts in the Accounts modal?**
+- Usually caused by stale or fake tokens stuck in `TELLER_API_KEY=` (e.g. `tok_abc…`, `tok_one`, `tok_two` left over from earlier test runs). Each bad token produces one "Connection Error" row.
+- Run `py backend/scripts/prune_tokens.py` from the repo root — it lists every token masked, flags ones that look synthetic, and lets you remove them interactively. Non-destructive; each removal requires confirmation.
+- On startup the backend now logs a warning when it sees test-looking tokens, so you don't have to hunt for them.
 
 **Bank shows "Rate Limited"?**
 - Teller is throttling requests — wait a few minutes and sync again
@@ -253,11 +330,18 @@ curl -X POST http://localhost:8000/api/upload-csv \
 - Check that `TELLER_ENVIRONMENT` in `.env` matches where you enrolled (`sandbox` vs `development`)
 - For cert errors (non-sandbox), confirm `TELLER_CERT_PATH` and `TELLER_KEY_PATH` point to your Teller certificates
 
+**AI features not working?**
+- Make sure Ollama is running: `ollama serve`
+- Make sure the model is pulled: `ollama pull qwen2.5:14b-instruct` (or whichever you set via `OLLAMA_MODEL`)
+- The app will show a nudge card rather than an error if Ollama is unreachable
+- Check `ollama list` to confirm the model name matches `OLLAMA_MODEL` / `OLLAMA_CHAT_MODEL`
+
 ---
 
 ## 📝 Notes
 
-- **No database** — transactions live in memory until sent to Google Sheets. Restarting the app clears the queue.
+- **Transactions** live in memory until sent to Google Sheets. Restarting the app clears the queue.
+- **Manually added balances** are persisted to `backend/manual_accounts.json` and survive restarts.
 - All transaction sources (Teller + CSVs) appear together in one review table.
 - The CSV watcher processes files one at a time.
 - MIT License — feel free to fork and adapt for your household.

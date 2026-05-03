@@ -1,4 +1,24 @@
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: expense_hub
+      POSTGRES_USER: expense
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-expense_dev}
+    ports:
+      # Host 15432 avoids collision with a locally installed Postgres.
+      - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U expense -d expense_hub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - app-network
+
   backend:
     build: ./backend
     ports:
@@ -8,11 +28,18 @@ services:
     environment:
       - TELLER_CERT_PATH=/app/certs/certificate.pem
       - TELLER_KEY_PATH=/app/certs/private_key.pem
+      # host.docker.internal resolves to the Docker host on Docker Desktop (Windows/Mac).
+      # Override if Ollama runs on a different host/port.
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - DATABASE_URL=postgresql+asyncpg://expense:${POSTGRES_PASSWORD:-expense_dev}@db:5432/expense_hub
     volumes:
       - ./backend:/app
       - ./certs:/app/certs:ro
     networks:
       - app-network
+    depends_on:
+      db:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
@@ -35,3 +62,6 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  pgdata:

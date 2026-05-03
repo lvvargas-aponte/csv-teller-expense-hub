@@ -1,16 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { Routes, Route, NavLink } from 'react-router-dom';
 
 import { fmt$, txnMonthKey, calculateHalf } from './utils/formatting';
-import Spin       from './components/Spin';
-import StatCard   from './components/StatCard';
-import TxnRow     from './components/TxnRow';
-import EditModal  from './components/EditModal';
-import NoteModal  from './components/NoteModal';
-import SyncModal     from './components/SyncModal';
-import SyncToast     from './components/SyncToast';
-import AccountsModal from './components/AccountsModal';
-import Select        from './components/Select';
+import Spin          from './components/ui/Spin';
+import StatCard      from './components/ui/StatCard';
+import TxnRow        from './components/transactions/TxnRow';
+import EditModal     from './components/transactions/EditModal';
+import NoteModal     from './components/transactions/NoteModal';
+import UploadCsvModal from './components/transactions/UploadCsvModal';
+import SuggestPreviewModal from './components/transactions/SuggestPreviewModal';
+import { bulkSuggestCategories, applyCategoryAssignments } from './api/transactions';
+import SyncModal     from './components/accounts/SyncModal';
+import SyncToast     from './components/ui/SyncToast';
+import AccountsModal from './components/accounts/AccountsModal';
+import FinancesPage  from './components/finances/FinancesPage';
+import Select        from './components/ui/Select';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -31,9 +36,12 @@ export default function App() {
   const [filterMonth,   setFilterMonth]   = useState('all');
   const [editingTxn,    setEditingTxn]    = useState(null);
   const [notingTxn,     setNotingTxn]     = useState(null);
+  const [pendingCsvFile, setPendingCsvFile] = useState(null);
+  const [suggestionPreview, setSuggestionPreview] = useState(null);
+  const [suggestingBulk,    setSuggestingBulk]    = useState(false);
   const [isDark,        setIsDark]        = useState(() => {
     const saved = localStorage.getItem('theme');
-    return saved ? saved === 'dark' : true;
+    return saved ? saved === 'dark' : false;
   });
 
   useEffect(() => {
@@ -114,7 +122,7 @@ export default function App() {
     );
   }, [visible]);
 
-  const clearSelection = () => setSelected(new Set());
+  const clearSelection = useCallback(() => setSelected(new Set()), []);
 
   // ── actions ────────────────────────────────────────────────────────────────
   const quickMark = useCallback(async (txn, isShared) => {
@@ -125,10 +133,34 @@ export default function App() {
       person_2_owes: isShared ? half : 0,
       who: txn.who || '', what: txn.what || '', notes: txn.notes || '',
     });
+    // The backend flips `reviewed: true` on any user edit — mirror that
+    // locally so the Unreviewed tile reacts immediately without a reload.
     setTransactions((prev) => prev.map((t) => t.id !== txn.id ? t : {
       ...t, is_shared: isShared,
       person_1_owes: isShared ? half : 0,
       person_2_owes: isShared ? half : 0,
+      reviewed: true,
+    }));
+  }, []);
+
+  // Manual override for a misclassified CR/DR badge — clicking the badge in
+  // TxnRow flips the type. Preserves all other fields including `reviewed`:
+  // a CR/DR fix is a categorization correction, not a split decision, so it
+  // should NOT light up the Personal/50-50 toggle as if the user had reviewed
+  // the row.
+  const toggleType = useCallback(async (txn, nextType) => {
+    await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
+      is_shared: !!txn.is_shared,
+      who:           txn.who   || '',
+      what:          txn.what  || '',
+      notes:         txn.notes || '',
+      person_1_owes: txn.person_1_owes || 0,
+      person_2_owes: txn.person_2_owes || 0,
+      reviewed:      !!txn.reviewed,
+      transaction_type: nextType,
+    });
+    setTransactions((prev) => prev.map((t) => t.id !== txn.id ? t : {
+      ...t, transaction_type: nextType,
     }));
   }, []);
 
@@ -146,9 +178,34 @@ export default function App() {
     } catch (e) {
       setError('Bulk update failed — please try again');
     }
-  }, [visible, selected, load]);
+  }, [visible, selected, load, clearSelection]);
 
-  const saveEdit = async (form) => {
+  const bulkSuggest = useCallback(async () => {
+    const ids = visible.filter((t) => selected.has(t.id)).map((t) => t.id);
+    if (!ids.length) return;
+    setSuggestingBulk(true);
+    try {
+      const r = await bulkSuggestCategories(ids);
+      setSuggestionPreview(r.data);
+    } catch (e) {
+      setError('Could not get category suggestions — please try again');
+    } finally {
+      setSuggestingBulk(false);
+    }
+  }, [visible, selected]);
+
+  const applySuggestions = useCallback(async (items) => {
+    try {
+      await applyCategoryAssignments(items);
+      setSuggestionPreview(null);
+      clearSelection();
+      await load();
+    } catch (e) {
+      setError('Could not apply categories — please try again');
+    }
+  }, [load, clearSelection]);
+
+  const saveEdit = useCallback(async (form) => {
     try {
       await axios.put(`${API}/api/transactions/${encodeURIComponent(editingTxn.id)}`, form);
       setEditingTxn(null);
@@ -156,9 +213,9 @@ export default function App() {
     } catch (e) {
       setError('Could not save changes — please try again');
     }
-  };
+  }, [editingTxn, load]);
 
-  const saveNote = async (notes) => {
+  const saveNote = useCallback(async (notes) => {
     const txn = notingTxn;
     try {
       await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
@@ -174,9 +231,9 @@ export default function App() {
     } catch (e) {
       setError('Could not save note — please try again');
     }
-  };
+  }, [notingTxn, load]);
 
-  const syncTeller = async (fromDate, toDate, accountIds) => {
+  const syncTeller = useCallback(async (fromDate, toDate, accountIds) => {
     setShowSyncModal(false);
     setSyncing(true);
     try {
@@ -190,35 +247,39 @@ export default function App() {
     } finally {
       setSyncing(false);
     }
-  };
+  }, [load]);
 
-  const uploadCSV = async (e) => {
+  const handleCsvPicked = useCallback((e) => {
     const file = e.target.files[0];
-    if (!file) return;
-    const fd = new FormData();
-    fd.append('file', file);
+    if (file) setPendingCsvFile(file);
+    e.target.value = '';
+  }, []);
+
+  const submitCsvUpload = useCallback(async (formData) => {
     setUploading(true);
     try {
-      const res = await axios.post(`${API}/api/upload-csv`, fd, {
+      const res = await axios.post(`${API}/api/upload-csv`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setError(null);
       await load();
+      const file = pendingCsvFile;
       const dupes = res.data.duplicates || 0;
       const label = dupes > 0 ? `${file.name} (${dupes} already loaded, skipped)` : file.name;
       setSyncToast({
         total_new: res.data.count,
         details: [{ account: label, new: res.data.count, fetched: res.data.count + dupes }],
       });
+      setPendingCsvFile(null);
     } catch (e) {
       setError('CSV upload failed: ' + (e.response?.data?.detail || e.message));
+      throw e;
     } finally {
       setUploading(false);
-      e.target.value = '';
     }
-  };
+  }, [load, pendingCsvFile]);
 
-  const sendToSheet = async () => {
+  const sendToSheet = useCallback(async () => {
     const activeMonth = availableMonths.find((m) => m.key === filterMonth);
     const sheetLabel  = activeMonth ? activeMonth.label : null;
 
@@ -244,7 +305,7 @@ export default function App() {
     } finally {
       setSendingSheet(false);
     }
-  };
+  }, [availableMonths, filterMonth, sharedCount, load]);
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
@@ -262,6 +323,7 @@ export default function App() {
                     className="btn btn-secondary"
                     style={{ padding: '8px 12px', fontSize: 16 }}
                     onClick={() => setIsDark((d) => !d)}
+                    aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
                     title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {isDark ? '☀️' : '🌙'}
@@ -282,142 +344,180 @@ export default function App() {
             >
               {syncing ? <><Spin /> Syncing…</> : '⟳ Sync Banks'}
             </button>
-
-            <label className="btn btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
-              {uploading ? <><Spin /> Uploading…</> : '📂 Upload CSV'}
-              <input type="file" accept=".csv" hidden onChange={uploadCSV} disabled={uploading} />
-            </label>
-
-            <button type="button"
-                    className="btn btn-green"
-                    onClick={sendToSheet}
-                    disabled={sharedCount === 0 || sendingSheet}
-            >
-              {sendingSheet ? <Spin /> : '📊'} Send to Sheet{sharedCount > 0 ? ` (${sharedCount})` : ''}
-            </button>
           </div>
+
+          <nav className="app-nav">
+            <NavLink to="/" end className={({ isActive }) => 'nav-tab' + (isActive ? ' nav-tab--active' : '')}>
+              Transactions
+            </NavLink>
+            <NavLink to="/finances" className={({ isActive }) => 'nav-tab' + (isActive ? ' nav-tab--active' : '')}>
+              Finances
+            </NavLink>
+          </nav>
+
         </div>
       </header>
 
-      <main className="app-main">
-        {error && (
-          <div className="error-banner">
-            ⚠️ {error}
-            <button type="button" className="error-close" onClick={() => setError(null)}>✕</button>
-          </div>
-        )}
+      <Routes>
+        <Route path="/finances" element={<FinancesPage />} />
+        <Route path="/" element={
+          <main className="app-main">
+            {error && (
+              <div className="error-banner">
+                ⚠️ {error}
+                <button type="button" className="error-close" aria-label="Dismiss error" onClick={() => setError(null)}>✕</button>
+              </div>
+            )}
 
-        {/* stats */}
-        <div className="stats-bar">
-          <StatCard label="Total"      value={transactions.length} />
-          <StatCard label="Shared"     value={sharedCount}          accent="#10b981" />
-          <StatCard label="Shared $"   value={fmt$(sharedTotal)}    accent="#10b981" />
-          <StatCard label="Unreviewed" value={transactions.length - sharedCount} accent="#f59e0b" />
-        </div>
+            {/* stats */}
+            <div className="stats-bar">
+              <StatCard label="Total"      value={transactions.length} />
+              <StatCard label="Shared"     value={sharedCount}          accent="#10b981" />
+              <StatCard label="Shared $"   value={fmt$(sharedTotal)}    accent="#10b981" />
+              <StatCard label="Unreviewed" value={transactions.filter((t) => !t.reviewed).length} accent="#f59e0b" />
+            </div>
 
-        {/* toolbar */}
-        <div className="toolbar">
-          <div className="filters">
-            <Select
-              aria-label="Filter by bank"
-              value={filterInstitution}
-              onChange={setFilterInstitution}
-              options={[
-                { value: 'all', label: 'All banks' },
-                ...availableInstitutions.map((inst) => ({ value: inst, label: inst })),
-              ]}
-            />
-            <Select
-              aria-label="Filter by type"
-              value={filterShared}
-              onChange={setFilterShared}
-              options={[
-                { value: 'all',      label: 'All types' },
-                { value: 'shared',   label: 'Shared only' },
-                { value: 'personal', label: 'Personal only' },
-              ]}
-            />
-            <Select
-              aria-label="Filter by month"
-              value={filterMonth}
-              onChange={setFilterMonth}
-              options={[
-                { value: 'all', label: 'All months' },
-                ...availableMonths.map(({ key, label }) => ({ value: key, label })),
-              ]}
-            />
-          </div>
-
-          {selectedVisibleCount > 0 && (
-            <div className="bulk-bar">
-              <span className="bulk-count">{selectedVisibleCount} selected</span>
-              <button type="button" className="btn btn-green btn-sm" onClick={() => bulkMark(true)}>
-                ✓ Mark shared (50/50)
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => bulkMark(false)}>
-                Mark personal
-              </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={clearSelection}>
-                Clear
+            {/* import / export */}
+            <div className="txn-actions">
+              <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
+                {uploading ? <><Spin /> Uploading…</> : '📂 Upload CSV'}
+                <input type="file" accept=".csv" hidden onChange={handleCsvPicked} disabled={uploading} />
+              </label>
+              <button type="button"
+                      className="btn btn-green btn-sm"
+                      onClick={sendToSheet}
+                      disabled={sharedCount === 0 || sendingSheet}
+              >
+                {sendingSheet ? <Spin /> : '📊'} Send to Sheet{sharedCount > 0 ? ` (${sharedCount})` : ''}
               </button>
             </div>
-          )}
-        </div>
 
-        {/* table */}
-        <div className="table-wrap">
-          {loading ? (
-            <div className="empty-state"><Spin large /><br />Loading…</div>
-          ) : visible.length === 0 ? (
-            <div className="empty-state">
-              No transactions yet.<br />
-              <span className="empty-state-hint">
-                Click <strong>Sync Banks</strong> to pull from Teller, or <strong>Upload CSV</strong> to import a file.
-              </span>
+            {/* toolbar */}
+            <div className="toolbar">
+              <div className="filters">
+                <Select
+                  aria-label="Filter by bank"
+                  value={filterInstitution}
+                  onChange={setFilterInstitution}
+                  options={[
+                    { value: 'all', label: 'All banks' },
+                    ...availableInstitutions.map((inst) => ({ value: inst, label: inst })),
+                  ]}
+                />
+                <Select
+                  aria-label="Filter by type"
+                  value={filterShared}
+                  onChange={setFilterShared}
+                  options={[
+                    { value: 'all',      label: 'All types' },
+                    { value: 'shared',   label: 'Shared only' },
+                    { value: 'personal', label: 'Personal only' },
+                  ]}
+                />
+                <Select
+                  aria-label="Filter by month"
+                  value={filterMonth}
+                  onChange={setFilterMonth}
+                  options={[
+                    { value: 'all', label: 'All months' },
+                    ...availableMonths.map(({ key, label }) => ({ value: key, label })),
+                  ]}
+                />
+              </div>
+
+              {selectedVisibleCount > 0 && (
+                <div className="bulk-bar">
+                  <span className="bulk-count">{selectedVisibleCount} selected</span>
+                  <button type="button" className="btn btn-green btn-sm" onClick={() => bulkMark(true)}>
+                    ✓ Mark shared (50/50)
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => bulkMark(false)}>
+                    Mark personal
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm"
+                          onClick={bulkSuggest} disabled={suggestingBulk}
+                          title="Ask the local AI to suggest categories for selected uncategorized transactions">
+                    {suggestingBulk ? <><Spin /> Thinking…</> : '✨ Suggest categories'}
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={clearSelection}>
+                    Clear
+                  </button>
+                </div>
+              )}
             </div>
-          ) : (
-            <table className="txn-table">
-              <thead>
-                <tr>
-                  <th className="col-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={allVisibleSelected}
-                      onChange={toggleAll}
-                      style={{ cursor: 'pointer' }}
-                    />
-                  </th>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th className="col-amount">Amount</th>
-                  <th>Source</th>
-                  <th>Split</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((txn) => (
-                  <TxnRow
-                    key={txn.id}
-                    txn={txn}
-                    otherPersonName={personNames.person_2}
-                    isSelected={selected.has(txn.id)}
-                    onToggle={toggleSelect}
-                    onQuickMark={quickMark}
-                    onEdit={() => setEditingTxn(txn)}
-                    onNote={() => setNotingTxn(txn)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </main>
+
+            {/* table */}
+            <div className="table-wrap">
+              {loading ? (
+                <div className="empty-state"><Spin large /><br />Loading…</div>
+              ) : visible.length === 0 ? (
+                <div className="empty-state">
+                  No transactions yet.<br />
+                  <span className="empty-state-hint">
+                    Click <strong>Sync Banks</strong> to pull from Teller, or <strong>Upload CSV</strong> to import a file.
+                  </span>
+                </div>
+              ) : (
+                <table className="txn-table">
+                  <thead>
+                    <tr>
+                      <th className="col-checkbox">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all visible transactions"
+                          checked={allVisibleSelected}
+                          onChange={toggleAll}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </th>
+                      <th>Date</th>
+                      <th>Description</th>
+                      <th className="col-amount">Amount</th>
+                      <th>Source</th>
+                      <th>Split</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((txn) => (
+                      <TxnRow
+                        key={txn.id}
+                        txn={txn}
+                        otherPersonName={personNames.person_2}
+                        isSelected={selected.has(txn.id)}
+                        onToggle={toggleSelect}
+                        onQuickMark={quickMark}
+                        onToggleType={toggleType}
+                        onEdit={() => setEditingTxn(txn)}
+                        onNote={() => setNotingTxn(txn)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </main>
+        } />
+      </Routes>
 
       {showSyncModal     && <SyncModal onSync={syncTeller} onClose={() => setShowSyncModal(false)} />}
       {showAccountsModal && <AccountsModal onClose={() => setShowAccountsModal(false)} />}
+      {pendingCsvFile && (
+        <UploadCsvModal
+          file={pendingCsvFile}
+          onSubmit={submitCsvUpload}
+          onClose={() => setPendingCsvFile(null)}
+        />
+      )}
       {editingTxn    && <EditModal txn={editingTxn} personNames={personNames} onSave={saveEdit} onClose={() => setEditingTxn(null)} />}
       {notingTxn     && <NoteModal txn={notingTxn} onSave={saveNote} onClose={() => setNotingTxn(null)} />}
+      {suggestionPreview && (
+        <SuggestPreviewModal
+          result={suggestionPreview}
+          onApply={applySuggestions}
+          onClose={() => setSuggestionPreview(null)}
+        />
+      )}
       {syncToast     && <SyncToast result={syncToast} onClose={() => setSyncToast(null)} />}
     </div>
   );

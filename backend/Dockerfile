@@ -19,5 +19,6 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# entrypoint.sh runs `alembic upgrade head` before starting uvicorn.
+# Invoked via `sh` so the execute bit isn't required (Windows-friendly).
+CMD ["sh", "entrypoint.sh"]

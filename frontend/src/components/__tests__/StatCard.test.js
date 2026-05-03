@@ -1,9 +1,9 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import StatCard from '../StatCard';
+import StatCard from '../ui/StatCard';
 
 // styles.js injects a <style> tag on import — mock it to avoid DOM side effects in tests
-jest.mock('../styles', () => ({
+jest.mock('../ui/styles', () => ({
   statCard:  {},
   statVal:   {},
   statLabel: {},

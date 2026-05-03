@@ -1,7 +1,17 @@
+// Shared backend URL — avoids duplicating process.env access across every component.
+export const API_BASE = process.env.REACT_APP_BACKEND_URL || '';
+
 export const fmt$ = (n) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
         Math.abs(parseFloat(n) || 0)
     );
+
+// Like fmt$, but preserves sign for values that can be negative (e.g. net worth).
+export const fmtSigned = (n) => {
+  const v = parseFloat(n) || 0;
+  const abs = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(v));
+  return v < 0 ? `-${abs}` : abs;
+};
 
 export const fmtDate = (s) => {
   const d = new Date(s + 'T00:00:00');

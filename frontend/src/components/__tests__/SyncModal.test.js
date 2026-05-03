@@ -1,18 +1,18 @@
 import React from 'react';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import axios from 'axios';
-import SyncModal from '../SyncModal';
+import SyncModal from '../accounts/SyncModal';
 
 jest.mock('axios');
-jest.mock('../styles', () => ({
+jest.mock('../ui/styles', () => ({
   modal: {}, modalHeader: {}, modalTitle: {}, modalSub: {}, closeBtn: {},
   modalBody: {}, modalFooter: {}, row2: {}, fieldGroup: {}, label: {},
   input: {}, btn: {}, btnSecondary: {}, btnTeller: {}, btnPrimary: {},
 }));
-jest.mock('../Backdrop', () => ({ onClose, children }) => (
+jest.mock('../ui/Backdrop', () => ({ onClose, children }) => (
   <div data-testid="backdrop">{children}</div>
 ));
-jest.mock('../Spin', () => () => <span data-testid="spin" />);
+jest.mock('../ui/Spin', () => () => <span data-testid="spin" />);
 
 const mockAccounts = [
   { id: 'acct_1', name: 'Checking',  subtype: 'checking',  type: 'depository', institution: { name: 'First Bank' } },

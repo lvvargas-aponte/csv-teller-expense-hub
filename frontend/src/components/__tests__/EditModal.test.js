@@ -1,16 +1,16 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import EditModal from '../EditModal';
+import EditModal from '../transactions/EditModal';
 
 // Prevent styles.js DOM injection and Backdrop portal complications
-jest.mock('../styles', () => ({
+jest.mock('../ui/styles', () => ({
   modal: {}, modalHeader: {}, modalTitle: {}, modalSub: {}, closeBtn: {},
   modalBody: {}, modalFooter: {}, toggleRow: {}, segmented: {}, seg: {},
   segActive: {}, row2: {}, splitRow: {}, splitBtn: {}, fieldGroup: {},
   label: {}, input: {}, btn: {}, btnSecondary: {}, btnPrimary: {},
 }));
 
-jest.mock('../Backdrop', () => ({ onClose, children }) => (
+jest.mock('../ui/Backdrop', () => ({ onClose, children }) => (
   <div data-testid="backdrop">{children}</div>
 ));
 
@@ -111,4 +111,9 @@ test('person names from props appear as labels', () => {
 test('notes textarea is visible when shared', () => {
   renderModal({ is_shared: true });
   expect(screen.getByPlaceholderText(/Optional notes/)).toBeInTheDocument();
+});
+
+test('does not render the legacy ✨ Suggest button (moved to bulk flow)', () => {
+  renderModal();
+  expect(screen.queryByRole('button', { name: /suggest/i })).not.toBeInTheDocument();
 });
