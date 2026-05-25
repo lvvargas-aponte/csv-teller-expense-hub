@@ -4,10 +4,11 @@ import {
 } from 'recharts';
 import DashboardCard from './DashboardCard';
 import { fmt$, fmtSigned } from '../../../utils/formatting';
+import Num from '../Num';
 
 const AXIS = { fontSize: 11, fill: 'var(--text-secondary, #94a3b8)' };
 
-export default function NetWorthCard({ dashboard, loading, error, onHide }) {
+export default function NetWorthCard({ dashboard, loading, error, onHide, index, kicker }) {
   const trend = dashboard?.balance_trend;
   const series = dashboard?.net_worth_timeseries || [];
   const empty = !loading && !error && series.length === 0 && !trend?.available;
@@ -15,6 +16,8 @@ export default function NetWorthCard({ dashboard, loading, error, onHide }) {
   return (
     <DashboardCard
       title="Net Worth"
+      index={index}
+      kicker={kicker}
       loading={loading}
       error={error}
       empty={empty}
@@ -26,17 +29,17 @@ export default function NetWorthCard({ dashboard, loading, error, onHide }) {
           <div>
             <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>Current</div>
             <div style={{ fontSize: 18, fontWeight: 700 }}>
-              {fmtSigned(trend.current_net_worth)}
+              <Num value={trend.current_net_worth} signed />
             </div>
           </div>
-          {trend.delta_30d != null && (
+          {(trend.delta_30d !== null && trend.delta_30d !== undefined) && (
             <div>
               <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>30-day Δ</div>
               <div style={{
                 fontSize: 18, fontWeight: 700,
                 color: trend.delta_30d >= 0 ? '#059669' : '#ef4444',
               }}>
-                {trend.delta_30d >= 0 ? '+' : ''}{fmtSigned(trend.delta_30d)}
+                <Num value={trend.delta_30d} signed prefix={trend.delta_30d >= 0 ? '+' : ''} />
               </div>
             </div>
           )}

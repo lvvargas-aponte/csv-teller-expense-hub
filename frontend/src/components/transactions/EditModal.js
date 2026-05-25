@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import Backdrop from '../ui/Backdrop';
 import { fmt$, fmtDate, calculateHalf } from '../../utils/formatting';
+import CategoryCombobox from './CategoryCombobox';
 
-export default function EditModal({ txn, personNames, onSave, onClose }) {
+export default function EditModal({ txn, personNames, onSave, onClose, categories = [], onRemoveCategory }) {
   const [form, setForm] = useState({
     is_shared:     txn.is_shared     || false,
     who:           txn.who           || personNames.person_1 || '',
@@ -35,10 +36,12 @@ export default function EditModal({ txn, personNames, onSave, onClose }) {
         <div className="modal-body">
           <div className="field-group">
             <label className="field-label" htmlFor="txn-category">Category</label>
-            <input id="txn-category" className="form-input" type="text"
-                   value={form.category}
-                   onChange={(e) => set('category', e.target.value)}
-                   placeholder="e.g. Groceries, Dining" />
+            <CategoryCombobox
+              value={form.category}
+              categories={categories}
+              onChange={(next) => set('category', next)}
+              onRemoveCategory={onRemoveCategory}
+            />
           </div>
 
           <div className="toggle-row">
@@ -60,36 +63,36 @@ export default function EditModal({ txn, personNames, onSave, onClose }) {
             <>
               <div className="form-row-2">
                 <div className="field-group">
-                  <label className="field-label">Who paid?</label>
-                  <input className="form-input" type="text" value={form.who}
+                  <label className="field-label" htmlFor="edit-who">Who paid?</label>
+                  <input id="edit-who" className="form-input" type="text" value={form.who}
                          onChange={(e) => set('who', e.target.value)} placeholder="Name" />
                 </div>
                 <div className="field-group">
-                  <label className="field-label">What for?</label>
-                  <input className="form-input" type="text" value={form.what}
+                  <label className="field-label" htmlFor="edit-what">What for?</label>
+                  <input id="edit-what" className="form-input" type="text" value={form.what}
                          onChange={(e) => set('what', e.target.value)} placeholder="Category / item" />
                 </div>
               </div>
 
               <div className="split-row">
                 <div className="field-group">
-                  <label className="field-label">{personNames.person_1} owes</label>
-                  <input className="form-input" type="number" step="0.01" min="0"
+                  <label className="field-label" htmlFor="edit-p1-owes">{personNames.person_1} owes</label>
+                  <input id="edit-p1-owes" className="form-input" type="number" step="0.01" min="0"
                          value={form.person_1_owes}
                          onChange={(e) => set('person_1_owes', parseFloat(e.target.value) || 0)} />
                 </div>
                 <button type="button" className="split-btn" onClick={split50}>50/50</button>
                 <div className="field-group">
-                  <label className="field-label">{personNames.person_2} owes</label>
-                  <input className="form-input" type="number" step="0.01" min="0"
+                  <label className="field-label" htmlFor="edit-p2-owes">{personNames.person_2} owes</label>
+                  <input id="edit-p2-owes" className="form-input" type="number" step="0.01" min="0"
                          value={form.person_2_owes}
                          onChange={(e) => set('person_2_owes', parseFloat(e.target.value) || 0)} />
                 </div>
               </div>
 
               <div className="field-group">
-                <label className="field-label">Notes</label>
-                <textarea className="form-input form-input--textarea"
+                <label className="field-label" htmlFor="edit-notes">Notes</label>
+                <textarea id="edit-notes" className="form-input form-input--textarea"
                           value={form.notes} onChange={(e) => set('notes', e.target.value)}
                           placeholder="Optional notes…" />
               </div>

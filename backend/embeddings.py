@@ -20,7 +20,8 @@ meaningful throughput gains at single-user scale.
 """
 import hashlib
 import logging
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Optional
 
 from sqlalchemy import text
 
@@ -36,7 +37,7 @@ DEFAULT_THRESHOLD = 0.35          # Cosine distance; lower = more similar.
 DEFAULT_BACKFILL_LIMIT = 500
 
 
-def _vec_literal(vec: List[float]) -> str:
+def _vec_literal(vec: list[float]) -> str:
     """pgvector accepts text-literal vectors: ``'[0.1,0.2,...]'::vector(N)``.
 
     Using a text literal keeps us driver-agnostic — no need to register
@@ -45,7 +46,7 @@ def _vec_literal(vec: List[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vec) + "]"
 
 
-def sync_conversation_turns(conv: Dict[str, Any]) -> None:
+def sync_conversation_turns(conv: dict[str, Any]) -> None:
     """Ensure structured rows exist for a conversation + all its turns.
 
     Safe to call on every chat — ON CONFLICT DO NOTHING keeps already-
@@ -91,7 +92,7 @@ def sync_conversation_turns(conv: Dict[str, Any]) -> None:
             )
 
 
-async def embed_text(content: str) -> Optional[List[float]]:
+async def embed_text(content: str) -> Optional[list[float]]:
     """Return a 768-dim embedding, or None on any failure.
 
     Failures include: Ollama down, model not pulled, timeout, dimension
@@ -130,7 +131,7 @@ async def embed_pending_turns(
     on the next trigger.
     """
     where = "WHERE e.turn_id IS NULL"
-    params: Dict[str, Any] = {"lim": limit}
+    params: dict[str, Any] = {"lim": limit}
     if conv_id:
         where += " AND t.conversation_id = :conv"
         params["conv"] = conv_id
@@ -183,7 +184,7 @@ async def retrieve_similar(
     exclude_conv_id: Optional[str] = None,
     k: int = DEFAULT_K,
     threshold: float = DEFAULT_THRESHOLD,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Return the top-K past turns most similar to ``query``.
 
     Uses pgvector's ``<=>`` cosine-distance operator. Rows with distance
@@ -196,7 +197,7 @@ async def retrieve_similar(
         return []
 
     where_extra = ""
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "vec": _vec_literal(vec),
         "thresh": threshold,
         "k": k,
@@ -231,7 +232,7 @@ async def retrieve_similar(
 
 
 def format_rag_context(
-    hits: List[Dict[str, Any]],
+    hits: list[dict[str, Any]],
     max_chars: int = 800,
     snippet_len: int = 140,
 ) -> str:
@@ -259,7 +260,7 @@ def format_rag_context(
 # ---------------------------------------------------------------------------
 
 
-def _txn_embed_text(txn: Dict[str, Any]) -> str:
+def _txn_embed_text(txn: dict[str, Any]) -> str:
     """Compose the embedding input for a transaction row.
 
     Description carries the merchant signal; category and notes add a
@@ -301,7 +302,7 @@ async def embed_pending_transactions(limit: int = DEFAULT_BACKFILL_LIMIT) -> int
         existing_rows = conn.execute(
             text("SELECT transaction_id, content_hash FROM transaction_embeddings")
         ).fetchall()
-    existing_hashes: Dict[str, str] = {r[0]: r[1] for r in existing_rows}
+    existing_hashes: dict[str, str] = {r[0]: r[1] for r in existing_rows}
 
     embedded = 0
     for tid, txn in list(txns.items())[:limit]:
@@ -356,7 +357,7 @@ async def retrieve_similar_transactions(
     query: str,
     k: int = DEFAULT_K,
     threshold: float = DEFAULT_THRESHOLD,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Return up to ``k`` transactions most similar to ``query``.
 
     Cosine search runs against ``transaction_embeddings``; per-hit fields
@@ -382,7 +383,7 @@ async def retrieve_similar_transactions(
             {"vec": _vec_literal(vec), "thresh": threshold, "k": k},
         ).fetchall()
 
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for tid, distance in rows:
         txn = state.stored_transactions.get(tid)
         if not isinstance(txn, dict):
@@ -398,8 +399,91 @@ async def retrieve_similar_transactions(
     return out
 
 
+# ---------------------------------------------------------------------------
+# Document chunking — used by the documents router before embedding.
+#
+# Char/4 ~= token count for English.  ``nomic-embed-text`` accepts up to
+# 8K tokens, so target=350 with 50-char overlap leaves ample headroom and
+# keeps each chunk small enough that one bad sentence doesn't pollute the
+# vector for an entire IRS publication section.
+# ---------------------------------------------------------------------------
+
+CHUNK_TARGET_TOKENS = 350
+CHUNK_OVERLAP_TOKENS = 50
+_CHARS_PER_TOKEN = 4
+
+
+def chunk_text(
+    text_in: str,
+    target_tokens: int = CHUNK_TARGET_TOKENS,
+    overlap_tokens: int = CHUNK_OVERLAP_TOKENS,
+) -> list[dict[str, Any]]:
+    """Split a document into overlapping, semantically-aware chunks.
+
+    Strategy:
+    1. Split on blank-line paragraph boundaries.
+    2. If a paragraph alone exceeds the target size, fall back to
+       sentence-level splits (period / question / exclamation).
+    3. If a single sentence is still too large (e.g. an unbroken legal
+       paragraph), hard-split by character count.
+
+    Returns ``[{"content": str, "token_count": int, "chunk_index": int}, ...]``.
+    The token_count is a char/4 estimate — good enough for budgeting, not
+    a true tokenizer count.  Empty / whitespace-only input returns ``[]``.
+    """
+    if not text_in or not text_in.strip():
+        return []
+
+    target_chars = target_tokens * _CHARS_PER_TOKEN
+    overlap_chars = overlap_tokens * _CHARS_PER_TOKEN
+
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text_in) if p.strip()]
+    pieces: list[str] = []
+    for para in paragraphs:
+        if len(para) <= target_chars:
+            pieces.append(para)
+            continue
+        # Paragraph too long — break into sentences.
+        sentences = re.split(r"(?<=[.!?])\s+", para)
+        for sent in sentences:
+            sent = sent.strip()
+            if not sent:
+                continue
+            if len(sent) <= target_chars:
+                pieces.append(sent)
+            else:
+                # Last-resort hard split.
+                for i in range(0, len(sent), target_chars):
+                    pieces.append(sent[i : i + target_chars])
+
+    # Pack pieces into chunks up to target_chars; carry overlap across.
+    chunks: list[dict[str, Any]] = []
+    current = ""
+    for piece in pieces:
+        if not current:
+            current = piece
+            continue
+        if len(current) + 1 + len(piece) <= target_chars:
+            current = f"{current}\n{piece}"
+        else:
+            chunks.append(_chunk_record(current, len(chunks)))
+            tail = current[-overlap_chars:] if overlap_chars else ""
+            current = f"{tail}\n{piece}".strip() if tail else piece
+    if current:
+        chunks.append(_chunk_record(current, len(chunks)))
+    return chunks
+
+
+def _chunk_record(content: str, idx: int) -> dict[str, Any]:
+    return {
+        "content": content,
+        "token_count": max(1, len(content) // _CHARS_PER_TOKEN),
+        "chunk_index": idx,
+    }
+
+
 def format_txn_rag_context(
-    hits: List[Dict[str, Any]],
+    hits: list[dict[str, Any]],
     max_chars: int = 600,
 ) -> str:
     """Render transaction hits as a compact system-prompt appendix."""

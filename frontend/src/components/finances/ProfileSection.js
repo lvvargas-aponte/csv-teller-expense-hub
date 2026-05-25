@@ -106,11 +106,23 @@ export default function ProfileSection() {
       <h2 className="finances-section-title">Profile</h2>
       <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
         These shape how the AI advisor frames recommendations — risk, time
-        horizon, dependents, and debt-payoff strategy.  All fields optional.
+        horizon, dependents, and debt-payoff strategy.  All fields optional —
+        if you&apos;re unsure about any of them, the tips below each field can help,
+        or just leave it blank.
       </div>
 
       <div className="form-row-2">
-        <Field label="Risk tolerance">
+        <Field
+          label="Risk tolerance"
+          hint={
+            <>
+              How much your investments could drop in a bad year and still let you sleep at night.
+              Not sure? A rough guide: <b>Conservative</b> if a 10% drop would worry you,{' '}
+              <b>Balanced</b> if you can ride out a 20% drop, <b>Aggressive</b> if a 30%+ drop is
+              fine because you won&apos;t touch the money for a long time.
+            </>
+          }
+        >
           <select className="form-input"
                   value={draft.risk_tolerance}
                   onChange={(e) => setDraft((d) => ({ ...d, risk_tolerance: e.target.value }))}>
@@ -119,7 +131,16 @@ export default function ProfileSection() {
             ))}
           </select>
         </Field>
-        <Field label="Investment time horizon (years)">
+        <Field
+          label="Investment time horizon (years)"
+          hint={
+            <>
+              Years until you&apos;d actually need to spend this money. Retirement at 65 and
+              you&apos;re 35? Put 30. Saving for a house in 5 years? Put 5. If unsure, use years
+              until retirement.
+            </>
+          }
+        >
           <input className="form-input" type="number" min="0" max="60" step="1"
                  placeholder="e.g. 25"
                  value={draft.time_horizon_years}
@@ -128,13 +149,25 @@ export default function ProfileSection() {
       </div>
 
       <div className="form-row-2">
-        <Field label="Dependents">
+        <Field
+          label="Dependents"
+          hint="People who rely on your income (kids, a non-working partner, a parent you support). Roommates and pets don't count."
+        >
           <input className="form-input" type="number" min="0" max="20" step="1"
                  placeholder="e.g. 0"
                  value={draft.dependents}
                  onChange={(e) => setDraft((d) => ({ ...d, dependents: e.target.value }))} />
         </Field>
-        <Field label="Debt-payoff strategy">
+        <Field
+          label="Debt-payoff strategy"
+          hint={
+            <>
+              How you want to attack debt. <b>Avalanche</b> saves the most money (pay the
+              highest-interest card first). <b>Snowball</b> feels better (knock out the smallest
+              balance first for a quick win). No debt? Leave blank.
+            </>
+          }
+        >
           <select className="form-input"
                   value={draft.debt_strategy}
                   onChange={(e) => setDraft((d) => ({ ...d, debt_strategy: e.target.value }))}>

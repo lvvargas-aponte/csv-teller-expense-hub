@@ -3,8 +3,10 @@ from datetime import date, timedelta
 
 import state
 from analytics import (
+    _normalize_merchant,
     build_financial_snapshot,
     detect_recurring_charges,
+    group_debit_spending,
 )
 
 
@@ -37,7 +39,7 @@ class TestRecurringDetection:
         assert out == []
 
     def test_skips_highly_variable_amounts(self, client):
-        # Same merchant key but amounts vary >25% — not a subscription.
+        # Same merchant key but amounts vary far beyond the 60% spread gate — not a subscription.
         _add_txn("a", 10.00, days_ago=5, description="GAS STATION")
         _add_txn("b", 50.00, days_ago=35, description="GAS STATION")
         _add_txn("c", 30.00, days_ago=65, description="GAS STATION")
@@ -51,6 +53,64 @@ class TestRecurringDetection:
         out = detect_recurring_charges()
         assert len(out) == 1
         assert "spotify" in out[0]["merchant_key"]
+
+    def test_detects_variable_utility_under_60pct_spread(self, client):
+        # Real utility bills swing 30-50% month to month; old 25% gate dropped them.
+        _add_txn("a", 89.90,  days_ago=5,  description="DUKE ENERGY 0413", category="Utilities")
+        _add_txn("b", 136.41, days_ago=35, description="DUKE-ENERGY PAYMENT WEB ID: 1234", category="Utilities")
+        out = detect_recurring_charges()
+        assert len(out) == 1
+        assert "duke" in out[0]["merchant_key"]
+
+    def test_excludes_cc_payment_category(self, client):
+        # Same merchant in 2 months but flagged as CC Payment — not real spend.
+        _add_txn("a", 322.18, days_ago=5,
+                 description="AMERICAN EXPRESS ACH PMT W3826 WEB ID: 2005032111",
+                 category="CC Payment")
+        _add_txn("b", 322.18, days_ago=35,
+                 description="AMERICAN EXPRESS ACH PMT W4400 WEB ID: 2005032111",
+                 category="CC Payment")
+        assert detect_recurring_charges() == []
+
+    def test_excludes_tagged_transfer(self, client):
+        # Synchrony transfer to HYSA — tagged, must drop from spending + recurring.
+        _add_txn("a", 1000.0, days_ago=5,  description="SYNCHRONY BANK TRANSFER 1234")
+        _add_txn("b", 1000.0, days_ago=35, description="SYNCHRONY BANK TRANSFER 9876")
+        for tid in ("a", "b"):
+            t = state.stored_transactions[tid]
+            t["transfer_to_account_id"] = "manual_hysa"
+            state.stored_transactions[tid] = t
+        assert detect_recurring_charges() == []
+        # And must not be counted as spending.
+        spending = group_debit_spending()
+        for month in spending.values():
+            assert "Entertainment" not in month or month["Entertainment"] == 0
+
+
+class TestNormalizeMerchant:
+    def test_strips_web_id_tail(self):
+        assert _normalize_merchant(
+            "AMERICAN EXPRESS ACH PMT W3826 WEB ID: 2005032111"
+        ) == _normalize_merchant(
+            "AMERICAN EXPRESS ACH PMT W4400 WEB ID: 2005032111"
+        )
+
+    def test_strips_state_code_tail(self):
+        a = _normalize_merchant("SQ *AZZURRA HEALTH CARE Doral FL")
+        b = _normalize_merchant("SQ *AZZURRA HEALTH CARE Doral")
+        assert a == b
+        assert "azzurra" in a
+        assert " fl" not in a
+
+    def test_strips_processor_prefix(self):
+        assert "starbucks" in _normalize_merchant("SQ *STARBUCKS 123")
+        assert "starbucks" in _normalize_merchant("TST* STARBUCKS")
+
+    def test_gas_station_still_rejected_by_spread(self, client):
+        # Spread filter still blocks volatile categories (sanity check).
+        _add_txn("a", 10.00, days_ago=5,  description="GAS STATION")
+        _add_txn("b", 50.00, days_ago=35, description="GAS STATION")
+        assert detect_recurring_charges() == []
 
 
 class TestSnapshotEnrichment:

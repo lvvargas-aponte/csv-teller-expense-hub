@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import FinancesSidebar from './FinancesSidebar';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
+import InvestmentsTab from './InvestmentsTab';
 import BalancesSection from './BalancesSection';
 import PayoffPlanner from './PayoffPlanner';
 import SpendingInsights from './SpendingInsights';
@@ -9,22 +11,29 @@ import BudgetsSection from './BudgetsSection';
 import GoalsSection from './GoalsSection';
 import ProfileSection from './ProfileSection';
 import AdvisorChat from './AdvisorChat';
+import KnowledgeSection from './KnowledgeSection';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
 import { getDashboard, getCreditHealth } from '../../api/dashboard';
 import { getBalancesSummary } from '../../api/balances';
 
-const PAGE_TITLES = {
-  dashboard: 'Dashboard',
-  accounts:  'Accounts',
-  budgets:   'Budgets',
-  goals:     'Goals',
-  bills:     'Bills',
-  advisor:   'AI Advisor',
-};
+const ACTIVE_TAB_KEY = 'finances.activeTab';
 
 export default function FinancesPage() {
-  const [activeId, setActiveId] = useState('dashboard');
+  const [activeId, setActiveIdState] = useState(
+    () => localStorage.getItem(ACTIVE_TAB_KEY) || 'dashboard',
+  );
+  const setActiveId = useCallback((id) => {
+    setActiveIdState(id);
+    try { localStorage.setItem(ACTIVE_TAB_KEY, id); } catch { /* quota / private mode */ }
+  }, []);
+  const navigate = useNavigate();
+
+  const handleInsightAction = useCallback((target) => {
+    if (!target) return;
+    if (target.financesTab) setActiveId(target.financesTab);
+    if (target.route)       navigate(target.route);
+  }, [navigate, setActiveId]);
 
   // Shared signals used by the sidebar's Financial Health footer.
   const [summary, setSummary] = useState(null);
@@ -56,13 +65,15 @@ export default function FinancesPage() {
   });
 
   const creditAccounts = useMemo(
-    () => summary?.accounts?.filter((a) => a.type === 'credit') ?? [],
+    () => summary?.accounts?.filter(
+      (a) => a.type === 'credit' && Math.abs(parseFloat(a.ledger) || 0) >= 0.005,
+    ) ?? [],
     [summary],
   );
 
   const handleNavigate = useCallback((id) => {
     setActiveId(id);
-  }, []);
+  }, [setActiveId]);
 
   return (
     <div className="eh-app">
@@ -87,15 +98,28 @@ export default function FinancesPage() {
               onMutate={() => loadBalances(false)}
             />
             <PayoffPlanner creditAccounts={creditAccounts} />
-            <SpendingInsights />
+            <SpendingInsights
+              summary={summary}
+              dashboard={dashboard}
+              onNavigate={handleInsightAction}
+            />
           </SimplePage>
         )}
 
         {activeId === 'accounts' && (
           <SimplePage title="Accounts">
-            <AccountsTab />
+            <AccountsTab
+              summary={summary}
+              summaryLoading={summaryLoading}
+              summaryError={summaryError}
+              onRefresh={() => loadBalances(true)}
+            />
             <ProfileSection />
           </SimplePage>
+        )}
+
+        {activeId === 'investments' && (
+          <SimplePage title="Investments"><InvestmentsTab /></SimplePage>
         )}
 
         {activeId === 'budgets' && (
@@ -109,14 +133,18 @@ export default function FinancesPage() {
         {activeId === 'bills' && (
           <SimplePage title="Bills">
             <div style={{ display: 'grid', gap: 16 }}>
-              <UpcomingBillsCard />
+              <UpcomingBillsCard onNavigateToAccounts={() => setActiveId('accounts')} />
               <RecurringChargesCard />
             </div>
           </SimplePage>
         )}
 
+        {activeId === 'knowledge' && (
+          <SimplePage title="Knowledge"><KnowledgeSection /></SimplePage>
+        )}
+
         {activeId === 'advisor' && (
-          <SimplePage title="AI Advisor"><AdvisorChat /></SimplePage>
+          <SimplePage title="Ask Fin"><AdvisorChat /></SimplePage>
         )}
       </div>
     </div>
@@ -141,8 +169,8 @@ function computeHealthScore({ netWorth, trend, creditHealth, monthlyTotals }) {
 
   // Net worth signal (30%)
   const nw = trend?.current_net_worth ?? netWorth;
-  if (nw != null) {
-    if (trend?.delta_30d != null) {
+  if (nw !== null && nw !== undefined) {
+    if (trend?.delta_30d !== null && trend?.delta_30d !== undefined) {
       const base = Math.abs(nw) || 1;
       const ratio = trend.delta_30d / base;
       const sub = Math.max(0, Math.min(1, 0.5 + ratio * 5));

@@ -44,6 +44,10 @@ class TransactionUpdate(BaseModel):
     reviewed: Optional[bool] = None  # server defaults to True on any user edit
     category: Optional[str] = None   # None=no-op, ""=clear, "X"=set to X
     transaction_type: Optional[Literal["debit", "credit"]] = None  # None=no-op
+    # Mark this txn as an internal transfer to a manual account. The destination's
+    # balance picks it up via the live txn-delta computation in balances.py;
+    # spending/recurring aggregates exclude it. None=no-op, ""=clear, "id"=set.
+    transfer_to_account_id: Optional[str] = None
 
 
 class BulkTransactionUpdate(BaseModel):
@@ -55,6 +59,7 @@ class BulkTransactionUpdate(BaseModel):
     split_evenly: bool = True  # if True, auto-calculate 50/50 from each transaction's amount
     reviewed: Optional[bool] = None  # server defaults to True on any user edit
     category: Optional[str] = None   # None=no-op, ""=clear, "X"=set to X
+    transfer_to_account_id: Optional[str] = None  # None=no-op, ""=clear, "id"=set
 
 
 class BulkSuggestRequest(BaseModel):
@@ -91,6 +96,21 @@ class AccountBalance(BaseModel):
     available: float
     ledger: float
     manual: bool = False   # True for user-added accounts not sourced from Teller
+    # For manual accounts: the user-edited balance is treated as a starting
+    # point and the live ``available``/``ledger`` above is computed as
+    # ``starting + signed delta of linked transactions``. This field exposes
+    # the starting value so the UI can show both. None for Teller accounts.
+    starting_balance: Optional[float] = None
+    txn_delta: Optional[float] = None  # signed delta applied to starting balance
+    # Count of transactions feeding the delta + most-recent date among them.
+    # Drives the "Last updated · from N linked transactions" badge in the UI.
+    linked_txn_count: int = 0
+    linked_last_date: Optional[str] = None
+    # Set when a previously-Teller-connected account was disconnected but kept
+    # locally. UI shows a "Disconnected" badge instead of treating it as a
+    # native manual account. None for both fresh manuals and live Teller rows.
+    disconnected_from: Optional[str] = None
+    disconnected_at: Optional[str] = None
 
 
 class AccountDetailsIn(BaseModel):
@@ -192,6 +212,21 @@ class ChatResponse(BaseModel):
     conversation_id: str
     reply: Optional[str] = None             # None when ai_available=False
     ai_available: bool
+    # Stable id of the assistant turn that was just persisted; clients use
+    # it to attach 👍/👎 feedback. None when ai_available=False or when the
+    # turn couldn't be located (rare, persistence race).
+    turn_id: Optional[int] = None
+
+
+class FeedbackRequest(BaseModel):
+    rating: Literal[-1, 1]
+    note: Optional[str] = None
+
+
+class StyleProfileOut(BaseModel):
+    style_notes: str
+    turn_count_at_last_update: int
+    updated_at: Optional[str] = None
 
 
 class ConversationSummary(BaseModel):

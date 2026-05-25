@@ -76,14 +76,14 @@ export default function GoalsSection() {
         <div className="manual-acct-form">
           <div className="form-row-2">
             <div className="field-group">
-              <label className="field-label">Goal Name</label>
-              <input className="form-input" type="text" placeholder="e.g. Emergency Fund"
+              <label className="field-label" htmlFor="goal-name">Goal Name</label>
+              <input id="goal-name" className="form-input" type="text" placeholder="e.g. Emergency Fund"
                      value={draft.name}
                      onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
             </div>
             <div className="field-group">
-              <label className="field-label">Type</label>
-              <select className="form-input" value={draft.kind}
+              <label className="field-label" htmlFor="goal-kind">Type</label>
+              <select id="goal-kind" className="form-input" value={draft.kind}
                       onChange={(e) => setDraft((d) => ({ ...d, kind: e.target.value }))}>
                 <option value="savings">Savings goal</option>
                 <option value="emergency_fund">Emergency fund</option>
@@ -92,22 +92,22 @@ export default function GoalsSection() {
           </div>
           <div className="form-row-2">
             <div className="field-group">
-              <label className="field-label">Target Amount ($)</label>
-              <input className="form-input" type="number" min="0" step="0.01" placeholder="0.00"
+              <label className="field-label" htmlFor="goal-target-amount">Target Amount ($)</label>
+              <input id="goal-target-amount" className="form-input" type="number" min="0" step="0.01" placeholder="0.00"
                      value={draft.target_amount}
                      onChange={(e) => setDraft((d) => ({ ...d, target_amount: e.target.value }))} />
             </div>
             <div className="field-group">
-              <label className="field-label">Target Date (optional)</label>
-              <input className="form-input" type="date"
+              <label className="field-label" htmlFor="goal-target-date">Target Date (optional)</label>
+              <input id="goal-target-date" className="form-input" type="date"
                      value={draft.target_date}
                      onChange={(e) => setDraft((d) => ({ ...d, target_date: e.target.value }))} />
             </div>
           </div>
           <div className="form-row-2">
             <div className="field-group">
-              <label className="field-label">Linked Account (optional)</label>
-              <select className="form-input" value={draft.linked_account_id}
+              <label className="field-label" htmlFor="goal-linked-account">Linked Account (optional)</label>
+              <select id="goal-linked-account" className="form-input" value={draft.linked_account_id}
                       onChange={(e) => setDraft((d) => ({ ...d, linked_account_id: e.target.value }))}>
                 <option value="">— none (track manually) —</option>
                 {accounts.map((a) => (
@@ -118,8 +118,8 @@ export default function GoalsSection() {
               </select>
             </div>
             <div className="field-group">
-              <label className="field-label">Current Balance ($)</label>
-              <input className="form-input" type="number" min="0" step="0.01" placeholder="0.00"
+              <label className="field-label" htmlFor="goal-current-balance">Current Balance ($)</label>
+              <input id="goal-current-balance" className="form-input" type="number" min="0" step="0.01" placeholder="0.00"
                      disabled={!!draft.linked_account_id}
                      value={draft.current_balance}
                      onChange={(e) => setDraft((d) => ({ ...d, current_balance: e.target.value }))} />
@@ -171,7 +171,7 @@ function GoalRow({ goal, onDelete }) {
           {goal.target_date && (
             <div className="balance-row-inst">
               By {goal.target_date}
-              {goal.monthly_required != null && goal.monthly_required > 0 && (
+              {(goal.monthly_required !== null && goal.monthly_required !== undefined) && goal.monthly_required > 0 && (
                 <> · save {fmt$(goal.monthly_required)}/mo to hit it</>
               )}
             </div>

@@ -12,11 +12,12 @@ import CashFlowCard from './cards/CashFlowCard';
 import SpendingByCategoryCard from './cards/SpendingByCategoryCard';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import BalancesCard from './cards/BalancesCard';
+import PortfolioCard from './cards/PortfolioCard';
 import BudgetsCard from './cards/BudgetsCard';
 import CreditUtilizationCard from './cards/CreditUtilizationCard';
 import AlertsCard from './cards/AlertsCard';
 import IncomeVsExpensesCard from './cards/IncomeVsExpensesCard';
-import TweaksPanel from './TweaksPanel';
+import { BlurContext } from './Num';
 
 const RANGE_OPTIONS = [
   { label: '3M', months: 3 },
@@ -82,7 +83,7 @@ export default function DashboardTab({ healthScore }) {
   const monthlyTotals = dashboard?.monthly_totals || [];
   const thisMonth = monthlyTotals[monthlyTotals.length - 1]?.total ?? 0;
   const prevMonth = monthlyTotals[monthlyTotals.length - 2]?.total ?? null;
-  const thisMonthDelta = prevMonth != null ? thisMonth - prevMonth : null;
+  const thisMonthDelta = (prevMonth !== null && prevMonth !== undefined) ? thisMonth - prevMonth : null;
 
   const incomeRows = incomeData?.rows || [];
   const latestIncome = incomeRows[incomeRows.length - 1];
@@ -99,15 +100,15 @@ export default function DashboardTab({ healthScore }) {
   const today = useMemo(() => new Date(), []);
   const greetingLine = `${greetingFor(today)}, ${formatToday(today)}`;
   const bannerMsg = (() => {
-    if (netWorthDelta != null && netWorthDelta > 0) {
+    if (netWorthDelta !== null && netWorthDelta > 0) {
       return `Your net worth grew by ${fmt$(netWorthDelta)} this period 🎉`;
     }
-    if (netWorthDelta != null && netWorthDelta < 0) {
+    if (netWorthDelta !== null && netWorthDelta < 0) {
       return `Net worth dipped ${fmt$(netWorthDelta)} this period — let's see why.`;
     }
     return 'Welcome back to your dashboard';
   })();
-  const bannerSub = healthScore == null
+  const bannerSub = (healthScore === null || healthScore === undefined)
     ? 'Sync accounts or import transactions to start tracking your health.'
     : healthScore >= 70
       ? "You're on solid footing — keep it up."
@@ -138,6 +139,7 @@ export default function DashboardTab({ healthScore }) {
       <div className="eh-content">
         {/* Health banner */}
         <section className="eh-banner">
+          <div className="eh-banner-decor" aria-hidden="true" />
           <div className="eh-banner-left">
             <div className="eh-banner-greet">{greetingLine}</div>
             <div className="eh-banner-msg">{bannerMsg}</div>
@@ -150,19 +152,21 @@ export default function DashboardTab({ healthScore }) {
             </div>
           </div>
           <div className="eh-banner-right">
-            <div className="eh-banner-score">
-              <span>{healthScore == null ? '—' : healthScore}</span>
+            <div className={`eh-banner-score${blurSensitive ? ' eh-blur' : ''}`}>
+              <span>{(healthScore === null || healthScore === undefined) ? '—' : healthScore}</span>
               <span className="eh-info-wrap" tabIndex={0} aria-label="About the health score">
                 <span className="eh-info-icon">i</span>
                 <span className="eh-info-tooltip" role="tooltip">
                   <div className="eh-info-tooltip-title">Financial Health Score</div>
                   A 0–100 estimate of your overall financial position. Higher is better.
+                  <div style={{ marginTop: 6, fontWeight: 600 }}>How it&apos;s calculated</div>
+                  Each signal contributes a 0–1 sub-score scaled by its weight, then summed and divided by the active weights:
                   <ul>
-                    <li>Net worth direction (recent change)</li>
-                    <li>Credit utilization (lower is better)</li>
-                    <li>Monthly spending trend (vs. prior month)</li>
+                    <li><strong>Net worth direction (30%)</strong> — 30-day Δ as a ratio of current net worth; positive growth scores higher.</li>
+                    <li><strong>Credit utilization (30%)</strong> — overall balance ÷ limit across your cards; 0% scores 1.0, 100% scores 0. Skipped if you have no cards.</li>
+                    <li><strong>Spending trend (40%)</strong> — this month vs. prior month; a drop scores above 0.5, a rise scores below.</li>
                   </ul>
-                  Score is recomputed when you sync new data or change the date range.
+                  Signals with no data are skipped, and remaining weights are renormalized. Score is recomputed when you sync new data or change the date range.
                 </span>
               </span>
             </div>
@@ -179,6 +183,7 @@ export default function DashboardTab({ healthScore }) {
             delta={netWorthDelta}
             barColor={netWorth < 0 ? '#ef4444' : '#059669'}
             blur={blurSensitive}
+            help="Assets minus liabilities across all linked and manual accounts. The delta shows the change vs. 30 days ago."
           />
           <KpiCard
             label="This Month"
@@ -187,6 +192,7 @@ export default function DashboardTab({ healthScore }) {
             deltaInverse
             barColor="#6366f1"
             blur={blurSensitive}
+            help="Total spending so far in the current calendar month (debits only). The delta compares against the same point in the prior month — a drop is good."
           />
           <KpiCard
             label="Income"
@@ -194,6 +200,7 @@ export default function DashboardTab({ healthScore }) {
             delta={incomeDelta}
             barColor="#059669"
             blur={blurSensitive}
+            help="Credits received in the most recent full month (paychecks, transfers in, refunds). The delta compares against the prior month."
           />
           <KpiCard
             label="Net Cash Flow"
@@ -202,37 +209,44 @@ export default function DashboardTab({ healthScore }) {
             delta={cashFlowDelta}
             barColor={netCashFlow < 0 ? '#ef4444' : '#059669'}
             blur={blurSensitive}
+            help="Income minus expenses for the most recent full month. Positive means you saved; negative means you spent more than you earned."
           />
         </section>
 
-        {/* Cards grid — order locked to design */}
-        <section className="eh-cards-grid">
-          <NetWorthCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-          <CashFlowCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-          <SpendingByCategoryCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-          <IncomeVsExpensesCard months={months} />
-          <BalancesCard summary={summary} loading={summaryLoading} error={summaryErr} />
-          <CreditUtilizationCard />
-          <div className="eh-card-full">
-            <RecurringChargesCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-          </div>
-          <AlertsCard />
-          <BudgetsCard />
-        </section>
+        {/* Cards grid — narrative arc: Position → Flow → Trend → Assets →
+            Constraints → Commitments → Signals. Each card carries a section
+            number; some span both columns for editorial rhythm. */}
+        <BlurContext.Provider value={blurSensitive}>
+          <section className={`eh-cards-grid${blurSensitive ? ' eh-blur-numbers' : ''}`}>
+            <div className="eh-card-full">
+              <NetWorthCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
+            </div>
+            <CashFlowCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
+            <SpendingByCategoryCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
+            <div className="eh-card-full">
+              <IncomeVsExpensesCard months={months} />
+            </div>
+            <BalancesCard summary={summary} loading={summaryLoading} error={summaryErr} />
+            <PortfolioCard />
+            <CreditUtilizationCard />
+            <BudgetsCard />
+            <div className="eh-card-full">
+              <RecurringChargesCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
+            </div>
+            <div className="eh-card-full">
+              <AlertsCard />
+            </div>
+          </section>
+        </BlurContext.Provider>
       </div>
-
-      <TweaksPanel
-        blurSensitive={blurSensitive}
-        onBlurChange={setBlurSensitive}
-      />
     </>
   );
 }
 
-function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur }) {
+function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur, help }) {
   let arrow = null;
   let deltaColor = 'var(--text-muted)';
-  if (delta != null) {
+  if ((delta !== null && delta !== undefined)) {
     const positive = delta >= 0;
     arrow = positive ? '↑' : '↓';
     const good = deltaInverse ? !positive : positive;
@@ -240,12 +254,23 @@ function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur
   }
   return (
     <div className="eh-kpi">
-      <div className="eh-kpi-label">{label}</div>
+      <div className="eh-kpi-label">
+        <span>{label}</span>
+        {help && (
+          <span className="eh-info-wrap eh-kpi-info" tabIndex={0} aria-label={`About ${label}`}>
+            <span className="eh-info-icon">i</span>
+            <span className="eh-info-tooltip" role="tooltip">
+              <div className="eh-info-tooltip-title">{label}</div>
+              {help}
+            </span>
+          </span>
+        )}
+      </div>
       <div className={`eh-kpi-value ${valueClass || ''}${blur ? ' eh-blur' : ''}`}>{value}</div>
-      {delta != null && (
+      {(delta !== null && delta !== undefined) && (
         <div className="eh-kpi-delta" style={{ color: deltaColor }}>
           <span>{arrow}</span>
-          <span>{fmt$(delta)}</span>
+          <span className={blur ? 'eh-blur' : ''}>{fmt$(delta)}</span>
           <span className="eh-kpi-delta-suffix">vs prior</span>
         </div>
       )}

@@ -11,10 +11,13 @@ import sys
 from typing import Any, MutableMapping
 
 from config import (
+    SNAPTRADE_CLIENT_ID,
+    SNAPTRADE_CONSUMER_KEY,
     TELLER_ACCESS_TOKENS,
     TELLER_CERT_PATH,
     TELLER_KEY_PATH,
 )
+from snaptrade import SnapTradeClient
 from store import PgStore
 from teller import TellerClient
 
@@ -76,6 +79,7 @@ _conversations_store   = PgStore("conversations",   "advisor-conversations")
 _budgets_store         = PgStore("budgets",         "budgets")
 _goals_store           = PgStore("goals",           "goals")
 _account_details_store = PgStore("account_details", "account-details")
+_snaptrade_creds_store = PgStore("snaptrade_creds", "snaptrade-creds")
 
 
 def _migrate_reviewed_field() -> None:
@@ -124,6 +128,8 @@ goals:               MutableMapping[str, Any]  = _goals_store.data
 # because the Teller API doesn't expose these and re-fetches blow away edits to
 # the live account object.
 account_details:     MutableMapping[str, Any]  = _account_details_store.data
+# Single-key store ('household') holding the SnapTrade user_id / user_secret.
+snaptrade_creds:     MutableMapping[str, Any]  = _snaptrade_creds_store.data
 
 # ---------------------------------------------------------------------------
 # TellerClient instance
@@ -134,6 +140,15 @@ teller = TellerClient(
     base_url="https://api.teller.io",
     cert=_teller_cert,
     max_tx_count=TELLER_MAX_TX_COUNT,
+)
+
+# ---------------------------------------------------------------------------
+# SnapTradeClient instance
+# ---------------------------------------------------------------------------
+
+snaptrade = SnapTradeClient(
+    client_id=SNAPTRADE_CLIENT_ID,
+    consumer_key=SNAPTRADE_CONSUMER_KEY,
 )
 
 
@@ -152,6 +167,7 @@ _STORE_NAMES = (
     ("_budgets_store",         "budgets",         "budgets"),
     ("_goals_store",           "goals",           "goals"),
     ("_account_details_store", "account_details", "account-details"),
+    ("_snaptrade_creds_store", "snaptrade_creds", "snaptrade-creds"),
 )
 
 _LIVE_REFS = (
@@ -162,6 +178,7 @@ _LIVE_REFS = (
     ("budgets",             "_budgets_store"),
     ("goals",               "_goals_store"),
     ("account_details",     "_account_details_store"),
+    ("snaptrade_creds",     "_snaptrade_creds_store"),
 )
 
 

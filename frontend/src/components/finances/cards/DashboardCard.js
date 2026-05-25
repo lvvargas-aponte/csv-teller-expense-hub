@@ -28,17 +28,15 @@ export default function DashboardCard({
           </div>
         )}
       </div>
-      <div>
+      <div className="eh-dcard-body">
         {loading && (
-          <div style={{ textAlign: 'center', padding: '24px 0' }}>
-            <Spin /> Loading…
-          </div>
+          <div className="eh-dcard-state"><Spin /> Loading…</div>
         )}
         {error && !loading && (
-          <div style={{ color: '#ef4444', fontSize: 13 }}>{error}</div>
+          <div className="eh-dcard-state eh-dcard-state--error">{error}</div>
         )}
         {empty && !loading && !error && (
-          <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          <div className="eh-dcard-state eh-dcard-state--empty">
             {emptyText || 'No data yet.'}
           </div>
         )}

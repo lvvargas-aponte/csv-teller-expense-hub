@@ -10,6 +10,7 @@ __pycache__/
 *.egg-info/
 .Python
 backend/venv/
+venv/
 
 # ── Node / Frontend ───────────────────────────────────────────────────────────
 node_modules/
@@ -28,3 +29,10 @@ backend/*.json
 csv_imports/
 /certs/
 /misc/
+
+# ── Crash dumps & logs ────────────────────────────────────────────────────────
+*.stackdump
+teller-tokens.log
+
+# ── Docs (built site) ─────────────────────────────────────────────────────────
+/site/

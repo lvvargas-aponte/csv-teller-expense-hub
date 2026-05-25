@@ -1,14 +1,16 @@
 import React from 'react';
 import DashboardCard from './DashboardCard';
-import { fmt$, fmtSigned } from '../../../utils/formatting';
+import Num from '../Num';
 
-export default function BalancesCard({ summary, loading, error, onHide }) {
+export default function BalancesCard({ summary, loading, error, onHide, index, kicker }) {
   const accounts = summary?.accounts || [];
   const empty = !loading && !error && accounts.length === 0;
 
   return (
     <DashboardCard
       title="Account Balances"
+      index={index}
+      kicker={kicker}
       loading={loading}
       error={error}
       empty={empty}
@@ -19,11 +21,11 @@ export default function BalancesCard({ summary, loading, error, onHide }) {
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Net Worth</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: summary.net_worth >= 0 ? '#059669' : '#ef4444' }}>
-            {fmtSigned(summary.net_worth)}
+            <Num value={summary.net_worth} signed />
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-            Cash {fmt$(summary.total_cash || 0)} · Credit {fmt$(summary.total_credit_debt || 0)}
-            {(summary.total_investments || 0) > 0 && <> · Invest {fmt$(summary.total_investments)}</>}
+            Cash <Num value={summary.total_cash || 0} /> · Credit <Num value={summary.total_credit_debt || 0} />
+            {(summary.total_investments || 0) > 0 && <> · Invest <Num value={summary.total_investments} /></>}
           </div>
         </div>
       )}
@@ -41,11 +43,17 @@ export default function BalancesCard({ summary, loading, error, onHide }) {
             </div>
             <div style={{ textAlign: 'right' }}>
               {a.type === 'credit'
-                ? <span style={{ color: '#ef4444', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
-                    -{fmt$(a.ledger || 0)}
-                  </span>
+                ? (() => {
+                    const owed = parseFloat(a.ledger) || 0;
+                    const hasDebt = Math.round(owed * 100) !== 0;
+                    return (
+                      <span style={{ color: hasDebt ? '#ef4444' : 'var(--text-muted)', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
+                        {hasDebt ? <Num value={owed} prefix="-" /> : <Num value={0} />}
+                      </span>
+                    );
+                  })()
                 : <span style={{ color: '#059669', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
-                    {fmt$(a.available || 0)}
+                    <Num value={a.available || 0} />
                   </span>}
             </div>
           </div>

@@ -2,7 +2,7 @@
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -18,6 +18,64 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _manual_account_txn_delta(account_id: str) -> float:
+    """Signed delta of linked transactions for a manual account.
+
+    Two sources of linkage:
+      1. ``account_id == <this>`` — a transaction posted directly to the
+         manual account (e.g. CSV upload, manual entry).
+      2. ``transfer_to_account_id == <this>`` — a transaction on a *different*
+         account that the user tagged as a transfer INTO this manual account
+         (e.g. an outbound ACH from checking to a HYSA). The sign is inverted
+         for these: a debit on the source = an inflow to the destination, so
+         it reduces the destination's net-outflow delta.
+
+    ``delta`` is the net outflow: positive when more left than came in
+    (debits > credits). For cash accounts the caller computes
+    ``available = starting - delta`` (an inflow lowers the delta, raising
+    available); for credit accounts ``ledger = starting + delta``.
+    """
+    debits = 0.0
+    credits = 0.0
+    for txn in state.stored_transactions.values():
+        amt = float(txn.get("amount") or 0.0)
+        if txn.get("account_id") == account_id:
+            if txn.get("transaction_type") == "credit":
+                credits += amt
+            else:
+                debits += amt
+            continue
+        if txn.get("transfer_to_account_id") == account_id:
+            # Source-side debit = destination-side credit, and vice-versa.
+            if txn.get("transaction_type") == "credit":
+                debits += amt
+            else:
+                credits += amt
+    return round(debits - credits, 2)
+
+
+def _manual_account_linkage_meta(account_id: str) -> Tuple[int, Optional[str]]:
+    """Return ``(count, most_recent_date)`` of transactions linked to a manual
+    account — either by direct ``account_id`` or by ``transfer_to_account_id``.
+
+    The dashboard "Last updated · N linked transactions" badge reads this so
+    the user can see how much of the displayed balance is computed vs typed.
+    """
+    count = 0
+    latest: Optional[str] = None
+    for txn in state.stored_transactions.values():
+        if (
+            txn.get("account_id") != account_id
+            and txn.get("transfer_to_account_id") != account_id
+        ):
+            continue
+        count += 1
+        d = txn.get("date") or ""
+        if d and (latest is None or d > latest):
+            latest = d
+    return count, latest
+
+
 def _append_manual_accounts(
     accounts_out: List[AccountBalance],
     total_cash: float,
@@ -28,18 +86,41 @@ def _append_manual_accounts(
     Investment accounts are not summed here — ``_compute_investments``
     walks the final accounts list separately so the same classification
     rules (subtype-aware) apply uniformly to Teller and manual rows.
+
+    For manual accounts, the user-edited ``available``/``ledger`` value is
+    the *starting* balance; the live balance returned here is starting
+    plus the signed delta of linked transactions. Depository accounts
+    decrease with net debits; credit accounts increase what's owed with
+    net debits. Investment manuals (no clear sign convention) keep the
+    starting value as-is.
     """
     from analytics import _classify_account_bucket
 
     for acct in state._manual_accounts.values():
-        available = float(acct.get("available", 0.0))
-        ledger = float(acct.get("ledger", 0.0))
+        starting_available = float(acct.get("available", 0.0))
+        starting_ledger = float(acct.get("ledger", 0.0))
         acct_type = acct.get("type", "depository")
         bucket = _classify_account_bucket(acct_type, acct.get("subtype", ""))
+
+        delta = _manual_account_txn_delta(acct["id"])
         if bucket == "cash":
+            available = round(starting_available - delta, 2)
+            ledger = available
+            starting = starting_available
             total_cash += available
         elif bucket == "credit":
+            ledger = round(starting_ledger + delta, 2)
+            available = ledger
+            starting = starting_ledger
             total_credit_debt += ledger
+        else:
+            # Investments / other: leave starting balance untouched.
+            available = starting_available
+            ledger = starting_ledger
+            starting = starting_available or starting_ledger
+            delta = 0.0
+
+        linked_count, linked_last = _manual_account_linkage_meta(acct["id"])
         accounts_out.append(AccountBalance(
             id=acct["id"],
             institution=acct.get("institution", ""),
@@ -49,8 +130,32 @@ def _append_manual_accounts(
             available=available,
             ledger=ledger,
             manual=True,
+            starting_balance=starting,
+            txn_delta=delta,
+            linked_txn_count=linked_count,
+            linked_last_date=linked_last,
+            disconnected_from=acct.get("disconnected_from"),
+            disconnected_at=acct.get("disconnected_at"),
         ))
     return accounts_out, total_cash, total_credit_debt
+
+
+def _append_snaptrade_accounts(
+    accounts_out: List[AccountBalance],
+) -> List[AccountBalance]:
+    """Merge SnapTrade-synced investment accounts from the cache.
+
+    ``/snaptrade/sync`` writes these under their own ``snaptrade_accounts``
+    cache key, so a Teller refresh (which rewrites ``teller_accounts``) never
+    clobbers them. They are investment-typed, so ``_compute_investments``
+    picks up their value into net worth.
+    """
+    for a in state._balances_cache.get("snaptrade_accounts", []) or []:
+        try:
+            accounts_out.append(AccountBalance(**a))
+        except Exception as e:
+            logger.warning(f"[SnapTrade] skipping malformed cached account: {e}")
+    return accounts_out
 
 
 def _compute_investments(accounts: List[AccountBalance]) -> float:
@@ -99,6 +204,15 @@ async def persist_teller_balances(
             # Teller just returned. Phase 4: Teller sync / balance refresh
             # is the only writer for source='teller' rows.
             repo.upsert_teller_account(acct)
+
+            # Reconnect path: if this id is currently held as a manual shadow
+            # (created when the user disconnected it earlier), drop the shadow
+            # so the account flips back to being teller-sourced. Preserves
+            # account_details (APR/limit/due-day) — those still apply.
+            shadow = state._manual_accounts.get(acct["id"])
+            if shadow and shadow.get("disconnected_from") == "teller":
+                del state._manual_accounts[acct["id"]]
+                state._manual_accounts_store.save()
 
             # Some test fixtures (and older code paths) set `balance` inline on
             # the account dict; prefer that when present, otherwise call Teller.
@@ -171,6 +285,7 @@ async def get_balances_summary(force: bool = Query(False)):
         cached_accounts, total_cash, total_credit_debt = _append_manual_accounts(
             cached_accounts, teller_cash, teller_credit
         )
+        cached_accounts = _append_snaptrade_accounts(cached_accounts)
         fetched_at = state._balances_cache.get("fetched_at")
         total_investments = _compute_investments(cached_accounts)
         return BalancesSummary(
@@ -186,6 +301,7 @@ async def get_balances_summary(force: bool = Query(False)):
     # ── force=true: fetch live from Teller ───────────────────────────────────
     if not state.TELLER_ACCESS_TOKENS:
         accounts_out, total_cash, total_credit_debt = _append_manual_accounts([], 0.0, 0.0)
+        accounts_out = _append_snaptrade_accounts(accounts_out)
         total_investments = _compute_investments(accounts_out)
         return BalancesSummary(
             net_worth=round(total_cash + total_investments - total_credit_debt, 2),
@@ -201,6 +317,7 @@ async def get_balances_summary(force: bool = Query(False)):
     accounts_out, total_cash, total_credit_debt = _append_manual_accounts(
         accounts_out, total_cash, total_credit_debt
     )
+    accounts_out = _append_snaptrade_accounts(accounts_out)
     total_investments = _compute_investments(accounts_out)
     return BalancesSummary(
         net_worth=round(total_cash + total_investments - total_credit_debt, 2),

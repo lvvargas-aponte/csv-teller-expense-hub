@@ -1,45 +1,74 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Routes, Route, NavLink } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 
-import { fmt$, txnMonthKey, calculateHalf } from './utils/formatting';
-import Spin          from './components/ui/Spin';
-import StatCard      from './components/ui/StatCard';
-import TxnRow        from './components/transactions/TxnRow';
-import EditModal     from './components/transactions/EditModal';
-import NoteModal     from './components/transactions/NoteModal';
-import UploadCsvModal from './components/transactions/UploadCsvModal';
+import { calculateHalf, API_BASE } from './utils/formatting';
+import AppHeader        from './components/AppHeader';
+import SyncPanel        from './components/transactions/SyncPanel';
+import ControlBar       from './components/transactions/ControlBar';
+import BulkBar          from './components/transactions/BulkBar';
+import FilterBar        from './components/transactions/FilterBar';
+import TransactionTable from './components/transactions/TransactionTable';
+import UploadCsvModal   from './components/transactions/UploadCsvModal';
 import SuggestPreviewModal from './components/transactions/SuggestPreviewModal';
 import { bulkSuggestCategories, applyCategoryAssignments } from './api/transactions';
-import SyncModal     from './components/accounts/SyncModal';
-import SyncToast     from './components/ui/SyncToast';
-import AccountsModal from './components/accounts/AccountsModal';
-import FinancesPage  from './components/finances/FinancesPage';
-import Select        from './components/ui/Select';
+import SyncModal        from './components/accounts/SyncModal';
+import SyncToast        from './components/ui/SyncToast';
+import AccountsModal    from './components/accounts/AccountsModal';
+import FinancesPage     from './components/finances/FinancesPage';
+import HistoryPage      from './components/transactions/HistoryPage';
+import TransactionsSidebar from './components/transactions/TransactionsSidebar';
+import { useTransactions } from './hooks/useTransactions';
+import { useFilters } from './hooks/useFilters';
+import { useSelection } from './hooks/useSelection';
+import { useSyncFlow } from './hooks/useSyncFlow';
+import { useCategories } from './hooks/useCategories';
+import { getBalancesSummary } from './api/balances';
 
-const API = process.env.REACT_APP_BACKEND_URL || '';
+const API = API_BASE;
 
 export default function App() {
-  const [transactions,  setTransactions]  = useState([]);
-  const [personNames,   setPersonNames]   = useState({ person_1: 'Person 1', person_2: 'Person 2' });
-  const [loading,       setLoading]       = useState(false);
-  const [syncing,       setSyncing]       = useState(false);
-  const [sendingSheet,  setSendingSheet]  = useState(false);
-  const [uploading,     setUploading]     = useState(false);
-  const [error,         setError]         = useState(null);
-  const [syncToast,     setSyncToast]     = useState(null);
-  const [showSyncModal,     setShowSyncModal]     = useState(false);
-  const [showAccountsModal, setShowAccountsModal] = useState(false);
-  const [selected,      setSelected]      = useState(new Set());
-  const [filterInstitution, setFilterInstitution] = useState('all');
-  const [filterShared,  setFilterShared]  = useState('all');
-  const [filterMonth,   setFilterMonth]   = useState('all');
-  const [editingTxn,    setEditingTxn]    = useState(null);
-  const [notingTxn,     setNotingTxn]     = useState(null);
-  const [pendingCsvFile, setPendingCsvFile] = useState(null);
+  const {
+    transactions, personNames, loading, error, setError, setTransactions, reload,
+  } = useTransactions();
+
+  const {
+    filterInstitution, setFilterInstitution,
+    filterShared, setFilterShared,
+    filterMonth, setFilterMonth,
+    search, setSearch,
+    availableInstitutions, availableMonths, visible, stats,
+  } = useFilters(transactions);
+
+  // Current view filters out reviewed txns; selection must follow that list
+  // so the header Select-All only toggles the rows actually rendered.
+  const unreviewedVisibleEarly = useMemo(
+    () => visible.filter((t) => !t.reviewed),
+    [visible],
+  );
+
+  const {
+    selected, toggleSelect, toggleAll, clearSelection,
+    sharedSelectedAmt, allVisibleSelected,
+  } = useSelection(unreviewedVisibleEarly, transactions);
+
+  const {
+    categories, addLocal: addCategoryLocal, remove: removeCategoryRemote,
+  } = useCategories();
+
+  const sync = useSyncFlow({
+    reload,
+    setError,
+    availableMonths,
+    filterMonth,
+    sharedCount: stats.shared,
+  });
+
+  const [activeExpand, setActiveExpand] = useState(null);  // 'note-{id}' | 'adj-{id}' | null
   const [suggestionPreview, setSuggestionPreview] = useState(null);
-  const [suggestingBulk,    setSuggestingBulk]    = useState(false);
-  const [isDark,        setIsDark]        = useState(() => {
+  const [suggestingBulk, setSuggestingBulk] = useState(false);
+  const [txnView, setTxnView] = useState('current');  // 'current' | 'history'
+  const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem('theme');
     return saved ? saved === 'dark' : false;
   });
@@ -49,106 +78,31 @@ export default function App() {
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
-  // ── load ───────────────────────────────────────────────────────────────────
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [txRes, nameRes] = await Promise.all([
-        axios.get(`${API}/api/transactions/all`),
-        axios.get(`${API}/api/config/person-names`),
-      ]);
-      setTransactions(txRes.data);
-      setPersonNames(nameRes.data);
-    } catch (e) {
-      setError('Could not load transactions — is the backend running?');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  // ── derived state ──────────────────────────────────────────────────────────
-  const availableInstitutions = React.useMemo(() => {
-    const seen = new Set();
-    for (const t of transactions) {
-      if (t.institution) seen.add(t.institution);
-    }
-    return Array.from(seen).sort();
-  }, [transactions]);
-
-  const availableMonths = React.useMemo(() => {
-    const seen = new Map();
-    for (const t of transactions) {
-      const m = txnMonthKey(t.date);
-      if (m && !seen.has(m.key)) seen.set(m.key, m.label);
-    }
-    return Array.from(seen.entries())
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([key, label]) => ({ key, label }));
-  }, [transactions]);
-
-  const visible = React.useMemo(() => transactions.filter((t) => {
-    if (filterInstitution !== 'all' && (t.institution || '') !== filterInstitution) return false;
-    if (filterShared === 'shared'   && !t.is_shared) return false;
-    if (filterShared === 'personal' &&  t.is_shared) return false;
-    if (filterMonth  !== 'all') {
-      const m = txnMonthKey(t.date);
-      if (!m || m.key !== filterMonth) return false;
-    }
-    return true;
-  }), [transactions, filterInstitution, filterShared, filterMonth]);
-
-  const sharedCount = visible.filter((t) => t.is_shared).length;
-  const sharedTotal = visible
-    .filter((t) => t.is_shared)
-    .reduce((s, t) => s + Math.abs(parseFloat(t.amount) || 0), 0);
-
-  const selectedVisibleCount = visible.filter((t) => selected.has(t.id)).length;
-  const allVisibleSelected   = visible.length > 0 && visible.every((t) => selected.has(t.id));
-
-  // ── selection ──────────────────────────────────────────────────────────────
-  const toggleSelect = useCallback((id) =>
-    setSelected((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    }), []);
-
-  const toggleAll = useCallback(() => {
-    const visibleIds = visible.map((t) => t.id);
-    setSelected((s) =>
-      visibleIds.every((id) => s.has(id)) ? new Set() : new Set(visibleIds)
-    );
-  }, [visible]);
-
-  const clearSelection = useCallback(() => setSelected(new Set()), []);
-
-  // ── actions ────────────────────────────────────────────────────────────────
-  const quickMark = useCallback(async (txn, isShared) => {
+  // ── single-row split toggle (P / ½) ────────────────────────────────────────
+  // Personal = decision is done → auto-reviewed.
+  // Shared   = still pending Google Sheet send → DO NOT auto-review; sending
+  //           to Sheets removes the row from the queue entirely (sheets.py).
+  const handleSplitChange = useCallback(async (txn, isShared) => {
     const half = calculateHalf(txn.amount);
+    const nextReviewed = isShared ? !!txn.reviewed : true;
     await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
       is_shared: isShared,
       person_1_owes: isShared ? half : 0,
       person_2_owes: isShared ? half : 0,
       who: txn.who || '', what: txn.what || '', notes: txn.notes || '',
+      reviewed: nextReviewed,
     });
-    // The backend flips `reviewed: true` on any user edit — mirror that
-    // locally so the Unreviewed tile reacts immediately without a reload.
     setTransactions((prev) => prev.map((t) => t.id !== txn.id ? t : {
-      ...t, is_shared: isShared,
+      ...t,
+      is_shared: isShared,
       person_1_owes: isShared ? half : 0,
       person_2_owes: isShared ? half : 0,
-      reviewed: true,
+      reviewed: nextReviewed,
     }));
-  }, []);
+  }, [setTransactions]);
 
-  // Manual override for a misclassified CR/DR badge — clicking the badge in
-  // TxnRow flips the type. Preserves all other fields including `reviewed`:
-  // a CR/DR fix is a categorization correction, not a split decision, so it
-  // should NOT light up the Personal/50-50 toggle as if the user had reviewed
-  // the row.
-  const toggleType = useCallback(async (txn, nextType) => {
+  // CR/DR badge flip — doesn't mark as reviewed (it's a categorization fix).
+  const handleToggleType = useCallback(async (txn, nextType) => {
     await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
       is_shared: !!txn.is_shared,
       who:           txn.who   || '',
@@ -162,8 +116,117 @@ export default function App() {
     setTransactions((prev) => prev.map((t) => t.id !== txn.id ? t : {
       ...t, transaction_type: nextType,
     }));
-  }, []);
+  }, [setTransactions]);
 
+  // ── inline expands: note + split-adjust + transfer ─────────────────────────
+  const openNote     = useCallback((id) => setActiveExpand(id ? `note-${id}`     : null), []);
+  const openAdj      = useCallback((id) => setActiveExpand(id ? `adj-${id}`      : null), []);
+  const openTransfer = useCallback((id) => setActiveExpand(id ? `transfer-${id}` : null), []);
+  const closeExpand  = useCallback(() => setActiveExpand(null), []);
+
+  // Manual-account map for the transfer chip — refreshed alongside transactions
+  // and when the user saves a transfer (the destination balance may have shifted).
+  const [manualAccountsById, setManualAccountsById] = useState({});
+  const reloadManualAccounts = useCallback(async () => {
+    try {
+      const r = await getBalancesSummary(false);
+      const map = {};
+      (r.data?.accounts || []).forEach((a) => { if (a.manual) map[a.id] = a; });
+      setManualAccountsById(map);
+    } catch { /* non-fatal — chip just shows generic label */ }
+  }, []);
+  useEffect(() => { reloadManualAccounts(); }, [reloadManualAccounts]);
+
+  const saveNote = useCallback(async (txn, notes) => {
+    try {
+      await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
+        is_shared: !!txn.is_shared,
+        who: txn.who || '', what: txn.what || '',
+        person_1_owes: txn.person_1_owes || 0,
+        person_2_owes: txn.person_2_owes || 0,
+        notes,
+        reviewed: !!txn.reviewed,  // notes are prep, don't flip reviewed
+      });
+      setTransactions((prev) => prev.map((t) => t.id !== txn.id ? t : { ...t, notes }));
+      setActiveExpand(null);
+    } catch {
+      setError('Could not save note — please try again');
+    }
+  }, [setTransactions, setError]);
+
+  const handleCategoryChange = useCallback(async (txn, nextCategory) => {
+    const trimmed = (nextCategory || '').trim();
+    try {
+      await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
+        is_shared:     !!txn.is_shared,
+        who:           txn.who   || '',
+        what:          txn.what  || '',
+        notes:         txn.notes || '',
+        person_1_owes: txn.person_1_owes || 0,
+        person_2_owes: txn.person_2_owes || 0,
+        reviewed:      !!txn.reviewed,  // category is prep, don't flip reviewed
+        category:      trimmed,
+      });
+      setTransactions((prev) => prev.map((t) =>
+        t.id !== txn.id ? t : { ...t, category: trimmed }
+      ));
+      if (trimmed) addCategoryLocal(trimmed);
+    } catch {
+      setError('Could not save category — please try again.');
+    }
+  }, [setTransactions, setError, addCategoryLocal]);
+
+  const handleRemoveCategory = useCallback(async (name) => {
+    const result = await removeCategoryRemote(name);
+    await reload();
+    return result;
+  }, [removeCategoryRemote, reload]);
+
+  const saveTransfer = useCallback(async (txn, accountId) => {
+    const next = accountId || null;
+    try {
+      await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
+        is_shared:     !!txn.is_shared,
+        who:           txn.who   || '',
+        what:          txn.what  || '',
+        notes:         txn.notes || '',
+        person_1_owes: txn.person_1_owes || 0,
+        person_2_owes: txn.person_2_owes || 0,
+        reviewed:      true,
+        transfer_to_account_id: accountId || '',
+      });
+      setTransactions((prev) => prev.map((t) => t.id !== txn.id ? t : {
+        ...t, transfer_to_account_id: next, reviewed: true,
+      }));
+      setActiveExpand(null);
+      reloadManualAccounts();
+    } catch {
+      setError('Could not save transfer — please try again');
+    }
+  }, [setTransactions, setError, reloadManualAccounts]);
+
+  const saveAdj = useCallback(async (txn, { person_1_owes, person_2_owes }) => {
+    try {
+      await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
+        is_shared: true,
+        who: txn.who || '', what: txn.what || '', notes: txn.notes || '',
+        person_1_owes,
+        person_2_owes,
+        reviewed: !!txn.reviewed,  // still shared/pending sheet send — don't flip
+      });
+      setTransactions((prev) => prev.map((t) => t.id !== txn.id ? t : {
+        ...t, is_shared: true, person_1_owes, person_2_owes,
+      }));
+      setActiveExpand(null);
+    } catch {
+      setError('Could not save split — please try again');
+    }
+  }, [setTransactions, setError]);
+
+  // ── bulk actions ───────────────────────────────────────────────────────────
+  // Personal bulk = decided → reviewed. Shared bulk = pending sheet send →
+  // explicitly unreviewed (the backend defaults `reviewed` to True when
+  // omitted, so we must pass `false` to override).
   const bulkMark = useCallback(async (isShared) => {
     const ids = visible.filter((t) => selected.has(t.id)).map((t) => t.id);
     if (!ids.length) return;
@@ -172,13 +235,14 @@ export default function App() {
         transaction_ids: ids,
         is_shared: isShared,
         split_evenly: true,
+        reviewed: !isShared,
       });
-      await load();
+      await reload();
       clearSelection();
-    } catch (e) {
+    } catch {
       setError('Bulk update failed — please try again');
     }
-  }, [visible, selected, load, clearSelection]);
+  }, [visible, selected, reload, clearSelection, setError]);
 
   const bulkSuggest = useCallback(async () => {
     const ids = visible.filter((t) => selected.has(t.id)).map((t) => t.id);
@@ -187,330 +251,199 @@ export default function App() {
     try {
       const r = await bulkSuggestCategories(ids);
       setSuggestionPreview(r.data);
-    } catch (e) {
+    } catch {
       setError('Could not get category suggestions — please try again');
     } finally {
       setSuggestingBulk(false);
     }
-  }, [visible, selected]);
+  }, [visible, selected, setError]);
+
+  // ── reviewed toggles (inline + bulk) ───────────────────────────────────────
+  const handleToggleReviewed = useCallback(async (txn, nextReviewed) => {
+    try {
+      await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
+        is_shared:     !!txn.is_shared,
+        who:           txn.who   || '',
+        what:          txn.what  || '',
+        notes:         txn.notes || '',
+        person_1_owes: txn.person_1_owes || 0,
+        person_2_owes: txn.person_2_owes || 0,
+        reviewed:      !!nextReviewed,
+      });
+      setTransactions((prev) => prev.map((t) =>
+        t.id !== txn.id ? t : { ...t, reviewed: !!nextReviewed }
+      ));
+    } catch {
+      setError('Could not update reviewed state — please try again.');
+    }
+  }, [setTransactions, setError]);
+
+  const bulkMarkReviewed = useCallback(async () => {
+    const ids = visible.filter((t) => selected.has(t.id)).map((t) => t.id);
+    if (!ids.length) return;
+    try {
+      await axios.put(`${API}/api/transactions/bulk/reviewed`, {
+        transaction_ids: ids,
+        reviewed: true,
+      });
+      setTransactions((prev) => prev.map((t) =>
+        ids.includes(t.id) ? { ...t, reviewed: true } : t
+      ));
+      clearSelection();
+    } catch {
+      setError('Could not mark as reviewed — please try again.');
+    }
+  }, [visible, selected, setTransactions, clearSelection, setError]);
 
   const applySuggestions = useCallback(async (items) => {
     try {
       await applyCategoryAssignments(items);
       setSuggestionPreview(null);
       clearSelection();
-      await load();
-    } catch (e) {
+      await reload();
+    } catch {
       setError('Could not apply categories — please try again');
     }
-  }, [load, clearSelection]);
+  }, [reload, clearSelection, setError]);
 
-  const saveEdit = useCallback(async (form) => {
-    try {
-      await axios.put(`${API}/api/transactions/${encodeURIComponent(editingTxn.id)}`, form);
-      setEditingTxn(null);
-      await load();
-    } catch (e) {
-      setError('Could not save changes — please try again');
-    }
-  }, [editingTxn, load]);
-
-  const saveNote = useCallback(async (notes) => {
-    const txn = notingTxn;
-    try {
-      await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
-        is_shared: txn.is_shared,
-        who: txn.who || '',
-        what: txn.what || '',
-        person_1_owes: txn.person_1_owes || 0,
-        person_2_owes: txn.person_2_owes || 0,
-        notes,
-      });
-      setNotingTxn(null);
-      await load();
-    } catch (e) {
-      setError('Could not save note — please try again');
-    }
-  }, [notingTxn, load]);
-
-  const syncTeller = useCallback(async (fromDate, toDate, accountIds) => {
-    setShowSyncModal(false);
-    setSyncing(true);
-    try {
-      const body = { from_date: fromDate, to_date: toDate };
-      if (accountIds !== null) body.account_ids = accountIds;
-      const res = await axios.post(`${API}/api/teller/sync`, body);
-      setSyncToast(res.data);
-      await load();
-    } catch (e) {
-      setError('Teller sync failed: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setSyncing(false);
-    }
-  }, [load]);
-
-  const handleCsvPicked = useCallback((e) => {
-    const file = e.target.files[0];
-    if (file) setPendingCsvFile(file);
-    e.target.value = '';
-  }, []);
-
-  const submitCsvUpload = useCallback(async (formData) => {
-    setUploading(true);
-    try {
-      const res = await axios.post(`${API}/api/upload-csv`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setError(null);
-      await load();
-      const file = pendingCsvFile;
-      const dupes = res.data.duplicates || 0;
-      const label = dupes > 0 ? `${file.name} (${dupes} already loaded, skipped)` : file.name;
-      setSyncToast({
-        total_new: res.data.count,
-        details: [{ account: label, new: res.data.count, fetched: res.data.count + dupes }],
-      });
-      setPendingCsvFile(null);
-    } catch (e) {
-      setError('CSV upload failed: ' + (e.response?.data?.detail || e.message));
-      throw e;
-    } finally {
-      setUploading(false);
-    }
-  }, [load, pendingCsvFile]);
-
-  const sendToSheet = useCallback(async () => {
-    const activeMonth = availableMonths.find((m) => m.key === filterMonth);
-    const sheetLabel  = activeMonth ? activeMonth.label : null;
-
-    if (!window.confirm(
-      `Send ${sharedCount} shared expense${sharedCount !== 1 ? 's' : ''} to Google Sheet` +
-      (sheetLabel ? ` "${sheetLabel}"` : '') +
-      `? They'll be cleared from the queue.`
-    )) return;
-
-    setSendingSheet(true);
-    try {
-      const res = await axios.post(`${API}/api/send-to-gsheet`, {
-        sheet_name:   sheetLabel,
-        filter_month: filterMonth !== 'all' ? filterMonth : null,
-      });
-      await load();
-      setSyncToast({
-        total_new: res.data.count,
-        details: [{ account: `Google Sheet ✓ (${res.data.sheet_name})`, new: res.data.count, fetched: res.data.count }],
-      });
-    } catch (e) {
-      setError('Send failed: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setSendingSheet(false);
-    }
-  }, [availableMonths, filterMonth, sharedCount, load]);
+  // Alias for readability at the render site.
+  const unreviewedVisible = unreviewedVisibleEarly;
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="app-root">
-
-      {/* header */}
-      <header className="app-header">
-        <div className="header-inner">
-          <div className="brand">
-            <span className="brand-icon">💳</span>
-            <span>Expense Tracker</span>
-          </div>
-          <div className="header-actions">
-            <button type="button"
-                    className="btn btn-secondary"
-                    style={{ padding: '8px 12px', fontSize: 16 }}
-                    onClick={() => setIsDark((d) => !d)}
-                    aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                    title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {isDark ? '☀️' : '🌙'}
-            </button>
-
-            <button type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowAccountsModal(true)}
-                    title="Manage linked bank accounts"
-            >
-              🏦 Accounts
-            </button>
-
-            <button type="button"
-                    className="btn btn-teller"
-                    onClick={() => setShowSyncModal(true)}
-                    disabled={syncing}
-            >
-              {syncing ? <><Spin /> Syncing…</> : '⟳ Sync Banks'}
-            </button>
-          </div>
-
-          <nav className="app-nav">
-            <NavLink to="/" end className={({ isActive }) => 'nav-tab' + (isActive ? ' nav-tab--active' : '')}>
-              Transactions
-            </NavLink>
-            <NavLink to="/finances" className={({ isActive }) => 'nav-tab' + (isActive ? ' nav-tab--active' : '')}>
-              Finances
-            </NavLink>
-          </nav>
-
-        </div>
-      </header>
+      <AppHeader isDark={isDark} onToggleTheme={() => setIsDark((d) => !d)} />
 
       <Routes>
         <Route path="/finances" element={<FinancesPage />} />
         <Route path="/" element={
-          <main className="app-main">
-            {error && (
-              <div className="error-banner">
-                ⚠️ {error}
-                <button type="button" className="error-close" aria-label="Dismiss error" onClick={() => setError(null)}>✕</button>
-              </div>
-            )}
+          <div className="eh-app">
+            <TransactionsSidebar activeId={txnView} onNavigate={setTxnView} />
+            <div className="eh-main">
+              {txnView === 'current' ? (
+                <main className="tx-page-wrap">
+                  <SyncPanel
+                    onOpenAccounts={() => sync.setShowAccountsModal(true)}
+                    onOpenSync={() => sync.setShowSyncModal(true)}
+                    syncing={sync.syncing}
+                    refreshKey={sync.accountsRefreshKey}
+                  />
 
-            {/* stats */}
-            <div className="stats-bar">
-              <StatCard label="Total"      value={transactions.length} />
-              <StatCard label="Shared"     value={sharedCount}          accent="#10b981" />
-              <StatCard label="Shared $"   value={fmt$(sharedTotal)}    accent="#10b981" />
-              <StatCard label="Unreviewed" value={transactions.filter((t) => !t.reviewed).length} accent="#f59e0b" />
-            </div>
+                  {error && (
+                    <div className="tx-error-banner">
+                      <span>⚠️ {error}</span>
+                      <button
+                        type="button"
+                        className="tx-error-close"
+                        aria-label="Dismiss error"
+                        onClick={() => setError(null)}
+                      >✕</button>
+                    </div>
+                  )}
 
-            {/* import / export */}
-            <div className="txn-actions">
-              <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
-                {uploading ? <><Spin /> Uploading…</> : '📂 Upload CSV'}
-                <input type="file" accept=".csv" hidden onChange={handleCsvPicked} disabled={uploading} />
-              </label>
-              <button type="button"
-                      className="btn btn-green btn-sm"
-                      onClick={sendToSheet}
-                      disabled={sharedCount === 0 || sendingSheet}
-              >
-                {sendingSheet ? <Spin /> : '📊'} Send to Sheet{sharedCount > 0 ? ` (${sharedCount})` : ''}
-              </button>
-            </div>
+                  <ControlBar
+                    totalCount={stats.total}
+                    sharedCount={stats.shared}
+                    sharedAmt={stats.sharedAmt}
+                    unreviewedCount={stats.unreviewed}
+                    uploading={sync.uploading}
+                    sendingSheet={sync.sendingSheet}
+                    onPickCsv={sync.handleCsvPicked}
+                    onSendToSheet={sync.sendToSheet}
+                  />
 
-            {/* toolbar */}
-            <div className="toolbar">
-              <div className="filters">
-                <Select
-                  aria-label="Filter by bank"
-                  value={filterInstitution}
-                  onChange={setFilterInstitution}
-                  options={[
-                    { value: 'all', label: 'All banks' },
-                    ...availableInstitutions.map((inst) => ({ value: inst, label: inst })),
-                  ]}
-                />
-                <Select
-                  aria-label="Filter by type"
-                  value={filterShared}
-                  onChange={setFilterShared}
-                  options={[
-                    { value: 'all',      label: 'All types' },
-                    { value: 'shared',   label: 'Shared only' },
-                    { value: 'personal', label: 'Personal only' },
-                  ]}
-                />
-                <Select
-                  aria-label="Filter by month"
-                  value={filterMonth}
-                  onChange={setFilterMonth}
-                  options={[
-                    { value: 'all', label: 'All months' },
-                    ...availableMonths.map(({ key, label }) => ({ value: key, label })),
-                  ]}
-                />
-              </div>
+                  {selected.size > 0 && (
+                    <BulkBar
+                      selectedCount={selected.size}
+                      sharedSelectedAmt={sharedSelectedAmt}
+                      onMarkPersonal={() => bulkMark(false)}
+                      onMark5050={() => bulkMark(true)}
+                      onMarkReviewed={bulkMarkReviewed}
+                      onSuggest={bulkSuggest}
+                      onClear={clearSelection}
+                      suggesting={suggestingBulk}
+                    />
+                  )}
 
-              {selectedVisibleCount > 0 && (
-                <div className="bulk-bar">
-                  <span className="bulk-count">{selectedVisibleCount} selected</span>
-                  <button type="button" className="btn btn-green btn-sm" onClick={() => bulkMark(true)}>
-                    ✓ Mark shared (50/50)
-                  </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => bulkMark(false)}>
-                    Mark personal
-                  </button>
-                  <button type="button" className="btn btn-secondary btn-sm"
-                          onClick={bulkSuggest} disabled={suggestingBulk}
-                          title="Ask the local AI to suggest categories for selected uncategorized transactions">
-                    {suggestingBulk ? <><Spin /> Thinking…</> : '✨ Suggest categories'}
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={clearSelection}>
-                    Clear
-                  </button>
-                </div>
-              )}
-            </div>
+                  <FilterBar
+                    banks={availableInstitutions}
+                    months={availableMonths}
+                    bank={filterInstitution}
+                    month={filterMonth}
+                    split={filterShared}
+                    search={search}
+                    onBankChange={setFilterInstitution}
+                    onMonthChange={setFilterMonth}
+                    onSplitChange={setFilterShared}
+                    onSearchChange={setSearch}
+                    visibleCount={visible.length}
+                    totalCount={transactions.length}
+                  />
 
-            {/* table */}
-            <div className="table-wrap">
-              {loading ? (
-                <div className="empty-state"><Spin large /><br />Loading…</div>
-              ) : visible.length === 0 ? (
-                <div className="empty-state">
-                  No transactions yet.<br />
-                  <span className="empty-state-hint">
-                    Click <strong>Sync Banks</strong> to pull from Teller, or <strong>Upload CSV</strong> to import a file.
-                  </span>
-                </div>
+                  {!loading && transactions.length > 0 && unreviewedVisible.length === 0 ? (
+                    <div className="tx-empty-state">
+                      <div className="tx-empty-state-icon" aria-hidden="true">🎉</div>
+                      <div className="tx-empty-state-title">All caught up!</div>
+                      <div className="tx-empty-state-sub">
+                        Every transaction here has been reviewed.
+                        Add more via sync or CSV upload, or switch to History
+                        to revisit past transactions.
+                      </div>
+                    </div>
+                  ) : (
+                    <TransactionTable
+                      txns={unreviewedVisible}
+                      loading={loading}
+                      selected={selected}
+                      allVisibleSelected={allVisibleSelected}
+                      otherPersonName={personNames.person_2}
+                      activeExpand={activeExpand}
+                      onToggle={toggleSelect}
+                      onToggleAll={toggleAll}
+                      onSplitChange={handleSplitChange}
+                      onToggleType={handleToggleType}
+                      onOpenNote={openNote}
+                      onOpenAdj={openAdj}
+                      onOpenTransfer={openTransfer}
+                      onSaveNote={saveNote}
+                      onSaveAdj={saveAdj}
+                      onSaveTransfer={saveTransfer}
+                      onCloseExpand={closeExpand}
+                      onToggleReviewed={handleToggleReviewed}
+                      manualAccountsById={manualAccountsById}
+                      editableCategory
+                      categories={categories}
+                      onCategoryChange={handleCategoryChange}
+                      onRemoveCategory={handleRemoveCategory}
+                    />
+                  )}
+                </main>
               ) : (
-                <table className="txn-table">
-                  <thead>
-                    <tr>
-                      <th className="col-checkbox">
-                        <input
-                          type="checkbox"
-                          aria-label="Select all visible transactions"
-                          checked={allVisibleSelected}
-                          onChange={toggleAll}
-                          style={{ cursor: 'pointer' }}
-                        />
-                      </th>
-                      <th>Date</th>
-                      <th>Description</th>
-                      <th className="col-amount">Amount</th>
-                      <th>Source</th>
-                      <th>Split</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visible.map((txn) => (
-                      <TxnRow
-                        key={txn.id}
-                        txn={txn}
-                        otherPersonName={personNames.person_2}
-                        isSelected={selected.has(txn.id)}
-                        onToggle={toggleSelect}
-                        onQuickMark={quickMark}
-                        onToggleType={toggleType}
-                        onEdit={() => setEditingTxn(txn)}
-                        onNote={() => setNotingTxn(txn)}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+                <HistoryPage />
               )}
             </div>
-          </main>
+          </div>
         } />
       </Routes>
 
-      {showSyncModal     && <SyncModal onSync={syncTeller} onClose={() => setShowSyncModal(false)} />}
-      {showAccountsModal && <AccountsModal onClose={() => setShowAccountsModal(false)} />}
-      {pendingCsvFile && (
-        <UploadCsvModal
-          file={pendingCsvFile}
-          onSubmit={submitCsvUpload}
-          onClose={() => setPendingCsvFile(null)}
+      {sync.showSyncModal && (
+        <SyncModal onSync={sync.syncTeller} onClose={() => sync.setShowSyncModal(false)} />
+      )}
+      {sync.showAccountsModal && (
+        <AccountsModal
+          onClose={() => {
+            sync.setShowAccountsModal(false);
+            sync.setAccountsRefreshKey((k) => k + 1);
+          }}
         />
       )}
-      {editingTxn    && <EditModal txn={editingTxn} personNames={personNames} onSave={saveEdit} onClose={() => setEditingTxn(null)} />}
-      {notingTxn     && <NoteModal txn={notingTxn} onSave={saveNote} onClose={() => setNotingTxn(null)} />}
+      {sync.pendingCsvFile && (
+        <UploadCsvModal
+          file={sync.pendingCsvFile}
+          onSubmit={sync.submitCsvUpload}
+          onClose={() => sync.setPendingCsvFile(null)}
+        />
+      )}
       {suggestionPreview && (
         <SuggestPreviewModal
           result={suggestionPreview}
@@ -518,7 +451,7 @@ export default function App() {
           onClose={() => setSuggestionPreview(null)}
         />
       )}
-      {syncToast     && <SyncToast result={syncToast} onClose={() => setSyncToast(null)} />}
+      {sync.syncToast && <SyncToast result={sync.syncToast} onClose={() => sync.setSyncToast(null)} />}
     </div>
   );
 }

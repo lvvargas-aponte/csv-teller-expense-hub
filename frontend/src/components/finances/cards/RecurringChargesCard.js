@@ -1,6 +1,6 @@
 import React from 'react';
 import DashboardCard from './DashboardCard';
-import { fmt$ } from '../../../utils/formatting';
+import Num from '../Num';
 
 // Match a transaction description / category to an emoji + tinted background.
 // Order matters — first match wins.
@@ -38,7 +38,7 @@ function prettifyName(description = '') {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export default function RecurringChargesCard({ dashboard, loading, error }) {
+export default function RecurringChargesCard({ dashboard, loading, error, index, kicker }) {
   const charges = dashboard?.recurring_charges || [];
   const empty = !loading && !error && charges.length === 0;
   const total = charges.reduce((s, c) => s + (c.estimated_monthly_cost || 0), 0);
@@ -46,6 +46,8 @@ export default function RecurringChargesCard({ dashboard, loading, error }) {
   return (
     <DashboardCard
       title="Recurring Charges"
+      index={index}
+      kicker={kicker}
       loading={loading}
       error={error}
       empty={empty}
@@ -68,7 +70,7 @@ export default function RecurringChargesCard({ dashboard, loading, error }) {
           fontSize: 11, color: 'var(--text-muted)',
           marginTop: -4, marginBottom: 8,
         }}>
-          Monthly commitments · {fmt$(total)} total
+          Monthly commitments · <Num value={total} /> total
         </div>
       )}
       <div className="eh-recurring-grid">
@@ -86,7 +88,7 @@ export default function RecurringChargesCard({ dashboard, loading, error }) {
                 <div className="eh-recurring-detail">{detail}</div>
               </div>
               <div className="eh-recurring-amount">
-                {fmt$(c.estimated_monthly_cost)}
+                <Num value={c.estimated_monthly_cost} />
               </div>
             </div>
           );

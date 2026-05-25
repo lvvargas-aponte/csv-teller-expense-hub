@@ -52,7 +52,7 @@ export default function GoalsCard({ onHide }) {
               {g.pace_status && (
                 <div style={{ fontSize: 11, color: paceColor, marginTop: 2, textTransform: 'capitalize' }}>
                   {g.pace_status.replace('_', ' ')}
-                  {g.monthly_required != null && ` · need ${fmt$(g.monthly_required)}/mo`}
+                  {(g.monthly_required !== null && g.monthly_required !== undefined) && ` · need ${fmt$(g.monthly_required)}/mo`}
                 </div>
               )}
             </div>

@@ -4,9 +4,10 @@ const NAV_SECTIONS = [
   {
     label: 'Overview',
     items: [
-      { id: 'dashboard', icon: '📊', label: 'Dashboard' },
-      { id: 'overview',  icon: '📋', label: 'Overview' },
-      { id: 'accounts',  icon: '🏦', label: 'Accounts' },
+      { id: 'dashboard',   icon: '📊', label: 'Dashboard' },
+      { id: 'overview',    icon: '📋', label: 'Overview' },
+      { id: 'accounts',    icon: '🏦', label: 'Accounts' },
+      { id: 'investments', icon: '📈', label: 'Investments' },
     ],
   },
   {
@@ -20,7 +21,8 @@ const NAV_SECTIONS = [
   {
     label: 'Tools',
     items: [
-      { id: 'advisor', icon: '🤖', label: 'AI Advisor' },
+      { id: 'knowledge', icon: '📚', label: 'Knowledge' },
+      { id: 'advisor',   icon: '🤖', label: 'Ask Fin' },
     ],
   },
 ];
@@ -56,10 +58,10 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore }) {
         <div className="eh-health-card">
           <div className="eh-health-card-label">Financial Health</div>
           <div className="eh-health-card-score">
-            {healthScore == null ? '—' : healthScore}
+            {(healthScore === null || healthScore === undefined) ? '—' : healthScore}
           </div>
           <div className="eh-health-card-sub">
-            {healthScore == null
+            {(healthScore === null || healthScore === undefined)
               ? 'Add data to see your score'
               : healthScore >= 70 ? 'Looking strong'
               : healthScore >= 50 ? 'On track'

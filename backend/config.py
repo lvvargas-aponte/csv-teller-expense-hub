@@ -25,6 +25,11 @@ TELLER_ENVIRONMENT: str = os.getenv("TELLER_ENVIRONMENT", "development")
 TELLER_CERT_PATH: str | None = _resolve_path(os.getenv("TELLER_CERT_PATH"))
 TELLER_KEY_PATH: str | None = _resolve_path(os.getenv("TELLER_KEY_PATH"))
 
+# SnapTrade — brokerage/crypto holdings aggregation (Robinhood, M1, E-trade, ...)
+# Only two credentials per SnapTrade's docs — no sandbox/production switch.
+SNAPTRADE_CLIENT_ID: str | None = os.getenv("SNAPTRADE_CLIENT_ID")
+SNAPTRADE_CONSUMER_KEY: str | None = os.getenv("SNAPTRADE_CONSUMER_KEY")
+
 # Google Sheets
 SPREADSHEET_ID: str | None = os.getenv("SPREADSHEET_ID")
 SHEET_NAME: str | None = os.getenv("SHEET_NAME")

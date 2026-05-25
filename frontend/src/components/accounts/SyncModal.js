@@ -105,13 +105,13 @@ export default function SyncModal({ onSync, onClose }) {
 
           <div className="form-row-2">
             <div className="field-group">
-              <label className="field-label">From</label>
-              <input className="form-input" type="date" value={fromDate}
+              <label className="field-label" htmlFor="sync-from-date">From</label>
+              <input id="sync-from-date" className="form-input" type="date" value={fromDate}
                      onChange={(e) => { setFromDate(e.target.value); setPreset('custom'); }} />
             </div>
             <div className="field-group">
-              <label className="field-label">To</label>
-              <input className="form-input" type="date" value={toDate}
+              <label className="field-label" htmlFor="sync-to-date">To</label>
+              <input id="sync-to-date" className="form-input" type="date" value={toDate}
                      onChange={(e) => { setToDate(e.target.value); setPreset('custom'); }} />
             </div>
           </div>

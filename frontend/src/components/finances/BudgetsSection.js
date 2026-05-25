@@ -62,22 +62,22 @@ export default function BudgetsSection() {
         <div className="manual-acct-form">
           <div className="form-row-2">
             <div className="field-group">
-              <label className="field-label">Category</label>
-              <input className="form-input" type="text" placeholder="e.g. Dining"
+              <label className="field-label" htmlFor="budget-category">Category</label>
+              <input id="budget-category" className="form-input" type="text" placeholder="e.g. Dining"
                      value={draft.category}
                      onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))} />
             </div>
             <div className="field-group">
-              <label className="field-label">Monthly Limit ($)</label>
-              <input className="form-input" type="number" min="0" step="0.01" placeholder="0.00"
+              <label className="field-label" htmlFor="budget-monthly-limit">Monthly Limit ($)</label>
+              <input id="budget-monthly-limit" className="form-input" type="number" min="0" step="0.01" placeholder="0.00"
                      value={draft.monthly_limit}
                      onChange={(e) => setDraft((d) => ({ ...d, monthly_limit: e.target.value }))} />
             </div>
           </div>
           <div className="form-row-2">
             <div className="field-group" style={{ gridColumn: '1 / -1' }}>
-              <label className="field-label">Notes (optional)</label>
-              <input className="form-input" type="text"
+              <label className="field-label" htmlFor="budget-notes">Notes (optional)</label>
+              <input id="budget-notes" className="form-input" type="text"
                      value={draft.notes}
                      onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} />
             </div>

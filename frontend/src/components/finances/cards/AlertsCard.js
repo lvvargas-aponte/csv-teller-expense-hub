@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import DashboardCard from './DashboardCard';
 import { getAlerts } from '../../../api/dashboard';
+import { BlurMoney } from '../Num';
 
 const SEVERITY = {
   error: { color: '#ef4444', icon: '!' },
@@ -8,7 +9,7 @@ const SEVERITY = {
   info:  { color: '#059669', icon: 'i' },
 };
 
-export default function AlertsCard({ onHide }) {
+export default function AlertsCard({ onHide, index, kicker }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -25,6 +26,8 @@ export default function AlertsCard({ onHide }) {
   return (
     <DashboardCard
       title="Alerts & Insights"
+      index={index}
+      kicker={kicker}
       loading={loading}
       error={error}
       empty={empty}
@@ -42,12 +45,12 @@ export default function AlertsCard({ onHide }) {
                 gap: 8,
                 padding: '6px 8px',
                 borderLeft: `3px solid ${sev.color}`,
-                background: 'rgba(255,255,255,0.02)',
+                background: 'var(--bg-secondary)',
                 fontSize: 13,
               }}
             >
               <span style={{ color: sev.color, fontWeight: 700 }}>{sev.icon}</span>
-              <span>{a.message}</span>
+              <span><BlurMoney text={a.message} /></span>
             </div>
           );
         })}

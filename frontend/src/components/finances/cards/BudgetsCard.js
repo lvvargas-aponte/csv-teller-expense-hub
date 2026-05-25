@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import DashboardCard from './DashboardCard';
-import { fmt$ } from '../../../utils/formatting';
+import Num from '../Num';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
-export default function BudgetsCard({ onHide }) {
+export default function BudgetsCard({ onHide, index, kicker }) {
   const [budgets, setBudgets] = useState(null);
   const [error, setError] = useState(null);
 
@@ -21,6 +21,8 @@ export default function BudgetsCard({ onHide }) {
   return (
     <DashboardCard
       title="Budgets"
+      index={index}
+      kicker={kicker}
       loading={loading}
       error={error}
       empty={empty}
@@ -36,7 +38,7 @@ export default function BudgetsCard({ onHide }) {
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontWeight: 500 }}>{b.category}</span>
                 <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                  {fmt$(b.current_month_spent)} / {fmt$(b.monthly_limit)}
+                  <Num value={b.current_month_spent} /> / <Num value={b.monthly_limit} />
                 </span>
               </div>
               <div style={{ height: 6, background: 'var(--border, #334155)', borderRadius: 3, marginTop: 3 }}>

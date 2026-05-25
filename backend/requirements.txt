@@ -4,10 +4,19 @@ pydantic==2.5.0
 httpx==0.25.2
 python-dotenv==1.0.0
 python-multipart==0.0.6
-cryptography==41.0.7
+cryptography==43.0.3
 gspread==5.12.0
 google-auth==2.23.4
 watchdog==3.0.0
+# Document ingestion (Knowledge tab) — PDF text extraction.  Pure-Python so
+# no system deps; OCR for scanned PDFs is intentionally out of scope.
+pypdf==5.1.0
+# HTML extraction for the URL-import path (allowlisted public docs only).
+# Lightweight BeautifulSoup vs trafilatura tradeoff is in the plan file.
+beautifulsoup4==4.12.3
+
+# SnapTrade — brokerage/crypto holdings aggregation. Wrapped by backend/snaptrade.py.
+snaptrade-python-sdk==11.0.197
 
 # Database
 sqlalchemy[asyncio]==2.0.36
@@ -22,3 +31,7 @@ greenlet==3.1.1
 # Dev / testing
 pytest==8.1.1
 pytest-asyncio==0.23.6
+
+# Docs site — `mkdocs build` populates `site/` which the backend serves at /help.
+mkdocs==1.6.1
+mkdocs-material==9.5.49

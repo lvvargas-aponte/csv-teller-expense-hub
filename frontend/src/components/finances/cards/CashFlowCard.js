@@ -4,21 +4,24 @@ import {
 } from 'recharts';
 import DashboardCard from './DashboardCard';
 import { fmt$ } from '../../../utils/formatting';
+import Num from '../Num';
 
 const AXIS = { fontSize: 11, fill: 'var(--text-faint, #9ca3af)' };
 
-export default function CashFlowCard({ dashboard, loading, error, onHide }) {
+export default function CashFlowCard({ dashboard, loading, error, onHide, index, kicker }) {
   const totals = dashboard?.monthly_totals || [];
   const empty = !loading && !error && totals.length === 0;
 
   const latest = totals[totals.length - 1]?.total ?? 0;
   const prev = totals[totals.length - 2]?.total ?? null;
-  const delta = prev != null ? latest - prev : null;
+  const delta = (prev !== null && prev !== undefined) ? latest - prev : null;
   const high = latest >= 12000;
 
   return (
     <DashboardCard
       title="Monthly Spending"
+      index={index}
+      kicker={kicker}
       loading={loading}
       error={error}
       empty={empty}
@@ -40,10 +43,10 @@ export default function CashFlowCard({ dashboard, loading, error, onHide }) {
         <div>
           <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>This month</div>
           <div style={{ fontSize: 19, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>
-            {fmt$(latest)}
+            <Num value={latest} />
           </div>
         </div>
-        {delta != null && (
+        {(delta !== null && delta !== undefined) && (
           <div>
             <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>vs. last</div>
             <div style={{
@@ -51,7 +54,7 @@ export default function CashFlowCard({ dashboard, loading, error, onHide }) {
               color: delta <= 0 ? '#059669' : '#ef4444',
               fontFamily: "'DM Mono', monospace",
             }}>
-              {delta >= 0 ? '+' : '-'}{fmt$(delta)}
+              <Num value={delta} prefix={delta >= 0 ? '+' : '-'} />
             </div>
           </div>
         )}

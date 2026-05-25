@@ -6,13 +6,16 @@ import { formatAccountType } from '../../utils/formatting';
 import { Z_BACKDROP_PANEL } from '../../utils/zIndex';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
+const PURGE_CONFIRM_WORD = 'delete';
 
 export default function AccountsModal({ onClose }) {
   const [accounts,      setAccounts]      = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState(null);
-  const [confirming,    setConfirming]    = useState(null);  // account id pending confirm
-  const [deleting,      setDeleting]      = useState(null);  // account id being deleted
+  const [confirming,    setConfirming]    = useState(null);  // account id pending disconnect confirm
+  const [purging,       setPurging]       = useState(null);  // account being permanently deleted: { id, label }
+  const [purgeText,     setPurgeText]     = useState('');    // what the user has typed so far
+  const [deleting,      setDeleting]      = useState(null);  // account id whose DELETE call is in flight
   const [connecting,    setConnecting]    = useState(false);
   const [reconnecting,  setReconnecting]  = useState(null);  // account id being re-authenticated
   const [connectStatus, setConnectStatus] = useState(null);  // { type: 'success'|'error', message }
@@ -37,6 +40,11 @@ export default function AccountsModal({ onClose }) {
   }, []);
 
   const handleDisconnect = async (acctId) => {
+    // Default disconnect: revokes the Teller token but keeps the local
+    // record so transactions, last-known balance, and APR/limit details stay
+    // around — a later reconnect of the same account picks them right back
+    // up. The Linked Accounts list (this modal) only shows Teller-connected
+    // rows, so the row disappears here after the call succeeds.
     setDeleting(acctId);
     setConfirming(null);
     try {
@@ -44,6 +52,22 @@ export default function AccountsModal({ onClose }) {
       setAccounts((prev) => prev.filter((a) => a.id !== acctId));
     } catch (e) {
       setError('Could not disconnect account: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const handlePurge = async () => {
+    if (!purging || purgeText.trim().toLowerCase() !== PURGE_CONFIRM_WORD) return;
+    const acctId = purging.id;
+    setDeleting(acctId);
+    try {
+      await axios.delete(`${API}/api/accounts/${acctId}`, { params: { purge: true } });
+      setAccounts((prev) => prev.filter((a) => a.id !== acctId));
+      setPurging(null);
+      setPurgeText('');
+    } catch (e) {
+      setError('Could not delete account: ' + (e.response?.data?.detail || e.message));
     } finally {
       setDeleting(null);
     }
@@ -216,7 +240,7 @@ export default function AccountsModal({ onClose }) {
                     </>
                   ) : isConfirming ? (
                     <>
-                      <span className="account-row-confirm-label">Disconnect?</span>
+                      <span className="account-row-confirm-label">Disconnect? Local data stays.</span>
                       <button type="button" className="btn btn-sm"
                               style={{ background: '#ef4444', color: '#fff' }}
                               onClick={() => handleDisconnect(acct.id)}>
@@ -228,11 +252,23 @@ export default function AccountsModal({ onClose }) {
                       </button>
                     </>
                   ) : (
-                    <button type="button" className="btn btn-secondary btn-sm"
-                            disabled={isDeleting}
-                            onClick={() => setConfirming(acct.id)}>
-                      {isDeleting ? <Spin /> : '🗑️'} Disconnect
-                    </button>
+                    <>
+                      <button type="button" className="btn btn-secondary btn-sm"
+                              disabled={isDeleting}
+                              onClick={() => setConfirming(acct.id)}>
+                        {isDeleting ? <Spin /> : '🗑️'} Disconnect
+                      </button>
+                      <button type="button" className="btn btn-sm"
+                              style={{ background: 'transparent', color: '#f87171', border: '1px solid #f87171' }}
+                              disabled={isDeleting}
+                              title="Permanently delete this account and all its local data"
+                              onClick={() => {
+                                setPurging({ id: acct.id, label: `${institution} · ${acct.name}` });
+                                setPurgeText('');
+                              }}>
+                        Delete permanently
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -285,6 +321,87 @@ export default function AccountsModal({ onClose }) {
           <button type="button" className="btn btn-secondary" onClick={onClose}>Close</button>
         </div>
       </div>
+
+      {purging && (() => {
+        const matches = purgeText.trim().toLowerCase() === PURGE_CONFIRM_WORD;
+        const isBusy  = deleting === purging.id;
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm permanent account deletion"
+            style={{
+              position: 'fixed', inset: 0, zIndex: Z_BACKDROP_PANEL + 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.55)',
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isBusy) {
+                setPurging(null);
+                setPurgeText('');
+              }
+            }}
+          >
+            <div className="modal modal--sm" style={{ maxWidth: 460 }}>
+              <div className="modal-header">
+                <div className="modal-header-text">
+                  <div className="modal-title">Delete account permanently?</div>
+                  <div className="modal-sub">{purging.label}</div>
+                </div>
+              </div>
+              <div className="modal-body" style={{ fontSize: 14, lineHeight: 1.5 }}>
+                <p style={{ marginTop: 0 }}>
+                  This will remove the account everywhere — its balance, snapshots,
+                  and APR / credit-limit details. Linked transactions stay but lose
+                  their account reference.
+                </p>
+                <p>
+                  To confirm, type <code style={{ background: '#1f2937', padding: '1px 6px', borderRadius: 4 }}>{PURGE_CONFIRM_WORD}</code> below.
+                </p>
+                <label htmlFor="purge-confirm" className="sr-only">Type delete to confirm</label>
+                <input
+                  id="purge-confirm"
+                  type="text"
+                  autoFocus
+                  value={purgeText}
+                  onChange={(e) => setPurgeText(e.target.value)}
+                  placeholder={PURGE_CONFIRM_WORD}
+                  disabled={isBusy}
+                  style={{
+                    width: '100%', padding: '8px 10px', marginTop: 4,
+                    background: '#0f172a', color: '#e5e7eb',
+                    border: '1px solid #334155', borderRadius: 6, fontSize: 14,
+                  }}
+                />
+              </div>
+              <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={isBusy}
+                  onClick={() => { setPurging(null); setPurgeText(''); }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  style={{
+                    background: matches ? '#ef4444' : '#7f1d1d',
+                    color: '#fff',
+                    opacity: matches ? 1 : 0.6,
+                    cursor: matches && !isBusy ? 'pointer' : 'not-allowed',
+                  }}
+                  disabled={!matches || isBusy}
+                  onClick={handlePurge}
+                >
+                  {isBusy ? <><Spin /> Deleting…</> : 'Delete forever'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </Backdrop>
   );
 }

@@ -12,6 +12,34 @@ class TestListAccounts:
         assert r.status_code == 200
         assert r.json() == []
 
+    def test_error_row_inherits_institution_from_cache(self, client, monkeypatch):
+        """Broken-token error placeholders should pick up the bank name from
+        the balances cache (an Amex card we saw last sync but can't reach now
+        should show "American Express", not "—")."""
+        monkeypatch.setattr(state, "TELLER_ACCESS_TOKENS", ["tok_dead"])
+        monkeypatch.setitem(
+            state._balances_cache, "teller_accounts",
+            [{"id": "acc_amex_1", "institution": {"name": "American Express"},
+              "type": "credit", "ledger": -123.45}],
+        )
+
+        error_row = {
+            "id": "_error_abc", "name": "Unknown account", "type": "", "subtype": "",
+            "institution": {"name": "—"}, "balance": {},
+            "_connection_error": True, "_error_status": 401, "_enrollment_id": None,
+        }
+        with patch.object(
+            state.teller, "list_accounts",
+            new=AsyncMock(return_value=[error_row]),
+        ):
+            r = client.get("/api/accounts")
+
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body) == 1
+        assert body[0]["institution"]["name"] == "American Express"
+        assert body[0]["_connection_error"] is True
+
 
 class TestGetTransactionsPersists:
     """Regression test for the bug where clicking an account to view its
@@ -142,6 +170,136 @@ class TestBatchAccountDetails:
         r = client.get(self._batch).json()
         assert r["acc_with_details"]["apr"] == 20.0
         assert r[blank["id"]] is None
+
+
+class TestDisconnectKeepsLocal:
+    """Default DELETE /accounts/{id} disconnects at Teller but keeps the local
+    record so transactions, balance, and APR/limit details survive. A
+    subsequent reconnect (same account id back from Teller) drops the manual
+    shadow and the row goes back to being teller-sourced.
+    """
+
+    _acct_id = "acc_keep_me"
+
+    def _seed_teller_cache(self) -> None:
+        """Put one Teller account in the cache, as if a refresh had just run."""
+        state._balances_cache_store.data["teller_accounts"] = [{
+            "id": self._acct_id,
+            "institution": "Chase",
+            "name": "Sapphire Reserve",
+            "type": "credit",
+            "subtype": "credit_card",
+            "available": 0.0,
+            "ledger": 1234.56,
+        }]
+        state._balances_cache_store.data["teller_cash"] = 0.0
+        state._balances_cache_store.data["teller_credit_debt"] = 1234.56
+        state._balances_cache_store.save()
+
+    def test_default_disconnect_preserves_account_and_details(self, client, monkeypatch):
+        monkeypatch.setattr(state, "TELLER_ACCESS_TOKENS", ["tok"])
+        self._seed_teller_cache()
+        client.put(
+            f"/api/accounts/{self._acct_id}/details",
+            json={"apr": 21.99, "credit_limit": 5000.0, "due_day": 12},
+        )
+
+        with patch.object(state.teller, "delete_account", new=AsyncMock(return_value=True)):
+            r = client.delete(f"/api/accounts/{self._acct_id}")
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body == {"deleted": self._acct_id, "purged": False}
+
+        # No longer in the teller cache, but lives on as a manual shadow.
+        assert all(
+            a.get("id") != self._acct_id
+            for a in state._balances_cache.get("teller_accounts", [])
+        )
+        shadow = state._manual_accounts.get(self._acct_id)
+        assert shadow is not None
+        assert shadow["disconnected_from"] == "teller"
+        assert shadow["institution"] == "Chase"
+        assert shadow["name"] == "Sapphire Reserve"
+        assert shadow["ledger"] == 1234.56
+
+        # Side-car details survive (the user can keep using APR/limit/due-day).
+        assert self._acct_id in state.account_details
+        assert state.account_details[self._acct_id]["apr"] == 21.99
+
+        # Balances summary still shows the account, flagged as disconnected.
+        summary = client.get("/api/balances/summary").json()
+        rows = [a for a in summary["accounts"] if a["id"] == self._acct_id]
+        assert len(rows) == 1
+        assert rows[0]["manual"] is True
+        assert rows[0]["disconnected_from"] == "teller"
+
+    def test_purge_query_removes_everything(self, client, monkeypatch):
+        monkeypatch.setattr(state, "TELLER_ACCESS_TOKENS", ["tok"])
+        self._seed_teller_cache()
+        client.put(f"/api/accounts/{self._acct_id}/details", json={"apr": 19.0})
+
+        with patch.object(state.teller, "delete_account", new=AsyncMock(return_value=True)):
+            r = client.delete(f"/api/accounts/{self._acct_id}?purge=true")
+
+        assert r.status_code == 200
+        assert r.json() == {"deleted": self._acct_id, "purged": True}
+        assert self._acct_id not in state._manual_accounts
+        assert all(
+            a.get("id") != self._acct_id
+            for a in state._balances_cache.get("teller_accounts", [])
+        )
+        assert self._acct_id not in state.account_details
+
+    def test_purge_works_on_existing_manual_shadow(self, client, monkeypatch):
+        """After a disconnect, a follow-up purge?=true must still wipe the
+        shadow even though there's no longer a live Teller token to revoke."""
+        monkeypatch.setattr(state, "TELLER_ACCESS_TOKENS", ["tok"])
+        self._seed_teller_cache()
+        with patch.object(state.teller, "delete_account", new=AsyncMock(return_value=True)):
+            client.delete(f"/api/accounts/{self._acct_id}")
+        assert self._acct_id in state._manual_accounts
+
+        monkeypatch.setattr(state, "TELLER_ACCESS_TOKENS", [])
+        r = client.delete(f"/api/accounts/{self._acct_id}?purge=true")
+        assert r.status_code == 200
+        assert self._acct_id not in state._manual_accounts
+
+    def test_reconnect_drops_manual_shadow(self, client, monkeypatch):
+        """When persist_teller_balances sees the disconnected id come back from
+        Teller, it must clear the manual shadow so the row is teller-sourced
+        again. account_details should stay.
+        """
+        from routers.balances import persist_teller_balances
+
+        monkeypatch.setattr(state, "TELLER_ACCESS_TOKENS", ["tok"])
+        self._seed_teller_cache()
+        client.put(f"/api/accounts/{self._acct_id}/details", json={"apr": 21.99})
+        with patch.object(state.teller, "delete_account", new=AsyncMock(return_value=True)):
+            client.delete(f"/api/accounts/{self._acct_id}")
+        assert self._acct_id in state._manual_accounts
+
+        async def _run():
+            fresh_acct = {
+                "id": self._acct_id,
+                "institution": {"name": "Chase"},
+                "name": "Sapphire Reserve",
+                "type": "credit",
+                "subtype": "credit_card",
+                "balance": {"available": "0.00", "ledger": "1500.00"},
+            }
+            await persist_teller_balances([("tok", [fresh_acct])])
+
+        import asyncio
+        asyncio.run(_run())
+
+        assert self._acct_id not in state._manual_accounts
+        assert any(
+            a.get("id") == self._acct_id
+            for a in state._balances_cache.get("teller_accounts", [])
+        )
+        # Details preserved across the disconnect/reconnect cycle.
+        assert state.account_details[self._acct_id]["apr"] == 21.99
 
 
 class TestErrorRowDelete:

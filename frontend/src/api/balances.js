@@ -21,8 +21,12 @@ export const deleteManualAccount = (id) =>
 export const getTellerAccounts = () =>
   axios.get(`${API}/api/accounts`);
 
-export const deleteTellerAccount = (id) =>
-  axios.delete(`${API}/api/accounts/${id}`);
+// Default: disconnects at Teller but preserves the local record (balance,
+// linked transactions, APR/limit) so a later reconnect picks back up where
+// it left off. Pass { purge: true } to also wipe the local record — the UI
+// gates that path behind a "type delete to confirm" prompt.
+export const deleteTellerAccount = (id, { purge = false } = {}) =>
+  axios.delete(`${API}/api/accounts/${id}`, { params: { purge } });
 
 export const registerTellerToken = (data) =>
   axios.post(`${API}/api/teller/register-token`, data);

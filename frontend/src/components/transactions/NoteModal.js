@@ -18,8 +18,9 @@ export default function NoteModal({ txn, onSave, onClose }) {
 
         <div className="modal-body">
           <div className="field-group">
-            <label className="field-label">Notes</label>
+            <label className="field-label" htmlFor="note-modal-textarea">Notes</label>
             <textarea
+              id="note-modal-textarea"
               className="form-input form-input--textarea"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}

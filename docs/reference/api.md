@@ -1,0 +1,122 @@
+# API endpoints
+
+> Source: `backend/routers/*.py`, `backend/main.py`
+
+All endpoints are mounted under `/api`. The static help site lives at `/help/`. Health check at `/health`.
+
+## Transactions
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/transactions/all` | Full review queue |
+| `PUT` | `/api/transactions/{id}` | Update a single transaction |
+| `PUT` | `/api/transactions/bulk` | Bulk apply share/category/notes |
+| `POST` | `/api/upload-csv` | Multipart CSV upload |
+| `POST` | `/api/suggest-categories/bulk` | AI category suggestions for selected rows |
+
+## Accounts & balances
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/accounts` | All linked + manual accounts |
+| `GET` | `/api/accounts/{id}/transactions` | Transactions for one account |
+| `DELETE` | `/api/accounts/{id}` | Disconnect / remove |
+| `PUT` | `/api/accounts/{id}/details` | APR / limit / statement metadata |
+| `GET` | `/api/accounts/credit-health` | Per-card utilization rollup |
+| `GET` | `/api/balances/summary` | Net-worth rollup |
+| `POST` | `/api/balances/manual` | Add a manual balance |
+| `PUT` | `/api/balances/manual/{id}` | Update a manual balance |
+| `DELETE` | `/api/balances/manual/{id}` | Remove a manual balance |
+
+## Teller
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/config/teller` | App ID + environment for the Connect popup |
+| `POST` | `/api/teller/register-token` | Store new enrollment token |
+| `POST` | `/api/teller/replace-token` | Reconnect an enrollment |
+| `POST` | `/api/teller/sync` | Pull transactions for date range + account list |
+
+## SnapTrade (investments sync)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/config/snaptrade` | Whether SnapTrade is configured + whether the household is connected |
+| `POST` | `/api/snaptrade/register` | Register the household SnapTrade user (idempotent) |
+| `POST` | `/api/snaptrade/connect` | Return a SnapTrade connection-portal URL for a new brokerage link |
+| `POST` | `/api/snaptrade/sync` | Pull every connected account's holdings + total value |
+| `GET` | `/api/snaptrade/connections` | List connected brokerages |
+| `DELETE` | `/api/snaptrade/connections/{id}` | Disconnect one brokerage |
+
+## Investments (read-only)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/investments/holdings` | All holdings grouped by account |
+| `GET` | `/api/investments/portfolio` | Totals, unrealized gain, allocation, concentration, by-account breakdown |
+
+## Sheets
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/send-to-gsheet` | Export shared transactions |
+| `GET` | `/api/gsheet/verify` | Smoke-test sheet connectivity |
+| `GET` | `/api/config/person-names` | Configured person names |
+
+## Advisor
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/advisor/chat` | Send a message; get reply |
+| `GET` | `/api/advisor/conversations` | List past conversations |
+| `DELETE` | `/api/advisor/conversations/{id}` | Delete a conversation |
+
+## Insights & dashboard
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/insights/spending-summary` | Category breakdown + AI summary |
+| `GET` | `/api/insights/forecast` | Next-month forecast |
+| `GET` | `/api/dashboard` | Dashboard rollups |
+| `GET` | `/api/dashboard/income-vs-expenses` | Trend |
+| `GET` | `/api/dashboard/layout` / `PUT` / `DELETE` | Card layout persistence |
+| `GET` | `/api/alerts` | Budget / unusual-spend alerts |
+| `GET` | `/api/bills/upcoming` | Recurring charges + due dates |
+
+## Budgets & goals
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/budgets` | List with current-month spend |
+| `PUT` | `/api/budgets/{category}` | Upsert |
+| `DELETE` | `/api/budgets/{category}` | Remove |
+| `GET` | `/api/goals` | List |
+| `POST` | `/api/goals` | Create |
+| `PUT` | `/api/goals/{id}` | Update |
+| `DELETE` | `/api/goals/{id}` | Remove |
+
+## Tools (debt payoff)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/tools/payoff-plan` | Avalanche / snowball calculator |
+| `POST` | `/api/tools/payoff-advice` | AI narrative on the plan |
+
+## Documents (RAG)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/documents` | File upload |
+| `POST` | `/api/documents/from-url` | Fetch + extract from URL |
+| `GET` | `/api/documents` | List |
+| `POST` | `/api/documents/{id}/reembed` | Retry embedding |
+| `DELETE` | `/api/documents/{id}` | Remove |
+
+## Misc
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/profile` / `PUT` | User settings |
+| `GET` | `/api/seeds` / `POST` / `DELETE /{id}` | Category seed data |
+| `GET` | `/health` | Liveness probe |
+| `GET` | `/` | Root sanity check |

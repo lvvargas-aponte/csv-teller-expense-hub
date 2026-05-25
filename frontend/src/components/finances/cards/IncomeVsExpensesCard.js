@@ -5,10 +5,11 @@ import {
 import DashboardCard from './DashboardCard';
 import { getIncomeVsExpenses } from '../../../api/dashboard';
 import { fmt$ } from '../../../utils/formatting';
+import Num from '../Num';
 
 const AXIS = { fontSize: 11, fill: 'var(--text-secondary, #94a3b8)' };
 
-export default function IncomeVsExpensesCard({ months = 6, onHide }) {
+export default function IncomeVsExpensesCard({ months = 6, onHide, index, kicker }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -27,6 +28,8 @@ export default function IncomeVsExpensesCard({ months = 6, onHide }) {
   return (
     <DashboardCard
       title="Income vs. Expenses"
+      index={index}
+      kicker={kicker}
       loading={loading}
       error={error}
       empty={empty}
@@ -37,11 +40,11 @@ export default function IncomeVsExpensesCard({ months = 6, onHide }) {
         <div style={{ display: 'flex', gap: 16, marginBottom: 8, fontSize: 13 }}>
           <div>
             <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>Income</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#059669' }}>{fmt$(latest.income)}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#059669' }}><Num value={latest.income} /></div>
           </div>
           <div>
             <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>Expenses</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#ef4444' }}>{fmt$(latest.expenses)}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#ef4444' }}><Num value={latest.expenses} /></div>
           </div>
           <div>
             <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>Net</div>
@@ -49,7 +52,7 @@ export default function IncomeVsExpensesCard({ months = 6, onHide }) {
               fontSize: 16, fontWeight: 700,
               color: latest.net >= 0 ? '#10b981' : '#f87171',
             }}>
-              {latest.net >= 0 ? '+' : '-'}{fmt$(latest.net)}
+              <Num value={latest.net} prefix={latest.net >= 0 ? '+' : '-'} />
             </div>
           </div>
         </div>

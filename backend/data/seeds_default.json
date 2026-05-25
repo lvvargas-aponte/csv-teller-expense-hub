@@ -1,0 +1,196 @@
+{
+  "groups": [
+    {
+      "label": "Government & regulators",
+      "hint": "Authoritative for tax law, retirement accounts, and consumer rules.",
+      "seeds": [
+        {
+          "default_id": "d:irs-pub-17",
+          "title": "IRS Pub 17 — Your Federal Income Tax",
+          "url": "https://www.irs.gov/pub/irs-pdf/p17.pdf",
+          "scope": "external",
+          "category": "tax",
+          "why": "Standard deductions, brackets, filing rules."
+        },
+        {
+          "default_id": "d:irs-pub-590a",
+          "title": "IRS Pub 590-A — Contributions to IRAs",
+          "url": "https://www.irs.gov/pub/irs-pdf/p590a.pdf",
+          "scope": "external",
+          "category": "investing",
+          "why": "IRA contribution limits and eligibility."
+        },
+        {
+          "default_id": "d:irs-pub-590b",
+          "title": "IRS Pub 590-B — Distributions from IRAs",
+          "url": "https://www.irs.gov/pub/irs-pdf/p590b.pdf",
+          "scope": "external",
+          "category": "investing",
+          "why": "RMDs, early-withdrawal penalties, Roth conversion mechanics."
+        },
+        {
+          "default_id": "d:irs-pub-936",
+          "title": "IRS Pub 936 — Home Mortgage Interest Deduction",
+          "url": "https://www.irs.gov/pub/irs-pdf/p936.pdf",
+          "scope": "external",
+          "category": "tax",
+          "why": "When mortgage interest is deductible."
+        },
+        {
+          "default_id": "d:irs-pub-560",
+          "title": "IRS Pub 560 — Retirement Plans for Small Business",
+          "url": "https://www.irs.gov/pub/irs-pdf/p560.pdf",
+          "scope": "external",
+          "category": "investing",
+          "why": "Solo 401(k) and SEP-IRA rules for self-employed FIRE-seekers."
+        },
+        {
+          "default_id": "d:sec-saving-investing",
+          "title": "SEC investor.gov — Saving and Investing for Students (PDF)",
+          "url": "https://www.investor.gov/sites/investorgov/files/2019-02/Saving-and-Investing.pdf",
+          "scope": "external",
+          "category": "investing",
+          "why": "Risk, diversification, and account-type fundamentals."
+        },
+        {
+          "default_id": "d:ssa-when-to-start",
+          "title": "SSA — When to Start Receiving Retirement Benefits (PDF)",
+          "url": "https://www.ssa.gov/pubs/EN-05-10147.pdf",
+          "scope": "external",
+          "category": "investing",
+          "why": "Effect of early/delayed claiming on Social Security benefits."
+        },
+        {
+          "default_id": "d:ssa-understanding-benefits",
+          "title": "SSA — Understanding the Benefits (PDF)",
+          "url": "https://www.ssa.gov/pubs/EN-05-10024.pdf",
+          "scope": "external",
+          "category": "investing",
+          "why": "Eligibility, work credits, and benefit calculations."
+        },
+        {
+          "default_id": "d:treasurydirect-ibonds",
+          "title": "TreasuryDirect — Series I Savings Bonds",
+          "url": "https://www.treasurydirect.gov/savings-bonds/i-bonds/",
+          "scope": "external",
+          "category": "investing",
+          "why": "I-bond rules, purchase limits, inflation indexing."
+        },
+        {
+          "default_id": "d:cfpb-credit-score",
+          "title": "CFPB — How credit scores work",
+          "url": "https://www.consumerfinance.gov/ask-cfpb/what-is-a-credit-score-en-315/",
+          "scope": "external",
+          "category": "credit",
+          "why": "Utilization thresholds the advisor reasons against."
+        },
+        {
+          "default_id": "d:cfpb-apr",
+          "title": "CFPB — Paying off credit card debt",
+          "url": "https://www.consumerfinance.gov/ask-cfpb/what-is-the-difference-between-a-fixed-apr-and-a-variable-apr-en-46/",
+          "scope": "external",
+          "category": "credit",
+          "why": "APR mechanics and payoff order."
+        }
+      ]
+    },
+    {
+      "label": "Established education",
+      "hint": "Vetted, long-running community resources with consistent quality.",
+      "note": "Bogleheads is behind Cloudflare bot protection that blocks our fetcher.  Click each link to open the wiki page, then use your browser's print dialog (Ctrl+P) to save as PDF and upload it via the file uploader above.",
+      "seeds": [
+        {
+          "default_id": "d:bogleheads-three-fund",
+          "title": "Bogleheads — Three-fund portfolio",
+          "url": "https://www.bogleheads.org/wiki/Three-fund_portfolio",
+          "scope": "external",
+          "category": "investing",
+          "why": "Long-term passive allocation framework.",
+          "manual_only": true
+        },
+        {
+          "default_id": "d:bogleheads-swr",
+          "title": "Bogleheads — Safe withdrawal rates",
+          "url": "https://www.bogleheads.org/wiki/Safe_withdrawal_rates",
+          "scope": "external",
+          "category": "investing",
+          "why": "The 4% rule, sequence-of-returns risk, FIRE foundations.",
+          "manual_only": true
+        },
+        {
+          "default_id": "d:bogleheads-tax-placement",
+          "title": "Bogleheads — Tax-efficient fund placement",
+          "url": "https://www.bogleheads.org/wiki/Tax-efficient_fund_placement",
+          "scope": "external",
+          "category": "investing",
+          "why": "Which assets belong in taxable vs Roth vs traditional.",
+          "manual_only": true
+        },
+        {
+          "default_id": "d:bogleheads-asset-allocation",
+          "title": "Bogleheads — Asset allocation",
+          "url": "https://www.bogleheads.org/wiki/Asset_allocation",
+          "scope": "external",
+          "category": "investing",
+          "why": "Stock/bond split frameworks by age and risk tolerance.",
+          "manual_only": true
+        },
+        {
+          "default_id": "d:bogleheads-emergency-fund",
+          "title": "Bogleheads — Emergency fund",
+          "url": "https://www.bogleheads.org/wiki/Emergency_fund",
+          "scope": "external",
+          "category": "literacy",
+          "why": "Sizing the cash buffer the advisor expects you to maintain.",
+          "manual_only": true
+        }
+      ]
+    },
+    {
+      "label": "FIRE community",
+      "hint": "Opinionated but widely cited — the advisor will name the source when it leans on these.",
+      "seeds": [
+        {
+          "default_id": "d:mmm-shocking-math",
+          "title": "Mr Money Mustache — Shockingly Simple Math Behind Early Retirement",
+          "url": "https://www.mrmoneymustache.com/2012/01/13/the-shockingly-simple-math-behind-early-retirement/",
+          "scope": "external",
+          "category": "investing",
+          "why": "Savings-rate-to-years-to-FI table; the canonical FIRE post."
+        },
+        {
+          "default_id": "d:mmm-4pct-rule",
+          "title": "Mr Money Mustache — The 4% Rule: How Much Do I Need?",
+          "url": "https://www.mrmoneymustache.com/2012/05/29/how-much-do-i-need-for-retirement/",
+          "scope": "external",
+          "category": "investing",
+          "why": "Plain-English derivation of 25x annual spending."
+        },
+        {
+          "default_id": "d:madfientist-roth-ladder",
+          "title": "Mad Fientist — The Roth IRA Conversion Ladder",
+          "url": "https://www.madfientist.com/how-to-access-retirement-funds-early/",
+          "scope": "external",
+          "category": "investing",
+          "why": "Tax-optimized way to access 401(k) before 59.5."
+        },
+        {
+          "default_id": "d:madfientist-hsa",
+          "title": "Mad Fientist — Tax-Free Compounding via HSA",
+          "url": "https://www.madfientist.com/ultimate-retirement-account/",
+          "scope": "external",
+          "category": "investing",
+          "why": "Why the HSA is a triple-tax-advantaged retirement vehicle."
+        },
+        {
+          "default_id": "d:ern-swr-part-1",
+          "title": "Early Retirement Now — Safe Withdrawal Rate Series, Part 1",
+          "url": "https://earlyretirementnow.com/2016/12/07/the-ultimate-guide-to-safe-withdrawal-rates-part-1-intro/",
+          "scope": "external",
+          "category": "investing",
+          "why": "Big ERN's data-driven critique of the 4% rule."
+        }
+      ]
+    }
+  ]
+}

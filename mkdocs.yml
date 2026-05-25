@@ -1,0 +1,101 @@
+site_name: Personal Finance Hub — Help
+site_description: User and developer knowledge base for the Personal Finance Hub with AI Virtual Financial Advisor.
+site_url: http://localhost:8000/help/
+docs_dir: docs
+site_dir: site
+use_directory_urls: true
+
+# Legacy quick-start lives in docs/ for git-history continuity but isn't part of
+# the help nav — getting-started/install.md supersedes it.
+not_in_nav: |
+  QUICK_START.md
+
+exclude_docs: |
+  requirements.txt
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Install & Run: getting-started/install.md
+      - Ollama (AI features): getting-started/ollama.md
+      - Teller (bank sync): getting-started/teller.md
+      - SnapTrade (investments): getting-started/snaptrade.md
+      - Google Sheets: getting-started/google-sheets.md
+      - Environment variables: getting-started/env-vars.md
+  - Tabs & Pages:
+      - Transactions: tabs/transactions.md
+      - Finances → Dashboard: tabs/finances-dashboard.md
+      - Finances → Overview: tabs/finances-overview.md
+      - Finances → Accounts: tabs/finances-accounts.md
+      - Finances → Investments: tabs/finances-investments.md
+      - Finances → Budgets: tabs/finances-budgets.md
+      - Finances → Goals: tabs/finances-goals.md
+      - Finances → Bills: tabs/finances-bills.md
+      - Finances → Knowledge: tabs/finances-knowledge.md
+      - Finances → AI Advisor: tabs/finances-advisor.md
+  - Modals:
+      - Upload CSV: modals/upload-csv.md
+      - Sync Bank: modals/sync-bank.md
+      - Linked Accounts: modals/accounts-modal.md
+      - Add Account: modals/add-account.md
+      - Edit Transaction: modals/edit-transaction.md
+      - Note: modals/note.md
+      - Suggest Categories: modals/suggest-preview.md
+  - Concepts:
+      - CSV ingest: concepts/csv-ingest.md
+      - Bank sync: concepts/bank-sync.md
+      - Splits & shared expenses: concepts/splits.md
+      - AI advisor: concepts/advisor.md
+      - Embeddings & RAG: concepts/embeddings.md
+      - Budgets & goals: concepts/budgets-and-goals.md
+      - Data model: concepts/data-model.md
+  - Reference:
+      - API endpoints: reference/api.md
+      - Troubleshooting: reference/troubleshooting.md

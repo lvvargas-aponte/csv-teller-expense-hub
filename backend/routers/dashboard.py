@@ -66,15 +66,14 @@ async def income_vs_expenses(months: int = 6) -> Dict[str, Any]:
         txn_type = txn.get("transaction_type")
         source = txn.get("source", "")
 
-        is_expense = (
-            txn_type == "debit"
-            or (source == "discover" and txn_type == "credit" and amount > 0)
-            or (txn_type is None and amount > 0)
-        )
-        if is_expense:
+        if analytics._is_expense(txn):
             expense_by_month[month_key] = expense_by_month.get(month_key, 0.0) + amount
             continue
 
+        # Income side: positive credits on a non-credit account, excluding
+        # tagged internal transfers and Discover's inverted-sign credits.
+        if txn.get("transfer_to_account_id"):
+            continue
         if txn_type == "credit" and source != "discover" and amount > 0:
             acct_type = (txn.get("account_type") or "").lower()
             if "credit" in acct_type:

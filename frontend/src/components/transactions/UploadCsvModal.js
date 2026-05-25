@@ -3,6 +3,7 @@ import Backdrop from '../ui/Backdrop';
 import Field from '../ui/Field';
 import Spin from '../ui/Spin';
 import { getBalancesSummary } from '../../api/balances';
+import { userMessage } from '../../utils/errorMessage';
 import { Z_BACKDROP_DIALOG } from '../../utils/zIndex';
 
 const TODAY = () => new Date().toISOString().slice(0, 10);
@@ -64,7 +65,7 @@ export default function UploadCsvModal({ file, onSubmit, onClose }) {
     try {
       await onSubmit(fd);
     } catch (e2) {
-      setErr(e2.response?.data?.detail || e2.message || 'Upload failed');
+      setErr(userMessage(e2, 'Upload failed'));
       setUploading(false);
     }
   };
@@ -85,11 +86,11 @@ export default function UploadCsvModal({ file, onSubmit, onClose }) {
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
             <div className="field-group">
-              <label className="field-label">Attach to an account</label>
+              <label className="field-label" htmlFor="upload-csv-target">Attach to an account</label>
               {loadingAccounts ? (
                 <div style={{ padding: '6px 0' }}><Spin /> Loading accounts…</div>
               ) : (
-                <select className="form-input"
+                <select id="upload-csv-target" className="form-input"
                         value={target}
                         onChange={(e) => setTarget(e.target.value)}>
                   <option value="skip">Skip — import transactions only</option>

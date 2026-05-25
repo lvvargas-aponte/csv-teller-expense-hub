@@ -51,17 +51,9 @@ def group_debit_spending() -> Dict[str, Dict[str, float]]:
     """
     spending: Dict[str, Dict[str, float]] = {}
     for txn in state.stored_transactions.values():
-        txn_type = txn.get("transaction_type")
-        amount = float(txn.get("amount", 0))
-        source = txn.get("source", "")
-
-        is_expense = (
-            txn_type == "debit"
-            or (source == "discover" and txn_type == "credit" and amount > 0)
-            or (txn_type is None and amount > 0)
-        )
-        if not is_expense:
+        if not _is_expense(txn):
             continue
+        amount = float(txn.get("amount", 0))
 
         date_str = txn.get("date", "")
         month_key = _parse_month_key(date_str) if date_str else ""
@@ -135,6 +127,81 @@ def _classify_account_bucket(acct_type: str, subtype: str) -> str:
     return "other"
 
 
+def summarize_holdings(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Aggregate a flat list of holdings into a portfolio summary.
+
+    Single source of truth for both ``GET /investments/portfolio`` and the
+    advisor's ``investments`` snapshot block. Each input holding is the dict
+    shape ``accounts_repo.get_holdings()`` returns. Output: per-holding rows
+    enriched with ``cost_basis`` / ``unrealized_gain`` / ``gain_pct`` plus
+    portfolio totals, allocation by asset type, and concentration ranking.
+    """
+    enriched: List[Dict[str, Any]] = []
+    total_value = 0.0
+    total_cost = 0.0
+    for h in holdings:
+        mv = h.get("market_value")
+        qty = float(h.get("quantity") or 0.0)
+        avg = h.get("average_purchase_price")
+        cost = round(qty * float(avg), 2) if avg is not None else None
+        gain = round(mv - cost, 2) if (mv is not None and cost is not None) else None
+        gain_pct = (
+            round((gain / cost) * 100, 2)
+            if (gain is not None and cost not in (None, 0))
+            else None
+        )
+        if mv is not None:
+            total_value += mv
+        if cost is not None:
+            total_cost += cost
+        enriched.append(
+            {**h, "cost_basis": cost, "unrealized_gain": gain, "gain_pct": gain_pct}
+        )
+
+    total_value = round(total_value, 2)
+    total_cost = round(total_cost, 2)
+    total_gain = round(total_value - total_cost, 2)
+    total_gain_pct = round((total_gain / total_cost) * 100, 2) if total_cost else None
+
+    by_type: Dict[str, float] = {}
+    for h in enriched:
+        mv = float(h.get("market_value") or 0.0)
+        by_type[h["asset_type"]] = round(by_type.get(h["asset_type"], 0.0) + mv, 2)
+    allocation = [
+        {
+            "asset_type": k,
+            "value": v,
+            "pct": round(v / total_value * 100, 1) if total_value else 0.0,
+        }
+        for k, v in sorted(by_type.items(), key=lambda kv: kv[1], reverse=True)
+    ]
+
+    ranked = sorted(
+        enriched, key=lambda h: float(h.get("market_value") or 0.0), reverse=True
+    )
+    concentration = [
+        {
+            "symbol": h["symbol"],
+            "value": float(h.get("market_value") or 0.0),
+            "pct": round(float(h.get("market_value") or 0.0) / total_value * 100, 1)
+            if total_value
+            else 0.0,
+        }
+        for h in ranked[:5]
+    ]
+
+    return {
+        "total_value": total_value,
+        "total_cost": total_cost,
+        "total_gain": total_gain,
+        "total_gain_pct": total_gain_pct,
+        "holding_count": len(enriched),
+        "allocation": allocation,
+        "concentration": concentration,
+        "holdings": enriched,
+    }
+
+
 def _balances_snapshot() -> Dict[str, Any]:
     """Read cached Teller balances + live manual accounts without calling Teller.
 
@@ -142,10 +209,12 @@ def _balances_snapshot() -> Dict[str, Any]:
     ``_classify_account_bucket`` so investment / retirement accounts surface
     as their own bucket — the pre-summed ``teller_cash`` / ``teller_credit_debt``
     scalars in the cache only cover depository + credit and would otherwise
-    silently drop investment value from net worth.
+    silently drop investment value from net worth. SnapTrade-synced investment
+    accounts live under their own ``snaptrade_accounts`` cache key.
     """
     cache = state._balances_cache or {}
     teller_accounts = cache.get("teller_accounts", []) or []
+    snaptrade_accounts = cache.get("snaptrade_accounts", []) or []
 
     manual_accounts: List[Dict[str, Any]] = []
     for acct in state._manual_accounts.values():
@@ -163,7 +232,7 @@ def _balances_snapshot() -> Dict[str, Any]:
     total_cash = 0.0
     total_credit = 0.0
     total_investments = 0.0
-    for acct in list(teller_accounts) + manual_accounts:
+    for acct in list(teller_accounts) + list(snaptrade_accounts) + manual_accounts:
         bucket = _classify_account_bucket(acct.get("type", ""), acct.get("subtype", ""))
         if bucket == "cash":
             total_cash += float(acct.get("available", 0.0) or 0.0)
@@ -184,6 +253,7 @@ def _balances_snapshot() -> Dict[str, Any]:
         "total_credit_debt": round(total_credit, 2),
         "total_investments": round(total_investments, 2),
         "teller_accounts": teller_accounts,
+        "snaptrade_accounts": snaptrade_accounts,
         "manual_accounts": manual_accounts,
         "cache_fetched_at": cache.get("fetched_at"),
     }
@@ -400,19 +470,91 @@ def compute_goal_statuses() -> List[Dict[str, Any]]:
 # Recurring / subscription detection
 # ---------------------------------------------------------------------------
 
-# Strip transaction-noise tokens that vary between charges of the same merchant
-# (transaction ids, location codes, dates embedded in descriptions, "*REF12345").
+# Strip transaction-noise tokens that vary between charges of the same merchant.
+# Digits + ``#`` + ``*`` always go; the second pass below tackles structured
+# tails (WEB ID:, ACH/PMT tokens, state codes) and processor prefixes
+# (SQ *, TST*, PP*) so the same merchant collapses to one key across months.
 _NOISE_RE = re.compile(r"[\d#*]+")
-_WHITESPACE_RE = re.compile(r"\s+")
+_WHITESPACE_RE = re.compile(r"[\s\-_/]+")
+_PROCESSOR_PREFIX_RE = re.compile(
+    r"^(sq\s*\*|tst\s*\*|pp\s*\*|paypal\s*\*|amzn\s+mktp\s+us\*?)\s*",
+    re.IGNORECASE,
+)
+_ACH_TAIL_RE = re.compile(
+    r"\b(web\s*id|ach|pmt|payment|epayment|xfer|pos|recur|aut(?:o|opay)?|mob|olb|mtgpmt|mortg)\b[:\s]*",
+    re.IGNORECASE,
+)
+_STATE_CODE_TAIL_RE = re.compile(r"\s+[a-z]{2}\s*$", re.IGNORECASE)
+
+# Amount-spread tolerance for grouping: utilities/phone/insurance routinely
+# vary 30-50% month to month; 0.60 keeps them in while still rejecting genuinely
+# noisy categories like gas stations (where the spread is typically > 1.0).
+_RECURRING_AMOUNT_SPREAD = 0.60
+
+# Categories that move money between household pockets rather than out of it.
+# Match is case-insensitive against the trimmed category. Kept in lowercase
+# so callers can compare via ``.strip().lower()``.
+_NON_SPENDING_CATEGORIES = frozenset({
+    "cc payment",
+    "credit card payment",
+    "payments and credits",
+    "zelle out",
+    "transfer",
+    "transfers",
+})
 
 
 def _normalize_merchant(description: str) -> str:
-    """Collapse description into a stable merchant key (lowercase, no digits)."""
+    """Collapse description into a stable merchant key.
+
+    Pipeline:
+      1. Lowercase.
+      2. Drop processor prefixes (``SQ *``, ``TST*``, ``AMZN MKTP US``).
+      3. Strip ACH/wire tail tokens (``WEB ID:``, ``ACH``, ``PMT``…).
+      4. Replace remaining digits / ``#`` / ``*`` with spaces.
+      5. Drop a trailing 2-letter state code (``... Doral FL`` → ``... doral``).
+      6. Collapse whitespace, trim to 40 chars.
+    """
     if not description:
         return ""
-    cleaned = _NOISE_RE.sub(" ", description.lower())
+    cleaned = description.lower()
+    cleaned = _PROCESSOR_PREFIX_RE.sub("", cleaned)
+    cleaned = _ACH_TAIL_RE.sub(" ", cleaned)
+    cleaned = _NOISE_RE.sub(" ", cleaned)
     cleaned = _WHITESPACE_RE.sub(" ", cleaned).strip()
+    cleaned = _STATE_CODE_TAIL_RE.sub("", cleaned).strip()
     return cleaned[:40]
+
+
+def _is_expense(txn: Dict[str, Any]) -> bool:
+    """True when ``txn`` represents money leaving the household.
+
+    Shared by ``group_debit_spending``, ``detect_recurring_charges``, and the
+    dashboard income/expense rollup so all three agree on what counts as
+    spending. Filters:
+      * tagged transfers to a manual account drop out (see ``transfer_to_account_id``)
+      * known non-spending categories drop out (CC payments, Zelle out, etc.)
+      * Discover credits with positive amount stay in (their sign convention is inverted)
+      * other debits / null-typed positive amounts stay in
+    """
+    if txn.get("transfer_to_account_id"):
+        return False
+    category = (txn.get("category") or "").strip().lower()
+    if category in _NON_SPENDING_CATEGORIES:
+        return False
+
+    txn_type = txn.get("transaction_type")
+    try:
+        amount = float(txn.get("amount", 0))
+    except (TypeError, ValueError):
+        return False
+    source = txn.get("source", "")
+
+    return (
+        txn_type == "debit"
+        or (source == "discover" and txn_type == "credit" and amount > 0)
+        or (txn_type is None and amount > 0)
+    )
 
 
 def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
@@ -420,21 +562,16 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
 
     Heuristic: group debit transactions by normalized merchant; keep groups
     that appear in at least ``min_occurrences`` distinct months with amounts
-    within 25% of each other.  Returns one entry per detected subscription
-    with ``estimated_monthly_cost`` so the advisor can flag total spend.
+    within ``_RECURRING_AMOUNT_SPREAD`` of each other.  Returns one entry per
+    detected subscription with ``estimated_monthly_cost`` so the advisor can
+    flag total spend.
     """
     groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for txn in state.stored_transactions.values():
-        txn_type = txn.get("transaction_type")
+        if not _is_expense(txn):
+            continue
         amount = float(txn.get("amount", 0))
-        source = txn.get("source", "")
-
-        is_expense = (
-            txn_type == "debit"
-            or (source == "discover" and txn_type == "credit" and amount > 0)
-            or (txn_type is None and amount > 0)
-        )
-        if not is_expense or amount <= 0:
+        if amount <= 0:
             continue
 
         date_str = txn.get("date", "")
@@ -461,9 +598,8 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
         avg = sum(amounts) / len(amounts)
         if avg <= 0:
             continue
-        # Reject highly variable groups — true subscriptions are tightly priced.
         spread = (max(amounts) - min(amounts)) / avg
-        if spread > 0.25:
+        if spread > _RECURRING_AMOUNT_SPREAD:
             continue
 
         last_seen = max(i["date"] for i in items)
@@ -957,11 +1093,53 @@ def _load_user_profile() -> Optional[Dict[str, Any]]:
     return out or None
 
 
+def _investments_snapshot() -> Optional[Dict[str, Any]]:
+    """Per-holding investment detail for the advisor.
+
+    Returns None when the household has no synced holdings so Fin's context
+    stays lean. The ``holdings`` list is capped and account-level value
+    history is omitted — net-worth trend already covers value over time.
+    """
+    from db.accounts_repo import get_repo
+
+    holdings = get_repo().get_holdings()
+    if not holdings:
+        return None
+    summary = summarize_holdings(holdings)
+    top = [
+        {
+            "symbol": h["symbol"],
+            "account": h.get("account_name", ""),
+            "asset_type": h["asset_type"],
+            "quantity": round(float(h.get("quantity") or 0.0), 6),
+            "market_value": h.get("market_value"),
+            "cost_basis": h.get("cost_basis"),
+            "unrealized_gain": h.get("unrealized_gain"),
+            "gain_pct": h.get("gain_pct"),
+        }
+        for h in summary["holdings"][:30]
+    ]
+    largest_pct = summary["concentration"][0]["pct"] if summary["concentration"] else 0.0
+    return {
+        "total_value": summary["total_value"],
+        "total_cost": summary["total_cost"],
+        "total_gain": summary["total_gain"],
+        "total_gain_pct": summary["total_gain_pct"],
+        "holding_count": summary["holding_count"],
+        "allocation": summary["allocation"],
+        "concentration": summary["concentration"],
+        "largest_position_pct": largest_pct,
+        "concentrated": largest_pct >= 25.0,
+        "holdings": top,
+    }
+
+
 def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
     """Return a compact dict describing the household's financial state.
 
-    Used as the advisor's grounding context.  Everything is read from memory
-    (no Teller / GSheet calls) so this is safe to call on every chat turn.
+    Used as the advisor's grounding context.  Everything is read from the DB
+    / in-memory stores (no Teller / SnapTrade / GSheet calls) so this is safe
+    to call on every chat turn.
     """
     spending_by_month = group_debit_spending()
     recent = sorted(spending_by_month.keys())[-months:]
@@ -977,6 +1155,7 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
     balance_trend = compute_balance_trend()
     income = compute_income_estimate()
     user_profile = _load_user_profile()
+    investments = _investments_snapshot()
 
     snapshot: Dict[str, Any] = {
         "balances": {
@@ -990,6 +1169,7 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
         "income": income,
         "accounts": {
             "teller": balances["teller_accounts"],
+            "snaptrade": balances["snaptrade_accounts"],
             "manual": balances["manual_accounts"],
         },
         "debts": debts,
@@ -1003,4 +1183,6 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
     }
     if user_profile:
         snapshot["user_profile"] = user_profile
+    if investments:
+        snapshot["investments"] = investments
     return snapshot

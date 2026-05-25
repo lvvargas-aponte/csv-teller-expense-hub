@@ -15,8 +15,10 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
@@ -150,6 +152,29 @@ class AccountDetails(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 
+class Holding(Base):
+    __tablename__ = "holdings"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    account_id: Mapped[str] = mapped_column(
+        String, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    symbol: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
+    # stock | etf | crypto | option | cash | other
+    asset_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    quantity: Mapped[float] = mapped_column(Numeric(28, 10), nullable=False)
+    average_purchase_price: Mapped[Optional[float]] = mapped_column(Numeric(20, 8))
+    last_price: Mapped[Optional[float]] = mapped_column(Numeric(20, 8))
+    market_value: Mapped[Optional[float]] = mapped_column(Numeric(16, 2))
+    currency: Mapped[str] = mapped_column(String(10), server_default="USD", nullable=False)
+    synced_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_holdings_account_id", "account_id"),)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
@@ -238,4 +263,93 @@ class TransactionEmbedding(Base):
     content_hash: Mapped[str] = mapped_column(String(40), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class AdvisorStyleProfile(Base):
+    __tablename__ = "advisor_style_profile"
+
+    # Single-row table — id is always 'household' until multi-tenant lands.
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    style_notes: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
+    turn_count_at_last_update: Mapped[int] = mapped_column(
+        Integer, server_default="0", nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class AdvisorTurnFeedback(Base):
+    __tablename__ = "advisor_turn_feedback"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    turn_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("conversation_turns.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    note: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("turn_id", name="uq_advisor_turn_feedback_turn"),
+    )
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    scope: Mapped[str] = mapped_column(String(20), nullable=False)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    doc_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default="{}", nullable=False
+    )
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), server_default="pending", nullable=False)
+    error: Mapped[Optional[str]] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_documents_scope_category", "scope", "category"),
+        Index("ix_documents_content_hash", "content_hash"),
+    )
+
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(768), nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    dim: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_document_chunks_doc_chunk",
+            "document_id",
+            "chunk_index",
+            unique=True,
+        ),
     )

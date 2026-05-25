@@ -216,6 +216,16 @@ async def bulk_update_transactions(update: BulkTransactionUpdate):
     updated = []
     not_found = []
 
+    transfer_target: Optional[str] = None
+    if update.transfer_to_account_id is not None:
+        target = update.transfer_to_account_id.strip()
+        if target and target not in state._manual_accounts:
+            raise HTTPException(
+                status_code=422,
+                detail=f"transfer_to_account_id '{target}' is not a manual account",
+            )
+        transfer_target = target or ""  # "" sentinel = clear
+
     for tid in update.transaction_ids:
         if tid not in state.stored_transactions:
             not_found.append(tid)
@@ -240,6 +250,9 @@ async def bulk_update_transactions(update: BulkTransactionUpdate):
 
         if update.category is not None:
             t["category"] = update.category
+
+        if transfer_target is not None:
+            t["transfer_to_account_id"] = transfer_target or None
 
         state.stored_transactions[tid] = t
         updated.append(t)
@@ -306,6 +319,88 @@ async def bulk_suggest_categories(req: BulkSuggestRequest):
     }
 
 
+@router.put("/transactions/bulk/reviewed")
+async def bulk_set_reviewed(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Flip the ``reviewed`` flag on many transactions at once.
+
+    Touches only ``reviewed`` — leaves is_shared, owed amounts, category, etc.
+    untouched. Used by the Current-view "Mark reviewed" bulk action and by
+    the per-row ✓ toggle, which both treat reviewed as an independent
+    triage state.
+    """
+    ids = payload.get("transaction_ids") or []
+    if not isinstance(ids, list):
+        raise HTTPException(status_code=422, detail="transaction_ids must be a list.")
+    reviewed = bool(payload.get("reviewed", True))
+
+    updated: List[Dict[str, Any]] = []
+    not_found: List[str] = []
+    for tid in ids:
+        if tid not in state.stored_transactions:
+            not_found.append(tid)
+            continue
+        t = state.stored_transactions[tid]
+        t["reviewed"] = reviewed
+        state.stored_transactions[tid] = t
+        updated.append(t)
+
+    if updated:
+        state._transactions_store.save()
+    return {"updated": len(updated), "not_found": not_found}
+
+
+@router.get("/categories")
+async def list_categories() -> Dict[str, List[str]]:
+    """Return all known categories: union of distinct transaction categories,
+    budget categories, and categorizer defaults. Case-insensitive dedup,
+    sorted alphabetically.
+    """
+    from categorizer import known_categories
+
+    seen_lower: Dict[str, str] = {}
+    for txn in state.stored_transactions.values():
+        name = (txn.get("category") or "").strip()
+        if name and name.lower() not in seen_lower:
+            seen_lower[name.lower()] = name
+    for name in known_categories():
+        key = (name or "").strip()
+        if key and key.lower() not in seen_lower:
+            seen_lower[key.lower()] = key
+    return {"categories": sorted(seen_lower.values(), key=str.lower)}
+
+
+@router.delete("/categories/{name}")
+async def delete_category(name: str) -> Dict[str, Any]:
+    """Remove a category from circulation by clearing it on every transaction
+    that uses it (case-insensitive). Leaves Budget rows alone — the caller
+    can decide whether to also delete the budget.
+    """
+    target = (name or "").strip().lower()
+    if not target:
+        raise HTTPException(status_code=422, detail="Category name is required.")
+
+    cleared = 0
+    for tid, txn in list(state.stored_transactions.items()):
+        current = (txn.get("category") or "").strip().lower()
+        if current == target:
+            txn["category"] = None
+            state.stored_transactions[tid] = txn
+            cleared += 1
+
+    if cleared:
+        state._transactions_store.save()
+
+    budget_exists = bool(state.budgets) and any(
+        (k or "").strip().lower() == target for k in state.budgets.keys()
+    )
+
+    return {
+        "removed": name,
+        "cleared_txn_count": cleared,
+        "budget_exists": budget_exists,
+    }
+
+
 # Static-path PUT defined BEFORE the catch-all PUT below so FastAPI's
 # in-order matching doesn't route /transactions/categories into
 # /transactions/{transaction_id}.
@@ -355,6 +450,15 @@ async def update_transaction(transaction_id: str, update: TransactionUpdate):
 
     if update.transaction_type is not None:
         transaction["transaction_type"] = update.transaction_type
+
+    if update.transfer_to_account_id is not None:
+        target = update.transfer_to_account_id.strip()
+        if target and target not in state._manual_accounts:
+            raise HTTPException(
+                status_code=422,
+                detail=f"transfer_to_account_id '{target}' is not a manual account",
+            )
+        transaction["transfer_to_account_id"] = target or None
 
     state.stored_transactions[transaction_id] = transaction
     state._transactions_store.save()

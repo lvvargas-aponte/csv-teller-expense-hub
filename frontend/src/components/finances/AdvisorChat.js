@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import Spin from '../ui/Spin';
 import {
   sendMessage,
   listConversations,
   getConversation,
   deleteConversation,
+  submitFeedback,
+  getStyleProfile,
+  refreshStyleProfile,
 } from '../../api/advisor';
 
 const EXAMPLES = [
@@ -23,6 +27,11 @@ export default function AdvisorChat() {
   const [loadingConv,   setLoadingConv]   = useState(false);
   const [error,         setError]         = useState(null);
   const [aiUnavailable, setAiUnavailable] = useState(false);
+  // Per-message thumbs state, keyed by turn_id. -1 / +1 once rated.
+  const [ratings, setRatings] = useState({});
+  const [styleProfile, setStyleProfile] = useState(null);
+  const [styleOpen, setStyleOpen] = useState(false);
+  const [styleRefreshing, setStyleRefreshing] = useState(false);
   const scrollRef = useRef(null);
 
   const loadList = useCallback(async () => {
@@ -80,9 +89,15 @@ export default function AdvisorChat() {
       if (!activeId) setActiveId(conversation_id);
 
       if (ai_available && reply) {
+        const { turn_id } = r.data;
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: reply, ts: new Date().toISOString() },
+          {
+            role: 'assistant',
+            content: reply,
+            ts: new Date().toISOString(),
+            turn_id,
+          },
         ]);
       } else {
         setAiUnavailable(true);
@@ -112,6 +127,43 @@ export default function AdvisorChat() {
       handleSend();
     }
   };
+
+  const handleRate = useCallback(async (turnId, rating) => {
+    if (!turnId) return;
+    setRatings((prev) => ({ ...prev, [turnId]: rating }));   // optimistic
+    try {
+      await submitFeedback(turnId, rating);
+    } catch {
+      setRatings((prev) => {
+        const next = { ...prev };
+        delete next[turnId];
+        return next;
+      });
+    }
+  }, []);
+
+  const loadStyleProfile = useCallback(async () => {
+    try {
+      const r = await getStyleProfile();
+      setStyleProfile(r.data);
+    } catch {
+      /* silent */
+    }
+  }, []);
+
+  useEffect(() => { loadStyleProfile(); }, [loadStyleProfile]);
+
+  const handleRefreshStyle = useCallback(async () => {
+    setStyleRefreshing(true);
+    try {
+      const r = await refreshStyleProfile();
+      setStyleProfile(r.data);
+    } catch {
+      /* silent */
+    } finally {
+      setStyleRefreshing(false);
+    }
+  }, []);
 
   return (
     <div className="advisor-chat">
@@ -155,9 +207,9 @@ export default function AdvisorChat() {
           )}
           {!loadingConv && messages.length === 0 && (
             <div className="advisor-empty">
-              <div className="advisor-empty-title">Ask your finance advisor anything</div>
+              <div className="advisor-empty-title">Ask Fin anything</div>
               <div className="advisor-empty-hint">
-                The advisor sees your transactions, balances, and shared splits.
+                Fin sees your transactions, balances, and shared splits.
                 Try one of these:
               </div>
               <div className="advisor-empty-examples">
@@ -170,12 +222,53 @@ export default function AdvisorChat() {
               </div>
             </div>
           )}
-          {messages.map((m, i) => (
-            <div key={i} className={`advisor-msg advisor-msg--${m.role}`}>
-              <div className="advisor-msg-role">{m.role === 'user' ? 'You' : 'Advisor'}</div>
-              <div className="advisor-msg-content">{m.content}</div>
-            </div>
-          ))}
+          {messages.map((m, i) => {
+            const rated = m.turn_id ? ratings[m.turn_id] : null;
+            return (
+              <div key={i} className={`advisor-msg advisor-msg--${m.role}`}>
+                <div className="advisor-msg-role">{m.role === 'user' ? 'You' : 'Fin'}</div>
+                <div className="advisor-msg-content">
+                  {m.role === 'assistant'
+                    ? <ReactMarkdown>{m.content}</ReactMarkdown>
+                    : m.content}
+                </div>
+                {m.role === 'assistant' && m.turn_id && (
+                  <div className="advisor-msg-feedback" style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      aria-label="Helpful reply"
+                      onClick={() => handleRate(m.turn_id, 1)}
+                      className="advisor-thumb"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: 14,
+                        opacity: rated === 1 ? 1 : 0.5,
+                      }}
+                    >
+                      👍
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Unhelpful reply"
+                      onClick={() => handleRate(m.turn_id, -1)}
+                      className="advisor-thumb"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: 14,
+                        opacity: rated === -1 ? 1 : 0.5,
+                      }}
+                    >
+                      👎
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {sending && (
             <div className="advisor-msg advisor-msg--assistant">
               <div className="advisor-msg-role">Advisor</div>
@@ -192,6 +285,46 @@ export default function AdvisorChat() {
             </div>
           )}
           {error && <div style={{ color: '#f87171', fontSize: 13 }}>{error}</div>}
+        </div>
+
+        <div className="advisor-style-panel" style={{ borderTop: '1px solid var(--border)', padding: '8px 12px' }}>
+          <button
+            type="button"
+            onClick={() => setStyleOpen((v) => !v)}
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontSize: 12, color: 'var(--text-muted)', padding: 0,
+            }}
+          >
+            {styleOpen ? '▼' : '▶'} Fin's read on you
+            {styleProfile?.updated_at && (
+              <span style={{ marginLeft: 8, opacity: 0.6 }}>
+                · updated {new Date(styleProfile.updated_at).toLocaleString()}
+              </span>
+            )}
+          </button>
+          {styleOpen && (
+            <div style={{ marginTop: 6 }}>
+              <pre style={{
+                whiteSpace: 'pre-wrap', fontSize: 12,
+                background: 'var(--bg-subtle, transparent)',
+                padding: 8, borderRadius: 6, margin: 0,
+              }}>
+                {styleProfile?.style_notes
+                  ? styleProfile.style_notes
+                  : '(no profile yet — chat a bit, then refresh)'}
+              </pre>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={handleRefreshStyle}
+                disabled={styleRefreshing}
+                style={{ marginTop: 6 }}
+              >
+                {styleRefreshing ? <Spin /> : 'Refresh'}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="advisor-input-row">

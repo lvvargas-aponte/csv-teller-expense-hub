@@ -13,7 +13,7 @@ const PALETTE = [
 const TOP_N = 8;
 const AXIS = { fontSize: 11, fill: 'var(--text-secondary, #94a3b8)' };
 
-export default function SpendingByCategoryCard({ dashboard, loading, error, onHide }) {
+export default function SpendingByCategoryCard({ dashboard, loading, error, onHide, index, kicker }) {
   const { rows, keys } = useMemo(() => {
     const months = dashboard?.months || [];
     const spendingByMonth = dashboard?.spending_by_month || {};
@@ -45,6 +45,8 @@ export default function SpendingByCategoryCard({ dashboard, loading, error, onHi
   return (
     <DashboardCard
       title="Spending by Category"
+      index={index}
+      kicker={kicker}
       loading={loading}
       error={error}
       empty={empty}

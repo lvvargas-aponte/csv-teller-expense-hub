@@ -15,9 +15,11 @@ from db.base import sync_engine
 
 
 class AccountsRepo(Protocol):
-    """Public surface — the four operations every backing store implements."""
+    """Public surface — the operations every backing store implements."""
 
-    def upsert_teller_account(self, account: Dict[str, Any]) -> None: ...
+    def upsert_teller_account(
+        self, account: Dict[str, Any], source: str = "teller"
+    ) -> None: ...
 
     def upsert_manual_account(
         self,
@@ -45,6 +47,14 @@ class AccountsRepo(Protocol):
 
     def get_snapshots_since(self, days: int) -> List[Dict[str, Any]]: ...
 
+    def replace_holdings(
+        self, account_id: str, holdings: List[Dict[str, Any]]
+    ) -> None: ...
+
+    def get_holdings(self) -> List[Dict[str, Any]]: ...
+
+    def get_holdings_for_account(self, account_id: str) -> List[Dict[str, Any]]: ...
+
 
 def _enrollment_id(account: Dict[str, Any]) -> Optional[str]:
     enrollment = account.get("enrollment")
@@ -62,12 +72,16 @@ class PgAccountsRepo:
     dashboards chart from.
     """
 
-    def upsert_teller_account(self, account: Dict[str, Any]) -> None:
-        """Insert or update one row in ``accounts`` for a Teller account dict.
+    def upsert_teller_account(
+        self, account: Dict[str, Any], source: str = "teller"
+    ) -> None:
+        """Insert or update one ``accounts`` row for a synced (non-manual) account.
 
         The dict is shaped the way Teller's ``GET /accounts`` response delivers
         it: ``id``, ``name``, ``type``, ``subtype``, nested ``institution.name``
-        and optional nested ``enrollment.id``.
+        and optional nested ``enrollment.id``. The SnapTrade sync builds the
+        same shape and passes ``source='snaptrade'`` — both flavors set
+        ``manual=false`` because the balance is refreshed by sync, not typed.
         """
         institution = (account.get("institution") or {}).get("name", "") or ""
         with sync_engine.begin() as conn:
@@ -76,9 +90,10 @@ class PgAccountsRepo:
                     "INSERT INTO accounts ("
                     "  id, source, institution, name, type, subtype, manual, token_enrollment_id"
                     ") VALUES ("
-                    "  :id, 'teller', :institution, :name, :type, :subtype, false, :enrollment"
+                    "  :id, :source, :institution, :name, :type, :subtype, false, :enrollment"
                     ") "
                     "ON CONFLICT (id) DO UPDATE SET "
+                    "  source = EXCLUDED.source, "
                     "  institution = EXCLUDED.institution, "
                     "  name = EXCLUDED.name, "
                     "  type = EXCLUDED.type, "
@@ -88,6 +103,7 @@ class PgAccountsRepo:
                 ),
                 {
                     "id": account["id"],
+                    "source": source,
                     "institution": institution,
                     "name": account.get("name", "") or "",
                     "type": account.get("type", "") or "",
@@ -245,6 +261,90 @@ class PgAccountsRepo:
             }
             for r in rows
         ]
+
+    # ── holdings (investment positions) ──────────────────────────────────────
+
+    def replace_holdings(
+        self, account_id: str, holdings: List[Dict[str, Any]]
+    ) -> None:
+        """Replace an account's holdings with the current position set.
+
+        SnapTrade hands back the full current snapshot every sync, so the
+        whole account is wiped and re-inserted in one transaction — a position
+        the user fully sold simply disappears.
+        """
+        with sync_engine.begin() as conn:
+            conn.execute(
+                text("DELETE FROM holdings WHERE account_id = :aid"),
+                {"aid": account_id},
+            )
+            if not holdings:
+                return
+            conn.execute(
+                text(
+                    "INSERT INTO holdings ("
+                    "  account_id, symbol, description, asset_type, quantity, "
+                    "  average_purchase_price, last_price, market_value, currency"
+                    ") VALUES ("
+                    "  :account_id, :symbol, :description, :asset_type, :quantity, "
+                    "  :average_purchase_price, :last_price, :market_value, :currency"
+                    ")"
+                ),
+                [
+                    {
+                        "account_id": account_id,
+                        "symbol": h["symbol"],
+                        "description": h.get("description", "") or "",
+                        "asset_type": h.get("asset_type", "other") or "other",
+                        "quantity": h.get("quantity", 0) or 0,
+                        "average_purchase_price": h.get("average_purchase_price"),
+                        "last_price": h.get("last_price"),
+                        "market_value": h.get("market_value"),
+                        "currency": h.get("currency", "USD") or "USD",
+                    }
+                    for h in holdings
+                ],
+            )
+
+    _HOLDINGS_SELECT = (
+        "SELECT h.account_id, h.symbol, h.description, h.asset_type, "
+        "       h.quantity, h.average_purchase_price, h.last_price, "
+        "       h.market_value, h.currency, a.name, a.institution "
+        "FROM holdings h "
+        "LEFT JOIN accounts a ON a.id = h.account_id"
+    )
+    _HOLDINGS_ORDER = " ORDER BY h.market_value DESC NULLS LAST"
+
+    @staticmethod
+    def _row_to_holding(r: Any) -> Dict[str, Any]:
+        return {
+            "account_id": r[0],
+            "symbol": r[1],
+            "description": r[2] or "",
+            "asset_type": r[3],
+            "quantity": float(r[4]) if r[4] is not None else 0.0,
+            "average_purchase_price": float(r[5]) if r[5] is not None else None,
+            "last_price": float(r[6]) if r[6] is not None else None,
+            "market_value": float(r[7]) if r[7] is not None else None,
+            "currency": r[8] or "USD",
+            "account_name": r[9] or "",
+            "institution": r[10] or "",
+        }
+
+    def get_holdings(self) -> List[Dict[str, Any]]:
+        """Every holding across all accounts, joined with account name/institution."""
+        with sync_engine.connect() as conn:
+            rows = conn.execute(text(self._HOLDINGS_SELECT + self._HOLDINGS_ORDER)).fetchall()
+        return [self._row_to_holding(r) for r in rows]
+
+    def get_holdings_for_account(self, account_id: str) -> List[Dict[str, Any]]:
+        """Holdings for one account."""
+        with sync_engine.connect() as conn:
+            rows = conn.execute(
+                text(self._HOLDINGS_SELECT + " WHERE h.account_id = :aid" + self._HOLDINGS_ORDER),
+                {"aid": account_id},
+            ).fetchall()
+        return [self._row_to_holding(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------

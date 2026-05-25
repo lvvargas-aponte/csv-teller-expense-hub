@@ -19,3 +19,12 @@ export const getConversation = (id) =>
 
 export const deleteConversation = (id) =>
   axios.delete(`${API}/api/advisor/conversations/${id}`);
+
+export const submitFeedback = (turnId, rating, note = null) =>
+  axios.post(`${API}/api/advisor/turns/${turnId}/feedback`, { rating, note });
+
+export const getStyleProfile = () =>
+  axios.get(`${API}/api/advisor/style-profile`);
+
+export const refreshStyleProfile = () =>
+  axios.post(`${API}/api/advisor/style-profile/refresh`);

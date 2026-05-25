@@ -1,108 +1,211 @@
 import React, { useState } from 'react';
-import { fmt$, fmtDate, channelLabel, CHANNEL_COLOR, formatAccountType, formatCategory } from '../../utils/formatting';
+import { fmt$, fmtDate, channelLabel, formatCategory, formatAccountType } from '../../utils/formatting';
+import SplitPill from './SplitPill';
+import CategoryCombobox from './CategoryCombobox';
 
-export default function TxnRow({ txn, otherPersonName, isSelected, onToggle, onQuickMark, onToggleType, onEdit, onNote }) {
-  const [marking, setMarking] = useState(false);
+const CAT_ICONS = {
+  restaurants:           '🍽',
+  food_and_drink:        '🍽',
+  groceries:             '🛒',
+  supermarkets:          '🛒',
+  shopping:              '🛍',
+  merchandise:           '📦',
+  travel:                '✈',
+  entertainment:         '✈',
+  travel_entertainment:  '✈',
+  fuel:                  '⛽',
+  gas:                   '⛽',
+  interest:              '📈',
+  payments:              '💳',
+  payments_and_credits:  '💳',
+};
+
+function catIconFor(cat) {
+  if (!cat) return null;
+  const key = cat.toLowerCase().replace(/[\s/]+/g, '_').replace(/&/g, 'and');
+  return CAT_ICONS[key] || null;
+}
+
+function fmtShortDate(s) {
+  // Match the design's MM/DD/YY format using DM Mono.
+  if (!s) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return `${m[2]}/${m[3]}/${m[1].slice(2)}`;
+  // Fallback — let formatting.fmtDate handle non-ISO dates.
+  return fmtDate(s);
+}
+
+export default function TxnRow({
+  txn,
+  otherPersonName,
+  isSelected,
+  onToggle,
+  onSplitChange,
+  onToggleType,
+  onOpenNote,
+  onOpenAdj,
+  onOpenTransfer,
+  expandNote,
+  expandAdj,
+  expandTransfer,
+  transferTargetName,
+  editableCategory = false,
+  categories = [],
+  onCategoryChange,
+  onRemoveCategory,
+  onToggleReviewed,
+}) {
+  const [splitting, setSplitting] = useState(false);
   const [flippingType, setFlippingType] = useState(false);
 
-  const handleMark = async (isShared) => {
-    setMarking(true);
-    try { await onQuickMark(txn, isShared); } finally { setMarking(false); }
+  const isShared = !!txn.is_shared;
+  const isCredit = txn.transaction_type === 'credit';
+  const sourceLabel = channelLabel(txn.source);
+  const sourceClass = sourceLabel.toLowerCase() === 'teller' ? 'tx-src-badge--teller' : 'tx-src-badge--csv';
+
+  const handleSplit = async (val) => {
+    if (splitting) return;
+    setSplitting(true);
+    try { await onSplitChange(txn, val === 'shared'); } finally { setSplitting(false); }
   };
 
   const handleToggleType = async () => {
     if (flippingType || !onToggleType) return;
     setFlippingType(true);
     try {
-      const next = txn.transaction_type === 'credit' ? 'debit' : 'credit';
-      await onToggleType(txn, next);
+      await onToggleType(txn, isCredit ? 'debit' : 'credit');
     } finally {
       setFlippingType(false);
     }
   };
 
   const rowClass = [
-    'txn-row',
-    isSelected   ? 'txn-row--selected' : '',
-    txn.is_shared ? 'txn-row--shared'  : '',
+    'tx-row',
+    isSelected ? 'tx-row--selected' : '',
+    isShared   ? 'tx-row--shared'   : '',
   ].filter(Boolean).join(' ');
+
+  const catIcon  = catIconFor(txn.category);
+  const catLabel = txn.category ? formatCategory(txn.category) : '';
+
+  const owedDisplay = isShared ? Number(txn.person_2_owes ?? 0) : 0;
 
   return (
     <tr className={rowClass}>
-      <td>
-        <input type="checkbox" aria-label={`Select ${txn.description}`} checked={isSelected} onChange={() => onToggle(txn.id)} style={{ cursor: 'pointer' }} />
+      <td className="tx-td-cb">
+        <input
+          type="checkbox"
+          aria-label={`Select ${txn.description}`}
+          checked={!!isSelected}
+          onChange={() => onToggle(txn.id)}
+        />
       </td>
-      <td className="td-date">{fmtDate(txn.date)}</td>
-      <td>
-        <div className="txn-desc">{txn.description}</div>
-        {txn.category && (
-          <div className="txn-desc-cat">{formatCategory(txn.category)}</div>
+      <td className="tx-td-date">{fmtShortDate(txn.date)}</td>
+      <td className="tx-td-desc">
+        <div className="tx-desc-main" title={txn.description}>
+          {txn.description}
+          {txn.transfer_to_account_id && (
+            <span
+              className="tx-transfer-chip"
+              title={transferTargetName ? `Transfer to ${transferTargetName}` : 'Tagged as internal transfer'}
+            >
+              → {transferTargetName || 'transfer'}
+            </span>
+          )}
+        </div>
+        {!editableCategory && catLabel && (
+          <div className="tx-desc-cat">
+            {catIcon && <span className="tx-desc-cat-icon" aria-hidden="true">{catIcon}</span>}
+            {catLabel}
+          </div>
         )}
       </td>
-      <td className="td-amount">
-        {fmt$(txn.amount)}
+      {editableCategory && (
+        <td className="tx-td-category">
+          <div className="tx-cat-cell">
+            {catIcon && <span className="tx-cat-cell-icon" aria-hidden="true">{catIcon}</span>}
+            <CategoryCombobox
+              value={txn.category || ''}
+              categories={categories}
+              onChange={(next) => onCategoryChange && onCategoryChange(txn, next)}
+              onRemoveCategory={onRemoveCategory}
+            />
+          </div>
+        </td>
+      )}
+      <td className="tx-td-amount">
+        <span className={`tx-amt-val ${isCredit ? 'tx-amt-val--credit' : 'tx-amt-val--debit'}`}>
+          {fmt$(txn.amount)}
+        </span>
         <button
           type="button"
           onClick={handleToggleType}
           disabled={flippingType || !onToggleType}
-          className={`txn-type-badge txn-type-badge--${txn.transaction_type || 'debit'}`}
-          aria-label={`Transaction type: ${txn.transaction_type === 'credit' ? 'credit' : 'debit'}. Click to flip.`}
+          className={`tx-amt-badge ${isCredit ? 'tx-amt-badge--cr' : 'tx-amt-badge--dr'}`}
+          aria-label={`Transaction type: ${isCredit ? 'credit' : 'debit'}. Click to flip.`}
           title={
-            (txn.transaction_type === 'credit'
-              ? 'Credit – money in (refund, payment received)'
-              : 'Debit – money out (purchase, payment made)') +
+            (isCredit ? 'Credit – money in' : 'Debit – money out') +
             ' · click to flip'
           }
-          style={{ cursor: onToggleType ? 'pointer' : 'default', border: 'none' }}
-        >
-          {txn.transaction_type === 'credit' ? 'CR' : 'DR'}
-        </button>
+        >{isCredit ? 'CR' : 'DR'}</button>
       </td>
-      <td>
-        <div>{txn.institution || '—'}</div>
+      <td className="tx-td-source">
+        <div className="tx-src-bank">{txn.institution || '—'}</div>
         {txn.account_type && (
-          <div className="account-type-label">{formatAccountType(txn.account_type)}</div>
+          <div className="tx-src-type">{formatAccountType(txn.account_type)}</div>
         )}
-        <span className="badge" style={{ background: CHANNEL_COLOR[channelLabel(txn.source)] || '#6b7280' }}>
-          {channelLabel(txn.source)}
-        </span>
+        <div className={`tx-src-badge ${sourceClass}`}>{sourceLabel}</div>
       </td>
-      <td>
-        {txn.is_shared ? (
-          <div className="split-info">
-            <span className="badge-shared">shared</span>
-            <div className="split-detail">
-              {otherPersonName} owes {fmt$(txn.person_2_owes || 0)}
-            </div>
+      <td className="tx-td-split">
+        <SplitPill
+          value={isShared ? 'shared' : 'personal'}
+          onChange={handleSplit}
+          disabled={splitting}
+        />
+        {isShared && owedDisplay > 0 && (
+          <div className="tx-split-detail">
+            {otherPersonName} owes {fmt$(owedDisplay)}
           </div>
-        ) : (
-          <span className="badge-personal">personal</span>
         )}
       </td>
-      <td>
-        <div className="action-group">
-          <div className="toggle-group">
+      <td className="tx-td-actions">
+        <div className="tx-row-actions">
+          {onToggleReviewed && (
             <button
               type="button"
-              disabled={marking || (!txn.is_shared && txn.reviewed)}
-              onClick={() => handleMark(false)}
-              className={`toggle-btn${!txn.is_shared && txn.reviewed ? ' toggle-btn--personal' : ''}`}
-            >
-              Personal
-            </button>
+              className={`tx-act-btn${txn.reviewed ? ' tx-act-btn--active-rev' : ''}`}
+              title={txn.reviewed ? 'Reviewed' : 'Mark as reviewed'}
+              aria-label={txn.reviewed ? 'Reviewed' : 'Mark as reviewed'}
+              aria-pressed={!!txn.reviewed}
+              onClick={() => onToggleReviewed(txn, !txn.reviewed)}
+            >✓</button>
+          )}
+          <button
+            type="button"
+            className={`tx-act-btn${expandAdj ? ' tx-act-btn--active-adj' : ''}`}
+            title="Adjust split"
+            aria-label="Adjust split"
+            onClick={() => onOpenAdj(txn.id)}
+          >⚖</button>
+          <button
+            type="button"
+            className={`tx-act-btn${expandNote ? ' tx-act-btn--active-note' : ''}`}
+            title={txn.notes || 'Add note'}
+            aria-label={txn.notes ? 'Edit note' : 'Add note'}
+            onClick={() => onOpenNote(txn.id)}
+          >{txn.notes ? '📝' : '✎'}</button>
+          {onOpenTransfer && (
             <button
               type="button"
-              disabled={marking || (txn.is_shared && txn.reviewed)}
-              onClick={() => handleMark(true)}
-              className={`toggle-btn${txn.is_shared && txn.reviewed ? ' toggle-btn--shared' : ''}`}
-            >
-              50/50
-            </button>
-          </div>
-          <button type="button" className="icon-btn" title="Adjust split" aria-label="Adjust split amounts" onClick={onEdit}>🧮</button>
-          <button type="button" className="icon-btn" title={txn.notes || 'Add note'} aria-label={txn.notes ? 'Edit note' : 'Add note'} onClick={onNote}>
-            {txn.notes ? '📝' : '🗒️'}
-          </button>
+              className={`tx-act-btn${expandTransfer ? ' tx-act-btn--active-note' : ''}${txn.transfer_to_account_id ? ' tx-act-btn--active-rev' : ''}`}
+              title={txn.transfer_to_account_id ? `Tagged as transfer${transferTargetName ? ` to ${transferTargetName}` : ''}` : 'Tag as internal transfer'}
+              aria-label={txn.transfer_to_account_id
+                ? `Edit transfer tag${transferTargetName ? ` (currently → ${transferTargetName})` : ''}`
+                : 'Tag as internal transfer'}
+              aria-pressed={!!txn.transfer_to_account_id}
+              onClick={() => onOpenTransfer(txn.id)}
+            >↗</button>
+          )}
         </div>
       </td>
     </tr>

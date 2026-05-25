@@ -2,9 +2,11 @@
 import logging
 import re
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 import state
 from config import (
@@ -15,7 +17,8 @@ from config import (
 _FAKE_TOKEN_RE = re.compile(r"^tok_(abc|one|two|test|fake|dummy)", re.IGNORECASE)
 from routers import (
     accounts, advisor, alerts, balances, bills, budgets, credit_health, dashboard,
-    goals, insights, layout, profile, sheets, tools,
+    documents, goals, insights, investments, layout, profile, seeds, sheets,
+    snaptrade, tools,
 )
 from routers import teller as teller_router
 from routers import transactions
@@ -73,9 +76,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Bank Statement API", version="1.0.0", lifespan=lifespan)
 
+# CRA dev server hosts; production deploys terminate at a reverse proxy and
+# don't hit FastAPI directly, so this allowlist intentionally only covers
+# local development.
+_DEV_FRONTEND_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_DEV_FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -97,15 +105,30 @@ app.include_router(layout.router,       prefix="/api")
 app.include_router(alerts.router,       prefix="/api")
 app.include_router(bills.router,        prefix="/api")
 app.include_router(credit_health.router, prefix="/api")
+app.include_router(documents.router,    prefix="/api")
+app.include_router(seeds.router,        prefix="/api")
+app.include_router(snaptrade.router,    prefix="/api")
+app.include_router(investments.router,  prefix="/api")
+
+
+# Static help site — built from /docs by mkdocs into /docs/site.
+# Mounted at /help so the frontend Help button can open same-origin docs.
+_HELP_SITE_DIR = Path(__file__).resolve().parent.parent / "site"
+if _HELP_SITE_DIR.is_dir():
+    app.mount("/help", StaticFiles(directory=str(_HELP_SITE_DIR), html=True), name="help")
+else:
+    logger.warning(
+        f"Help site not found at {_HELP_SITE_DIR} — run `mkdocs build` in /docs to generate it"
+    )
 
 
 @app.get("/")
-async def root():
+async def root() -> dict:
     return {"message": "Bank Statement API is running"}
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict:
     return {"status": "healthy", "environment": TELLER_ENVIRONMENT}
 
 

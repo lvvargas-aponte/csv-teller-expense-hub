@@ -22,14 +22,18 @@ class InMemoryAccountsRepo:
     def __init__(self) -> None:
         self.accounts: Dict[str, Dict[str, Any]] = {}
         self.snapshots: List[Dict[str, Any]] = []
+        # account_id -> list of holding dicts (current position snapshot).
+        self.holdings: Dict[str, List[Dict[str, Any]]] = {}
 
-    def upsert_teller_account(self, account: Dict[str, Any]) -> None:
+    def upsert_teller_account(
+        self, account: Dict[str, Any], source: str = "teller"
+    ) -> None:
         aid = account["id"]
         institution = (account.get("institution") or {}).get("name", "") or ""
         enrollment = account.get("enrollment") or {}
         self.accounts[aid] = {
             "id": aid,
-            "source": "teller",
+            "source": source,
             "institution": institution,
             "name": account.get("name", "") or "",
             "type": account.get("type", "") or "",
@@ -124,9 +128,51 @@ class InMemoryAccountsRepo:
         out.sort(key=lambda r: r["captured_at"], reverse=True)
         return out
 
+    def replace_holdings(
+        self, account_id: str, holdings: List[Dict[str, Any]]
+    ) -> None:
+        self.holdings[account_id] = [
+            {
+                "symbol": h["symbol"],
+                "description": h.get("description", "") or "",
+                "asset_type": h.get("asset_type", "other") or "other",
+                "quantity": float(h.get("quantity", 0) or 0),
+                "average_purchase_price": h.get("average_purchase_price"),
+                "last_price": h.get("last_price"),
+                "market_value": h.get("market_value"),
+                "currency": h.get("currency", "USD") or "USD",
+            }
+            for h in holdings
+        ]
+
+    def _holding_rows(self, account_id: str) -> List[Dict[str, Any]]:
+        account = self.accounts.get(account_id, {})
+        return [
+            {
+                **h,
+                "account_id": account_id,
+                "account_name": account.get("name", "") or "",
+                "institution": account.get("institution", "") or "",
+            }
+            for h in self.holdings.get(account_id, [])
+        ]
+
+    def get_holdings(self) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for account_id in self.holdings:
+            out.extend(self._holding_rows(account_id))
+        out.sort(key=lambda r: r.get("market_value") or 0.0, reverse=True)
+        return out
+
+    def get_holdings_for_account(self, account_id: str) -> List[Dict[str, Any]]:
+        rows = self._holding_rows(account_id)
+        rows.sort(key=lambda r: r.get("market_value") or 0.0, reverse=True)
+        return rows
+
     def reset(self) -> None:
         self.accounts.clear()
         self.snapshots.clear()
+        self.holdings.clear()
 
 
 # ---------------------------------------------------------------------------

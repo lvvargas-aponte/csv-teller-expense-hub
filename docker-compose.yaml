@@ -35,11 +35,41 @@ services:
     volumes:
       - ./backend:/app
       - ./certs:/app/certs:ro
+      # Built mkdocs site for the in-app Help button (served at /help).
+      # Run `mkdocs build` from the project root to populate; otherwise the
+      # mount is empty and the backend logs a warning at startup.
+      - ./site:/site:ro
     networks:
       - app-network
     depends_on:
       db:
         condition: service_healthy
+      docs:
+        condition: service_completed_successfully
+
+  # Docs builder. Runs once on `docker compose up`, writes ./site, exits.
+  # Backend waits for it (service_completed_successfully) so /help is always
+  # in sync with the docs/ source on boot.
+  # For live preview instead: `docker compose --profile docs-serve up docs-serve` on :8001.
+  docs:
+    image: squidfunk/mkdocs-material:9
+    working_dir: /docs
+    volumes:
+      - ./:/docs
+    command: build --strict
+    networks:
+      - app-network
+
+  docs-serve:
+    image: squidfunk/mkdocs-material:9
+    working_dir: /docs
+    volumes:
+      - ./:/docs
+    ports:
+      - "8001:8000"
+    profiles: ["docs-serve"]
+    networks:
+      - app-network
 
   frontend:
     build: ./frontend

@@ -7,11 +7,30 @@ export const fmt$ = (n) =>
     );
 
 // Like fmt$, but preserves sign for values that can be negative (e.g. net worth).
+// Round to cents before deciding the sign so values that *display* as $0.00
+// (e.g. -0.003 from txn-derived rounding noise) don't render as "-$0.00".
 export const fmtSigned = (n) => {
   const v = parseFloat(n) || 0;
-  const abs = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(v));
-  return v < 0 ? `-${abs}` : abs;
+  const cents = Math.round(v * 100);
+  const abs = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(cents) / 100);
+  return cents < 0 ? `-${abs}` : abs;
 };
+
+// Compact relative-time label for cache/sync timestamps. Accepts either an ISO
+// string (`YYYY-MM-DDTHH:mm:ss`) or one without zone — naive strings are
+// interpreted as UTC to match backend timestamps.
+export function formatRelativeTime(isoString) {
+  if (!isoString) return '';
+  const hasZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(isoString);
+  const ts = new Date(hasZone ? isoString : isoString + 'Z').getTime();
+  const diffMs = Date.now() - ts;
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 2)   return 'just now';
+  if (diffMin < 60)  return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24)   return `${diffHr}h ago`;
+  return `${Math.round(diffHr / 24)}d ago`;
+}
 
 export const fmtDate = (s) => {
   const d = new Date(s + 'T00:00:00');
