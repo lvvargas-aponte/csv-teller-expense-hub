@@ -49,11 +49,11 @@ export default function UpcomingBillsCard({ onHide, onNavigateToAccounts }) {
     >
       {empty && emptyCta}
       <div style={{ display: 'grid', gap: 6 }}>
-        {bills.map((b) => {
+        {bills.map((b, i) => {
           const urgent = b.days_until <= 5;
           return (
             <div
-              key={b.account_id}
+              key={b.account_id || b.merchant_key || `${b.due_date}-${i}`}
               style={{
                 display: 'flex', justifyContent: 'space-between',
                 padding: '6px 0', fontSize: 13,

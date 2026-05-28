@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import TxnRow from './TxnRow';
 import NoteExpandRow from './NoteExpandRow';
 import SplitAdjustRow from './SplitAdjustRow';
@@ -30,9 +30,57 @@ export default function TransactionTable({
   onCategoryChange,
   onRemoveCategory,
   onToggleReviewed,
+  onDelete,
   manualAccountsById = null,
 }) {
   const colCount = BASE_COL_COUNT + (editableCategory ? 1 : 0);
+
+  const [sort, setSort] = useState(null); // { key, dir: 'asc'|'desc' } | null
+  const cycleSort = useCallback((key) => {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' };
+      if (prev.dir === 'asc')         return { key, dir: 'desc' };
+      return null;
+    });
+  }, []);
+
+  const sortedTxns = useMemo(() => {
+    if (!sort) return txns;
+    const get = (t) => {
+      switch (sort.key) {
+        case 'date':        return t.date || '';
+        case 'description': return (t.description || '').toLowerCase();
+        case 'category':    return (t.category || '').toLowerCase();
+        case 'amount':      return Number(t.amount) || 0;
+        case 'source':      return (t.institution || '').toLowerCase();
+        case 'split':       return t.is_shared ? 1 : 0;
+        default:            return '';
+      }
+    };
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...txns].sort((a, b) => {
+      const av = get(a); const bv = get(b);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return  1 * dir;
+      return 0;
+    });
+  }, [txns, sort]);
+
+  const sortArrow = (key) => {
+    if (!sort || sort.key !== key) return '';
+    return sort.dir === 'asc' ? ' ▲' : ' ▼';
+  };
+  const Th = ({ sortKey, className, children }) => (
+    <th
+      className={className}
+      onClick={() => cycleSort(sortKey)}
+      style={{ cursor: 'pointer', userSelect: 'none' }}
+      title="Click to sort"
+    >
+      {children}{sortArrow(sortKey)}
+    </th>
+  );
+
   const accountLabelById = useMemo(() => {
     if (!manualAccountsById) return null;
     const map = {};
@@ -55,12 +103,12 @@ export default function TransactionTable({
                 onChange={onToggleAll}
               />
             </th>
-            <th>Date</th>
-            <th>Description</th>
-            {editableCategory && <th className="tx-col-category">Category</th>}
-            <th className="tx-col-amt">Amount</th>
-            <th className="tx-col-source">Source</th>
-            <th className="tx-col-split">Split</th>
+            <Th sortKey="date">Date</Th>
+            <Th sortKey="description">Description</Th>
+            {editableCategory && <Th sortKey="category" className="tx-col-category">Category</Th>}
+            <Th sortKey="amount" className="tx-col-amt">Amount</Th>
+            <Th sortKey="source" className="tx-col-source">Source</Th>
+            <Th sortKey="split" className="tx-col-split">Split</Th>
             <th className="tx-col-actions" aria-label="Row actions" style={{ textAlign: 'right' }}>
               <IconLegend />
             </th>
@@ -71,7 +119,7 @@ export default function TransactionTable({
             <tr><td colSpan={colCount}>
               <div className="tx-empty"><div style={{ fontSize: 28 }}>⏳</div><p>Loading…</p></div>
             </td></tr>
-          ) : txns.length === 0 ? (
+          ) : sortedTxns.length === 0 ? (
             <tr><td colSpan={colCount}>
               <div className="tx-empty">
                 <div style={{ fontSize: 28 }}>🔍</div>
@@ -79,7 +127,7 @@ export default function TransactionTable({
               </div>
             </td></tr>
           ) : (
-            txns.map((txn) => {
+            sortedTxns.map((txn) => {
               const expandNote     = activeExpand === `note-${txn.id}`;
               const expandAdj      = activeExpand === `adj-${txn.id}`;
               const expandTransfer = activeExpand === `transfer-${txn.id}`;
@@ -107,6 +155,7 @@ export default function TransactionTable({
                     onCategoryChange={onCategoryChange}
                     onRemoveCategory={onRemoveCategory}
                     onToggleReviewed={onToggleReviewed}
+                    onDelete={onDelete}
                   />
                   {expandNote && (
                     <NoteExpandRow

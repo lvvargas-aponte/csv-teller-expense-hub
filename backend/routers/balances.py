@@ -466,6 +466,43 @@ async def update_account_balance(account_id: str, req: ManualAccountUpdate):
     return AccountBalance(**target)
 
 
+@router.post("/balances/snapshots/refresh")
+async def refresh_balance_snapshots() -> Dict[str, Any]:
+    """Write a fresh ``balance_snapshots`` row for every account currently in
+    ``/balances/summary``.
+
+    Use when the net-worth timeseries on the dashboard has drifted from the
+    live KPI — typically because a manual balance was edited via a path that
+    didn't append a snapshot (older endpoint, direct edit). Idempotent: safe
+    to call repeatedly. Source on each new row reflects where the account is
+    sourced from (``teller`` / ``manual`` / ``snaptrade``)."""
+    from db.accounts_repo import get_repo
+
+    repo = get_repo()
+    summary = await get_balances_summary(force=False)
+    snaptrade_ids = {
+        a.get("id")
+        for a in (state._balances_cache.get("snaptrade_accounts", []) or [])
+    }
+    written = 0
+    for acct in summary.accounts:
+        if acct.manual:
+            src = "manual"
+        elif acct.id in snaptrade_ids:
+            src = "snaptrade"
+        else:
+            src = "teller"
+        repo.insert_balance_snapshot(
+            account_id=acct.id,
+            source=src,
+            available=acct.available,
+            ledger=acct.ledger,
+            raw={"available": acct.available, "ledger": acct.ledger, "refreshed": True},
+        )
+        written += 1
+    return {"refreshed": written}
+
+
 @router.delete("/balances/manual/{account_id}", status_code=204)
 async def delete_manual_account(account_id: str):
     """Remove a manually-added account."""

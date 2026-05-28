@@ -140,6 +140,12 @@ class SnapTradeClient:
             try:
                 from snaptrade_client import SnapTrade
 
+                # The SDK warns "X is deprecated" on every call to several
+                # account_information methods even when the replacement isn't
+                # actionable for us (e.g. ``list_user_accounts``). Suppress at
+                # the source so our logs stay readable. Errors still surface.
+                logging.getLogger("snaptrade_client").setLevel(logging.ERROR)
+
                 self._sdk = SnapTrade(consumer_key=consumer_key, client_id=client_id)
                 logger.info("[SnapTrade] SDK initialized")
             except Exception as e:  # pragma: no cover - import/SDK failure path
@@ -255,6 +261,66 @@ class SnapTradeClient:
                 item["total_value"] = {"value": total_value}
             results.append(_normalize_account_holdings(item))
         return results
+
+    async def get_account_holdings(
+        self, user_id: str, user_secret: str, account_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch positions + balance for a single connected account.
+
+        Returns the same normalized shape as one element of
+        :meth:`get_all_holdings`, or ``None`` if the account isn't reachable.
+        """
+        sdk = self._require()
+
+        def _list_accounts() -> Any:
+            return sdk.account_information.list_user_accounts(
+                user_id=user_id, user_secret=user_secret
+            ).body
+
+        accounts = await asyncio.to_thread(_list_accounts)
+        match = next(
+            (dict(a) for a in (accounts or []) if dict(a).get("id") == account_id),
+            None,
+        )
+        if match is None:
+            logger.warning(f"[SnapTrade] account {account_id} not found in user accounts")
+            return None
+
+        def _positions() -> Any:
+            return sdk.account_information.get_user_account_positions(
+                user_id=user_id, user_secret=user_secret, account_id=account_id
+            ).body
+
+        def _balance() -> Any:
+            return sdk.account_information.get_user_account_balance(
+                user_id=user_id, user_secret=user_secret, account_id=account_id
+            ).body
+
+        try:
+            positions = await asyncio.to_thread(_positions)
+        except Exception as e:
+            logger.warning(f"[SnapTrade] positions fetch failed for {account_id}: {e}")
+            return None
+        try:
+            balance = await asyncio.to_thread(_balance)
+        except Exception as e:
+            logger.warning(f"[SnapTrade] balance fetch failed for {account_id}: {e}")
+            balance = None
+
+        total_value = None
+        for b in (balance or []):
+            bd = dict(b)
+            v = _num(_dig(bd, "cash") or _dig(bd, "amount"))
+            if v is not None:
+                total_value = (total_value or 0.0) + v
+
+        item: Dict[str, Any] = {
+            "account": match,
+            "positions": list(positions or []),
+        }
+        if total_value is not None:
+            item["total_value"] = {"value": total_value}
+        return _normalize_account_holdings(item)
 
     async def list_connections(
         self, user_id: str, user_secret: str

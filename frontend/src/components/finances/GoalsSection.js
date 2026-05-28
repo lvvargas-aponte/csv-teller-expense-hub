@@ -87,6 +87,8 @@ export default function GoalsSection() {
                       onChange={(e) => setDraft((d) => ({ ...d, kind: e.target.value }))}>
                 <option value="savings">Savings goal</option>
                 <option value="emergency_fund">Emergency fund</option>
+                <option value="travel">Travel</option>
+                <option value="big_purchase">Big purchase (car, house, etc.)</option>
               </select>
             </div>
           </div>
@@ -151,10 +153,22 @@ export default function GoalsSection() {
   );
 }
 
+const KIND_BADGE = {
+  emergency_fund: { label: 'Emergency',    color: '#3b82f6' },
+  travel:         { label: 'Travel',       color: '#8b5cf6' },
+  big_purchase:   { label: 'Big purchase', color: '#f59e0b' },
+};
+const KIND_BAR_COLOR = {
+  emergency_fund: '#3b82f6',
+  travel:         '#8b5cf6',
+  big_purchase:   '#f59e0b',
+};
+
 function GoalRow({ goal, onDelete }) {
   const pct = Math.min(goal.progress_pct, 100);
   const reached = goal.progress_pct >= 100;
-  const barColor = reached ? '#10b981' : (goal.kind === 'emergency_fund' ? '#3b82f6' : '#10b981');
+  const barColor = reached ? '#10b981' : (KIND_BAR_COLOR[goal.kind] || '#10b981');
+  const badge = KIND_BADGE[goal.kind];
 
   return (
     <div className="balance-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
@@ -162,9 +176,12 @@ function GoalRow({ goal, onDelete }) {
         <div>
           <div className="balance-row-name">
             {goal.name}
-            {goal.kind === 'emergency_fund' && (
-              <span className="manual-badge" style={{ background: 'rgba(59,130,246,.15)', color: '#3b82f6' }}>
-                Emergency
+            {badge && (
+              <span
+                className="manual-badge"
+                style={{ background: `${badge.color}26`, color: badge.color }}
+              >
+                {badge.label}
               </span>
             )}
           </div>

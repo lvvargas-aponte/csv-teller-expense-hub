@@ -54,6 +54,7 @@ export default function TxnRow({
   onCategoryChange,
   onRemoveCategory,
   onToggleReviewed,
+  onDelete,
 }) {
   const [splitting, setSplitting] = useState(false);
   const [flippingType, setFlippingType] = useState(false);
@@ -205,6 +206,15 @@ export default function TxnRow({
               aria-pressed={!!txn.transfer_to_account_id}
               onClick={() => onOpenTransfer(txn.id)}
             >↗</button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              className="tx-act-btn"
+              title="Delete transaction"
+              aria-label="Delete transaction"
+              onClick={() => onDelete(txn)}
+            >🗑</button>
           )}
         </div>
       </td>

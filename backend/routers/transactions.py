@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Form, HTTPException, UploadFile, File
 
 import state
-from csv_parser import CSVProcessorService
+from csv_parser import CSVProcessorService, dedupe_key
 from helpers import _decode_csv_bytes
 from models import (
     TransactionUpdate,
@@ -150,13 +150,32 @@ async def upload_csv(
 
         new_transactions = []
         duplicates = 0
+        # Build a snapshot of existing dedupe keys once so cross-source
+        # duplicates (e.g. CSV row matching an already-Teller-imported txn) are
+        # rejected even when transaction_ids differ. PgStore .values() is a
+        # snapshot, so this is safe to read here.
+        existing_keys = {
+            dedupe_key(
+                t.get("date"), t.get("amount"),
+                t.get("description"), t.get("transaction_type"),
+            )
+            for t in state.stored_transactions.values()
+        }
         for transaction in transactions:
             if resolved_account_id:
                 transaction.account_id = resolved_account_id
-            if transaction.transaction_id in state.stored_transactions:
+            key = dedupe_key(
+                transaction.date, transaction.amount,
+                transaction.description, transaction.transaction_type,
+            )
+            if (
+                transaction.transaction_id in state.stored_transactions
+                or key in existing_keys
+            ):
                 duplicates += 1
             else:
                 state.stored_transactions[transaction.transaction_id] = transaction.to_dict()
+                existing_keys.add(key)
                 new_transactions.append(transaction)
 
         if new_transactions:
@@ -208,6 +227,125 @@ async def upload_csv(
 async def get_all_transactions() -> List[Dict[str, Any]]:
     """Get all transactions (CSV + Teller combined)."""
     return list(state.stored_transactions.values())
+
+
+def _purge_embeddings(transaction_ids: List[str]) -> None:
+    """Best-effort cleanup of transaction_embeddings rows for deleted txns.
+
+    Stale embedding rows are tolerated by the search path, so a DB failure
+    here is logged and swallowed rather than failing the user's delete.
+    """
+    if not transaction_ids:
+        return
+    try:
+        from db.base import sync_engine
+        from sqlalchemy import text
+
+        with sync_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "DELETE FROM transaction_embeddings "
+                    "WHERE transaction_id = ANY(:ids)"
+                ),
+                {"ids": transaction_ids},
+            )
+    except Exception as e:
+        logger.warning(f"Failed to purge embeddings for {len(transaction_ids)} txns: {e}")
+
+
+def _dedupe_winner(group: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Pick which transaction to KEEP from a duplicate group.
+
+    Priority: reviewed > has-category > is_shared > smallest id (stable).
+    Higher-priority status survives so user edits are never lost to dedupe.
+    """
+    def rank(t: Dict[str, Any]) -> tuple:
+        return (
+            -1 if t.get("reviewed") else 0,
+            -1 if (t.get("category") or "").strip() else 0,
+            -1 if t.get("is_shared") else 0,
+            str(t.get("transaction_id") or t.get("id") or ""),
+        )
+    return min(group, key=rank)
+
+
+@router.post("/transactions/dedupe")
+async def dedupe_transactions(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Find (and optionally remove) duplicate transactions.
+
+    Two transactions are duplicates when they share the same canonical
+    dedupe-key (date + 2dp amount + normalized description + direction) —
+    catches the cross-source case where the same purchase exists as both a
+    CSV row and a Teller-imported row with different transaction_ids.
+
+    Modes:
+      * ``preview`` (default) → returns groups, does not mutate.
+      * ``apply``             → keeps the highest-priority txn per group
+                                (reviewed > categorized > shared > smallest id)
+                                and deletes the rest.
+    """
+    mode = (payload or {}).get("mode", "preview")
+    if mode not in ("preview", "apply"):
+        raise HTTPException(status_code=422, detail="mode must be 'preview' or 'apply'")
+
+    groups: Dict[tuple, List[Dict[str, Any]]] = {}
+    for tid, t in state.stored_transactions.items():
+        key = dedupe_key(
+            t.get("date"), t.get("amount"),
+            t.get("description"), t.get("transaction_type"),
+        )
+        # Ensure the txn carries its own id in the snapshot for downstream use.
+        t_with_id = dict(t)
+        t_with_id.setdefault("transaction_id", tid)
+        groups.setdefault(key, []).append(t_with_id)
+
+    duplicate_groups = [g for g in groups.values() if len(g) > 1]
+
+    if mode == "preview":
+        return {
+            "mode": "preview",
+            "duplicate_count": sum(len(g) - 1 for g in duplicate_groups),
+            "group_count": len(duplicate_groups),
+            "groups": [
+                {
+                    "kept_id": _dedupe_winner(g).get("transaction_id"),
+                    "transactions": g,
+                }
+                for g in duplicate_groups
+            ],
+        }
+
+    removed_ids: List[str] = []
+    for g in duplicate_groups:
+        winner = _dedupe_winner(g)
+        winner_id = winner.get("transaction_id")
+        for t in g:
+            tid = t.get("transaction_id")
+            if tid and tid != winner_id and tid in state.stored_transactions:
+                del state.stored_transactions[tid]
+                removed_ids.append(tid)
+
+    if removed_ids:
+        state._transactions_store.save()
+        _purge_embeddings(removed_ids)
+
+    return {
+        "mode": "apply",
+        "removed_count": len(removed_ids),
+        "group_count": len(duplicate_groups),
+        "removed_ids": removed_ids,
+    }
+
+
+@router.delete("/transactions/{transaction_id}", status_code=204)
+async def delete_transaction(transaction_id: str):
+    """Remove a single transaction. Also drops its embedding row."""
+    if transaction_id not in state.stored_transactions:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    del state.stored_transactions[transaction_id]
+    state._transactions_store.save()
+    _purge_embeddings([transaction_id])
+    return None
 
 
 @router.put("/transactions/bulk")
@@ -357,16 +495,7 @@ async def list_categories() -> Dict[str, List[str]]:
     """
     from categorizer import known_categories
 
-    seen_lower: Dict[str, str] = {}
-    for txn in state.stored_transactions.values():
-        name = (txn.get("category") or "").strip()
-        if name and name.lower() not in seen_lower:
-            seen_lower[name.lower()] = name
-    for name in known_categories():
-        key = (name or "").strip()
-        if key and key.lower() not in seen_lower:
-            seen_lower[key.lower()] = key
-    return {"categories": sorted(seen_lower.values(), key=str.lower)}
+    return {"categories": sorted(known_categories(), key=str.lower)}
 
 
 @router.delete("/categories/{name}")

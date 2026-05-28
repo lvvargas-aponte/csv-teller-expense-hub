@@ -20,6 +20,35 @@ logger = logging.getLogger(__name__)
 _id_counter: Dict[str, int] = {}
 
 
+def dedupe_key(
+    date: Any,
+    amount: Any,
+    description: Any,
+    transaction_type: Any,
+) -> tuple:
+    """Canonical 'same transaction' key for cross-source dedupe.
+
+    transaction_id-based dedupe catches re-uploads of the same CSV, but not
+    the case where a purchase arrives once via CSV and once via Teller (or
+    twice from two banks formatted differently). This key normalizes the
+    user-visible fields so those collide:
+      - description: lowercased, non-alphanumerics collapsed to spaces, trimmed
+      - amount: rounded to 2dp
+      - date / transaction_type: lowercased and stripped
+    """
+    desc = re.sub(r"[^a-z0-9]+", " ", str(description or "").lower()).strip()
+    try:
+        amt = round(float(amount or 0.0), 2)
+    except (TypeError, ValueError):
+        amt = 0.0
+    return (
+        str(date or "").strip(),
+        amt,
+        desc,
+        str(transaction_type or "").strip().lower(),
+    )
+
+
 class BankType(str, Enum):
     """Enumeration of supported bank types"""
     DISCOVER = "discover"

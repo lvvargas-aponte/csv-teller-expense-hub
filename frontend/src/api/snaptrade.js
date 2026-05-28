@@ -15,6 +15,9 @@ export const connectSnapTrade = () =>
 export const syncSnapTrade = () =>
   axios.post(`${API}/api/snaptrade/sync`);
 
+export const syncSnapTradeAccount = (accountId) =>
+  axios.post(`${API}/api/snaptrade/sync/${encodeURIComponent(accountId)}`);
+
 export const listSnapTradeConnections = () =>
   axios.get(`${API}/api/snaptrade/connections`);
 

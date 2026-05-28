@@ -5,6 +5,7 @@ import {
   getSnapTradeConfig,
   connectSnapTrade,
   syncSnapTrade,
+  syncSnapTradeAccount,
   listSnapTradeConnections,
 } from '../../api/snaptrade';
 import { getPortfolio } from '../../api/investments';
@@ -39,6 +40,7 @@ export default function InvestmentsTab() {
   const [error, setError] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncingAccount, setSyncingAccount] = useState(null);
   const [notice, setNotice] = useState(null);
   const pollRef = useRef(null);
 
@@ -79,6 +81,20 @@ export default function InvestmentsTab() {
     } finally {
       setSyncing(false);
       setConnecting(false);
+    }
+  }, [reload]);
+
+  const runAccountSync = useCallback(async (accountId, accountName) => {
+    setSyncingAccount(accountId);
+    setError(null);
+    try {
+      const { data } = await syncSnapTradeAccount(accountId);
+      setNotice(data.message || `Synced ${accountName}.`);
+      await reload();
+    } catch {
+      setError(`Sync failed for ${accountName}.`);
+    } finally {
+      setSyncingAccount(null);
     }
   }, [reload]);
 
@@ -270,10 +286,21 @@ export default function InvestmentsTab() {
 
       {groups.map((g) => (
         <div className="finances-section" key={g.account_id}>
-          <h3 className="finances-section-title" style={{ marginTop: 0 }}>
-            {g.account_name}
-            {g.institution ? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> · {g.institution}</span> : null}
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 className="finances-section-title" style={{ margin: 0 }}>
+              {g.account_name}
+              {g.institution ? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> · {g.institution}</span> : null}
+            </h3>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => runAccountSync(g.account_id, g.account_name)}
+              disabled={syncing || syncingAccount === g.account_id}
+              title="Sync only this account"
+            >
+              {syncingAccount === g.account_id ? 'Syncing…' : '↺ Sync'}
+            </button>
+          </div>
           {g.holdings.length === 0 ? (
             <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>
               No positions returned yet for this account. SnapTrade can take up to ~30 minutes

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
@@ -12,12 +12,39 @@ const PALETTE = [
 ];
 const TOP_N = 8;
 const AXIS = { fontSize: 11, fill: 'var(--text-secondary, #94a3b8)' };
+const HIDDEN_KEY = 'dashboard.spendByCat.hidden';
+
+const loadHidden = () => {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+};
 
 export default function SpendingByCategoryCard({ dashboard, loading, error, onHide, index, kicker }) {
-  const { rows, keys } = useMemo(() => {
+  const [hidden, setHidden] = useState(loadHidden);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hidden]));
+    } catch { /* ignore quota / privacy errors */ }
+  }, [hidden]);
+
+  const toggleHidden = (cat) => {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      return next;
+    });
+  };
+  const clearHidden = () => setHidden(new Set());
+
+  const { rows, keys, allRanked } = useMemo(() => {
     const months = dashboard?.months || [];
     const spendingByMonth = dashboard?.spending_by_month || {};
-    if (!months.length) return { rows: [], keys: [] };
+    if (!months.length) return { rows: [], keys: [], allRanked: [] };
     const totals = {};
     months.forEach((m) => {
       Object.entries(spendingByMonth[m] || {}).forEach(([cat, val]) => {
@@ -25,22 +52,74 @@ export default function SpendingByCategoryCard({ dashboard, loading, error, onHi
       });
     });
     const ranked = Object.entries(totals).sort((a, b) => b[1] - a[1]);
-    const top = ranked.slice(0, TOP_N).map(([c]) => c);
-    const hasOther = ranked.length > TOP_N;
+    const kept = ranked.filter(([c]) => !hidden.has(c));
+    const top = kept.slice(0, TOP_N).map(([c]) => c);
+    const hasOther = kept.length > TOP_N;
     const builtRows = months.map((m) => {
       const row = { month: m };
       let other = 0;
       Object.entries(spendingByMonth[m] || {}).forEach(([cat, val]) => {
+        if (hidden.has(cat)) return;
         if (top.includes(cat)) row[cat] = val;
         else other += val;
       });
       if (hasOther) row.Other = +other.toFixed(2);
       return row;
     });
-    return { rows: builtRows, keys: hasOther ? [...top, 'Other'] : top };
-  }, [dashboard]);
+    return {
+      rows: builtRows,
+      keys: hasOther ? [...top, 'Other'] : top,
+      allRanked: ranked,
+    };
+  }, [dashboard, hidden]);
 
   const empty = !loading && !error && rows.length === 0;
+  const hiddenCount = allRanked.filter(([c]) => hidden.has(c)).length;
+
+  const filterControl = allRanked.length > 0 ? (
+    <details className="eh-dcard-filter">
+      <summary
+        className="eh-dcard-filter-btn"
+        title="Hide categories from this chart"
+      >
+        Filter{hiddenCount > 0 ? ` · ${hiddenCount}` : ''} ▾
+      </summary>
+      <div className="eh-dcard-filter-menu" role="menu">
+        <div className="eh-dcard-filter-head">
+          <span>Show categories</span>
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              className="eh-dcard-filter-clear"
+              onClick={clearHidden}
+            >
+              Reset
+            </button>
+          )}
+        </div>
+        <ul className="eh-dcard-filter-list">
+          {allRanked.map(([cat, total]) => {
+            const id = `spendcat-${cat}`;
+            const checked = !hidden.has(cat);
+            return (
+              <li key={cat}>
+                <label htmlFor={id} className="eh-dcard-filter-item">
+                  <input
+                    id={id}
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleHidden(cat)}
+                  />
+                  <span className="eh-dcard-filter-name">{cat}</span>
+                  <span className="eh-dcard-filter-amt">{fmt$(total)}</span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </details>
+  ) : null;
 
   return (
     <DashboardCard
@@ -52,6 +131,7 @@ export default function SpendingByCategoryCard({ dashboard, loading, error, onHi
       empty={empty}
       emptyText="No spending in this window."
       onHide={onHide}
+      headerExtra={filterControl}
     >
       <ResponsiveContainer width="100%" height={240}>
         <BarChart data={rows}>

@@ -9,6 +9,7 @@ const LEGEND = [
   { icon: '⚖',  label: 'Adjust split', detail: 'Edit how much each person owes on a shared transaction.' },
   { icon: '✎',  label: 'Add note', detail: 'Attach a short note to remember context (renders 📝 when set).' },
   { icon: '↗',  label: 'Tag as transfer', detail: 'Mark as an internal transfer to a manual account. Excluded from spending; credits the destination balance.' },
+  { icon: '🗑', label: 'Delete', detail: 'Permanently remove this transaction. Asks to confirm first.' },
 ];
 
 export default function IconLegend() {

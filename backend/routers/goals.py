@@ -26,8 +26,11 @@ def _validate(req: GoalIn) -> None:
         raise HTTPException(status_code=422, detail="Goal name must not be empty")
     if req.target_amount <= 0:
         raise HTTPException(status_code=422, detail="target_amount must be > 0")
-    if req.kind not in ("savings", "emergency_fund"):
-        raise HTTPException(status_code=422, detail="kind must be 'savings' or 'emergency_fund'")
+    if req.kind not in ("savings", "emergency_fund", "travel", "big_purchase"):
+        raise HTTPException(
+            status_code=422,
+            detail="kind must be 'savings', 'emergency_fund', 'travel', or 'big_purchase'",
+        )
 
 
 def _status_for(goal_id: str) -> GoalStatus:

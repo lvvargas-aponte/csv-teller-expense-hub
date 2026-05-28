@@ -282,7 +282,7 @@ class GoalIn(BaseModel):
     target_date: Optional[str] = None        # YYYY-MM-DD
     linked_account_id: Optional[str] = None  # if set, the account's `available` is used live
     current_balance: float = 0.0             # manual progress tracker when no linked account
-    kind: str = "savings"                    # "savings" | "emergency_fund"
+    kind: str = "savings"                    # "savings" | "emergency_fund" | "travel" | "big_purchase"
     notes: str = ""
 
 

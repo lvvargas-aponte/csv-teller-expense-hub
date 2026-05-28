@@ -7,6 +7,7 @@ export function useFilters(transactions) {
   const [filterInstitution, setFilterInstitution] = useState('all');
   const [filterShared, setFilterShared] = useState('all');
   const [filterMonth, setFilterMonth] = useState('all');
+  const [filterCategory, setFilterCategory] = useState('all'); // 'all' | 'uncategorized' | 'categorized'
   const [search, setSearch] = useState('');
 
   const availableInstitutions = useMemo(() => {
@@ -36,6 +37,11 @@ export function useFilters(transactions) {
       const m = txnMonthKey(t.date);
       if (!m || m.key !== filterMonth) return false;
     }
+    if (filterCategory !== 'all') {
+      const hasCat = !!(t.category && String(t.category).trim());
+      if (filterCategory === 'uncategorized' && hasCat) return false;
+      if (filterCategory === 'categorized' && !hasCat) return false;
+    }
     if (search) {
       const q = search.toLowerCase();
       const inDesc = (t.description || '').toLowerCase().includes(q);
@@ -43,7 +49,7 @@ export function useFilters(transactions) {
       if (!inDesc && !inBank) return false;
     }
     return true;
-  }), [transactions, filterInstitution, filterShared, filterMonth, search]);
+  }), [transactions, filterInstitution, filterShared, filterMonth, filterCategory, search]);
 
   const stats = useMemo(() => {
     let shared = 0;
@@ -63,6 +69,7 @@ export function useFilters(transactions) {
     filterInstitution, setFilterInstitution,
     filterShared, setFilterShared,
     filterMonth, setFilterMonth,
+    filterCategory, setFilterCategory,
     search, setSearch,
     availableInstitutions,
     availableMonths,

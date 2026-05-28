@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSidebarCollapsed } from '../../hooks/useSidebarCollapsed';
 
 const NAV_SECTIONS = [
   {
@@ -11,8 +12,18 @@ const NAV_SECTIONS = [
 ];
 
 export default function TransactionsSidebar({ activeId, onNavigate }) {
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   return (
-    <aside className="eh-sidebar">
+    <aside className={`eh-sidebar${collapsed ? ' eh-sidebar--collapsed' : ''}`}>
+      <button
+        type="button"
+        className="eh-sidebar-toggle"
+        onClick={toggleCollapsed}
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-expanded={!collapsed}
+      >{collapsed ? '›' : '‹'}</button>
+
       <div className="eh-sidebar-logo">
         <div className="eh-sidebar-logo-icon">📋</div>
         <div className="eh-sidebar-logo-text">Transactions</div>
@@ -28,9 +39,11 @@ export default function TransactionsSidebar({ activeId, onNavigate }) {
                 type="button"
                 className={`eh-nav-item${activeId === item.id ? ' eh-nav-item--active' : ''}`}
                 onClick={() => onNavigate(item.id)}
+                title={collapsed ? item.label : undefined}
+                aria-label={item.label}
               >
                 <span className="eh-nav-icon">{item.icon}</span>
-                <span>{item.label}</span>
+                <span className="eh-nav-text">{item.label}</span>
               </button>
             ))}
           </nav>

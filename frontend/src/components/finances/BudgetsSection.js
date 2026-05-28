@@ -2,14 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Spin from '../ui/Spin';
 import { fmt$ } from '../../utils/formatting';
 import { listBudgets, upsertBudget, deleteBudget } from '../../api/budgets';
+import { useCategories } from '../../hooks/useCategories';
+import BudgetPresetModal from './BudgetPresetModal';
 
 export default function BudgetsSection() {
   const [budgets, setBudgets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [showPreset, setShowPreset] = useState(false);
   const [draft, setDraft] = useState({ category: '', monthly_limit: '', notes: '' });
   const [saving, setSaving] = useState(false);
+  const { categories } = useCategories();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -52,11 +56,26 @@ export default function BudgetsSection() {
     <div className="finances-section">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h2 className="finances-section-title" style={{ margin: 0 }}>Monthly Budgets</h2>
-        <button type="button" className="btn btn-secondary btn-sm"
-                onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Cancel' : '+ Add Budget'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="btn btn-secondary btn-sm"
+                  onClick={() => setShowPreset(true)}>
+            Use a preset
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm"
+                  onClick={() => setShowForm((v) => !v)}>
+            {showForm ? 'Cancel' : '+ Add Budget'}
+          </button>
+        </div>
       </div>
+
+      {showPreset && (
+        <BudgetPresetModal
+          categories={categories}
+          existingBudgets={budgets}
+          onClose={() => setShowPreset(false)}
+          onApplied={() => { setShowPreset(false); load(); }}
+        />
+      )}
 
       {showForm && (
         <div className="manual-acct-form">

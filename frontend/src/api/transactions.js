@@ -31,6 +31,15 @@ export const applyCategoryAssignments = (items) =>
 export const syncTeller = (body) =>
   axios.post(`${API}/api/teller/sync`, body);
 
+export const deleteTransaction = (id) =>
+  axios.delete(`${API}/api/transactions/${encodeURIComponent(id)}`);
+
+export const previewDuplicates = () =>
+  axios.post(`${API}/api/transactions/dedupe`, { mode: 'preview' });
+
+export const applyDeduplication = () =>
+  axios.post(`${API}/api/transactions/dedupe`, { mode: 'apply' });
+
 export const getPersonNames = () =>
   axios.get(`${API}/api/config/person-names`);
 

@@ -44,15 +44,21 @@ DEFAULT_CATEGORIES: List[str] = [
 
 
 def known_categories() -> List[str]:
-    """Return the union of default categories + user's budget categories.
+    """Return the union of distinct transaction categories + user's budget
+    categories + the built-in defaults.
 
-    Dedup is case-insensitive, preserving the casing of whichever entry
-    is seen first. Budget-defined categories take precedence so the
-    user's naming wins over the defaults.
+    Priority (first occurrence wins, case-insensitive): transaction-assigned
+    categories → budgets → defaults. This way the LLM suggester picks from
+    the labels the user has actually used elsewhere before falling back to
+    the seed list.
     """
     seen_lower: dict[str, str] = {}
+    txn_categories = [
+        (t.get("category") or "")
+        for t in state.stored_transactions.values()
+    ] if state.stored_transactions else []
     budget_categories = list(state.budgets.keys()) if state.budgets else []
-    for name in budget_categories + DEFAULT_CATEGORIES:
+    for name in txn_categories + budget_categories + DEFAULT_CATEGORIES:
         key = (name or "").strip()
         if not key:
             continue

@@ -9,8 +9,10 @@ export default function ControlBar({
   unreviewedCount,
   uploading,
   sendingSheet,
+  dedupingNow,
   onPickCsv,
   onSendToSheet,
+  onFindDuplicates,
 }) {
   return (
     <div className="tx-control-bar">
@@ -45,6 +47,17 @@ export default function ControlBar({
             disabled={uploading}
           />
         </label>
+        {onFindDuplicates && (
+          <button
+            type="button"
+            className="tx-btn tx-btn-secondary"
+            onClick={onFindDuplicates}
+            disabled={dedupingNow}
+            title="Find and remove duplicate transactions"
+          >
+            {dedupingNow ? <><Spin /> Checking…</> : <>⎘ Find duplicates</>}
+          </button>
+        )}
         <button
           type="button"
           className="tx-btn tx-btn-sheet"

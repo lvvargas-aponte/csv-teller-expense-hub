@@ -11,7 +11,7 @@ import FilterBar        from './components/transactions/FilterBar';
 import TransactionTable from './components/transactions/TransactionTable';
 import UploadCsvModal   from './components/transactions/UploadCsvModal';
 import SuggestPreviewModal from './components/transactions/SuggestPreviewModal';
-import { bulkSuggestCategories, applyCategoryAssignments } from './api/transactions';
+import { bulkSuggestCategories, applyCategoryAssignments, deleteTransaction, previewDuplicates, applyDeduplication } from './api/transactions';
 import SyncModal        from './components/accounts/SyncModal';
 import SyncToast        from './components/ui/SyncToast';
 import AccountsModal    from './components/accounts/AccountsModal';
@@ -36,6 +36,7 @@ export default function App() {
     filterInstitution, setFilterInstitution,
     filterShared, setFilterShared,
     filterMonth, setFilterMonth,
+    filterCategory, setFilterCategory,
     search, setSearch,
     availableInstitutions, availableMonths, visible, stats,
   } = useFilters(transactions);
@@ -68,6 +69,7 @@ export default function App() {
   const [suggestionPreview, setSuggestionPreview] = useState(null);
   const [suggestingBulk, setSuggestingBulk] = useState(false);
   const [txnView, setTxnView] = useState('current');  // 'current' | 'history'
+  const [dedupingNow, setDedupingNow] = useState(false);
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem('theme');
     return saved ? saved === 'dark' : false;
@@ -278,6 +280,45 @@ export default function App() {
     }
   }, [setTransactions, setError]);
 
+  const handleDeleteTransaction = useCallback(async (txn) => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(`Delete this transaction?\n\n${txn.date} · ${txn.description}`)) return;
+    try {
+      await deleteTransaction(txn.id);
+      setTransactions((prev) => prev.filter((t) => t.id !== txn.id));
+    } catch {
+      setError('Could not delete transaction — please try again.');
+    }
+  }, [setTransactions, setError]);
+
+  const handleFindDuplicates = useCallback(async () => {
+    setDedupingNow(true);
+    try {
+      const preview = await previewDuplicates();
+      const { duplicate_count: dupes = 0, group_count: groups = 0 } = preview.data || {};
+      if (!dupes) {
+        // eslint-disable-next-line no-alert
+        window.alert('No duplicate transactions found.');
+        return;
+      }
+      // eslint-disable-next-line no-alert
+      const ok = window.confirm(
+        `Found ${dupes} duplicate transaction${dupes === 1 ? '' : 's'} across `
+        + `${groups} group${groups === 1 ? '' : 's'}.\n\n`
+        + 'Keep the reviewed/categorized one in each group and remove the rest?'
+      );
+      if (!ok) return;
+      const result = await applyDeduplication();
+      await reload();
+      // eslint-disable-next-line no-alert
+      window.alert(`Removed ${result.data?.removed_count ?? 0} duplicate transactions.`);
+    } catch {
+      setError('Could not run duplicate cleanup — please try again.');
+    } finally {
+      setDedupingNow(false);
+    }
+  }, [reload, setError]);
+
   const bulkMarkReviewed = useCallback(async () => {
     const ids = visible.filter((t) => selected.has(t.id)).map((t) => t.id);
     if (!ids.length) return;
@@ -348,8 +389,10 @@ export default function App() {
                     unreviewedCount={stats.unreviewed}
                     uploading={sync.uploading}
                     sendingSheet={sync.sendingSheet}
+                    dedupingNow={dedupingNow}
                     onPickCsv={sync.handleCsvPicked}
                     onSendToSheet={sync.sendToSheet}
+                    onFindDuplicates={handleFindDuplicates}
                   />
 
                   {selected.size > 0 && (
@@ -371,10 +414,12 @@ export default function App() {
                     bank={filterInstitution}
                     month={filterMonth}
                     split={filterShared}
+                    category={filterCategory}
                     search={search}
                     onBankChange={setFilterInstitution}
                     onMonthChange={setFilterMonth}
                     onSplitChange={setFilterShared}
+                    onCategoryChange={setFilterCategory}
                     onSearchChange={setSearch}
                     visibleCount={visible.length}
                     totalCount={transactions.length}
@@ -410,6 +455,7 @@ export default function App() {
                       onSaveTransfer={saveTransfer}
                       onCloseExpand={closeExpand}
                       onToggleReviewed={handleToggleReviewed}
+                      onDelete={handleDeleteTransaction}
                       manualAccountsById={manualAccountsById}
                       editableCategory
                       categories={categories}

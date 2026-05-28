@@ -8,6 +8,7 @@ export default function BulkBar({
   onMarkPersonal,
   onMark5050,
   onMarkReviewed,
+  onMarkUnreviewed,
   onSuggest,
   onClear,
   suggesting,
@@ -19,12 +20,16 @@ export default function BulkBar({
         <span className="tx-bulk-owed">· {fmt$(sharedSelectedAmt)} owed</span>
       )}
       <div className="tx-bulk-spacer" />
-      <button type="button" className="tx-bulk-btn tx-bulk-btn--ghost" onClick={onMarkPersonal}>
-        Mark personal
-      </button>
-      <button type="button" className="tx-bulk-btn tx-bulk-btn--green" onClick={onMark5050}>
-        Split 50/50
-      </button>
+      {onMarkPersonal && (
+        <button type="button" className="tx-bulk-btn tx-bulk-btn--ghost" onClick={onMarkPersonal}>
+          Mark personal
+        </button>
+      )}
+      {onMark5050 && (
+        <button type="button" className="tx-bulk-btn tx-bulk-btn--green" onClick={onMark5050}>
+          Split 50/50
+        </button>
+      )}
       {onMarkReviewed && (
         <button
           type="button"
@@ -33,6 +38,16 @@ export default function BulkBar({
           title="Mark selected as reviewed"
         >
           ✓ Mark reviewed
+        </button>
+      )}
+      {onMarkUnreviewed && (
+        <button
+          type="button"
+          className="tx-bulk-btn tx-bulk-btn--ghost"
+          onClick={onMarkUnreviewed}
+          title="Move selected back to Current (unmark reviewed)"
+        >
+          ↺ Mark unreviewed
         </button>
       )}
       {onSuggest && (

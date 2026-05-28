@@ -1,8 +1,10 @@
 """Upcoming bills — projects the next due date for each credit account
-that has a ``due_day`` configured in ``account_details``.
+that has a ``due_day`` configured in ``account_details``, and merges in
+transaction-derived recurring charges (utilities, subscriptions, etc.) so
+non-credit bills also appear on the Bills page.
 """
 import calendar
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List
 
 from fastapi import APIRouter
@@ -82,6 +84,42 @@ async def upcoming_bills(window_days: int = 30) -> Dict[str, Any]:
             "days_until": (next_due - today).days,
             "balance": round(meta.get("ledger", 0.0), 2),
             "minimum_payment": details.get("minimum_payment"),
+        })
+
+    # Merge in transaction-derived bills — obligatory monthly commitments only
+    # (utilities, insurance, mortgage/rent, phone/internet, subscriptions). The
+    # Dashboard's Recurring Charges card surfaces everything else that repeats
+    # (groceries, parking, hair, therapy, etc.); those don't belong here.
+    from analytics import detect_recurring_charges
+
+    # Only true monthly obligations belong here. Credit cards are surfaced via
+    # the due_day path above; subscriptions / insurance / phone etc. live in
+    # the Dashboard's Recurring Charges card.
+    BILL_CATEGORIES = {"utilities", "mortgage", "rent"}
+    for r in detect_recurring_charges():
+        cat = (r.get("category") or "").strip().lower()
+        if cat not in BILL_CATEGORIES:
+            continue
+        typical_day = r.get("typical_day")
+        if not typical_day:
+            continue
+        # Project next occurrence of the merchant's typical day-of-month. If
+        # we already passed it this month, ``_next_due_date`` rolls forward.
+        projected = _next_due_date(today, int(typical_day))
+        if projected > horizon:
+            continue
+        bills.append({
+            "account_id": None,
+            "name": r["sample_description"],
+            "institution": r.get("category") or "Recurring",
+            "type": "recurring",
+            "due_day": int(typical_day),
+            "due_date": projected.isoformat(),
+            "days_until": (projected - today).days,
+            "balance": r["average_amount"],
+            "minimum_payment": None,
+            "category": r.get("category"),
+            "merchant_key": r.get("merchant_key"),
         })
 
     bills.sort(key=lambda b: b["due_date"])

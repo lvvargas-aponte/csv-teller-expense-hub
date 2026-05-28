@@ -10,7 +10,7 @@ once and persisted in the ``snaptrade_creds`` PgStore.
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -129,6 +129,61 @@ async def remove_snaptrade_connection(authorization_id: str):
         raise HTTPException(status_code=502, detail="Could not remove the connection.")
 
 
+def _persist_portfolio(repo: Any, portfolio: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Upsert account row, replace holdings, write a balance snapshot, and
+    return the ``AccountBalance``-shaped cache dict (or ``None`` if the
+    portfolio has no usable account id)."""
+    account = portfolio["account"]
+    account_id = account.get("id")
+    if not account_id:
+        return None
+    holdings = portfolio["holdings"]
+    subtype = _account_subtype(holdings)
+    total_value = round(float(portfolio.get("total_value") or 0.0), 2)
+
+    repo.upsert_teller_account(
+        {
+            "id": account_id,
+            "name": account["name"],
+            "type": "investment",
+            "subtype": subtype,
+            "institution": {"name": account["institution"]},
+        },
+        source="snaptrade",
+    )
+    repo.replace_holdings(account_id, holdings)
+    repo.insert_balance_snapshot(
+        account_id=account_id,
+        source="snaptrade",
+        available=total_value,
+        ledger=total_value,
+        raw={"total_value": total_value, "holding_count": len(holdings)},
+    )
+    return {
+        "id": account_id,
+        "institution": account["institution"],
+        "name": account["name"],
+        "type": "investment",
+        "subtype": subtype,
+        "available": total_value,
+        "ledger": total_value,
+        "manual": False,
+    }
+
+
+def _update_snaptrade_cache(synced_accounts: List[Dict[str, Any]]) -> None:
+    """Merge per-account sync results into the snaptrade_accounts cache key.
+
+    Single-account syncs replace just that one entry; bulk sync replaces the
+    full list. Caller decides which shape to pass (full list = replace all).
+    """
+    state._balances_cache_store.data["snaptrade_accounts"] = synced_accounts
+    state._balances_cache_store.data["snaptrade_fetched_at"] = (
+        datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    )
+    state._balances_cache_store.save()
+
+
 @router.post("/snaptrade/sync")
 async def sync_snaptrade() -> Dict[str, Any]:
     """Pull every connected account's holdings + total value and persist them.
@@ -157,55 +212,17 @@ async def sync_snaptrade() -> Dict[str, Any]:
     synced_accounts: List[Dict[str, Any]] = []
     results: List[Dict[str, Any]] = []
     for portfolio in portfolios:
-        account = portfolio["account"]
-        account_id = account.get("id")
-        if not account_id:
+        cached = _persist_portfolio(repo, portfolio)
+        if cached is None:
             continue
-        holdings = portfolio["holdings"]
-        subtype = _account_subtype(holdings)
-        total_value = round(float(portfolio.get("total_value") or 0.0), 2)
+        synced_accounts.append(cached)
+        results.append({
+            "account": cached["name"],
+            "holdings": len(portfolio["holdings"]),
+            "value": cached["available"],
+        })
 
-        repo.upsert_teller_account(
-            {
-                "id": account_id,
-                "name": account["name"],
-                "type": "investment",
-                "subtype": subtype,
-                "institution": {"name": account["institution"]},
-            },
-            source="snaptrade",
-        )
-        repo.replace_holdings(account_id, holdings)
-        repo.insert_balance_snapshot(
-            account_id=account_id,
-            source="snaptrade",
-            available=total_value,
-            ledger=total_value,
-            raw={"total_value": total_value, "holding_count": len(holdings)},
-        )
-        synced_accounts.append(
-            {
-                "id": account_id,
-                "institution": account["institution"],
-                "name": account["name"],
-                "type": "investment",
-                "subtype": subtype,
-                "available": total_value,
-                "ledger": total_value,
-                "manual": False,
-            }
-        )
-        results.append(
-            {"account": account["name"], "holdings": len(holdings), "value": total_value}
-        )
-
-    # Cache the synced accounts under their own key so a Teller refresh
-    # (which rewrites `teller_accounts`) never clobbers them.
-    state._balances_cache_store.data["snaptrade_accounts"] = synced_accounts
-    state._balances_cache_store.data["snaptrade_fetched_at"] = (
-        datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-    )
-    state._balances_cache_store.save()
+    _update_snaptrade_cache(synced_accounts)
 
     return {
         "message": (
@@ -214,4 +231,53 @@ async def sync_snaptrade() -> Dict[str, Any]:
         ),
         "accounts": len(synced_accounts),
         "details": results,
+    }
+
+
+@router.post("/snaptrade/sync/{account_id}")
+async def sync_snaptrade_account(account_id: str) -> Dict[str, Any]:
+    """Sync a single connected SnapTrade account.
+
+    Same persistence as the bulk sync, but only one account is hit (one
+    ``list_user_accounts`` call + per-account positions + balance). Use when
+    you want to refresh one brokerage without paying for the others to
+    re-pull, or when one account has been stale and you want a targeted
+    retry without disturbing the rest of the snaptrade_accounts cache.
+    """
+    _require_configured()
+    creds = _stored_creds()
+    if not creds:
+        raise HTTPException(status_code=409, detail="Connect a brokerage first.")
+
+    from db.accounts_repo import get_repo
+
+    repo = get_repo()
+    try:
+        portfolio = await state.snaptrade.get_account_holdings(
+            creds["user_id"], creds["user_secret"], account_id
+        )
+    except Exception as e:
+        logger.warning(f"[SnapTrade] single-account fetch failed for {account_id}: {e}")
+        raise HTTPException(status_code=502, detail="Could not fetch holdings from SnapTrade.")
+
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="Account not found in SnapTrade.")
+
+    cached = _persist_portfolio(repo, portfolio)
+    if cached is None:
+        raise HTTPException(status_code=502, detail="SnapTrade returned an account without an id.")
+
+    # Merge into the cache without disturbing the other synced accounts.
+    existing = state._balances_cache_store.data.get("snaptrade_accounts", []) or []
+    merged = [a for a in existing if a.get("id") != account_id] + [cached]
+    _update_snaptrade_cache(merged)
+
+    return {
+        "message": (
+            f"Synced {cached['name']}: {len(portfolio['holdings'])} position(s), "
+            f"value {cached['available']}."
+        ),
+        "account": cached["name"],
+        "holdings": len(portfolio["holdings"]),
+        "value": cached["available"],
     }

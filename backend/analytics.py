@@ -476,6 +476,14 @@ def compute_goal_statuses() -> List[Dict[str, Any]]:
 # (SQ *, TST*, PP*) so the same merchant collapses to one key across months.
 _NOISE_RE = re.compile(r"[\d#*]+")
 _WHITESPACE_RE = re.compile(r"[\s\-_/]+")
+# Mixed-alphanumeric "session id" tokens like ``F4KP2T``, ``6BVHGR`` that some
+# merchants embed in every charge — strip so the same merchant doesn't fork
+# into one merchant-key per charge. Gated to tokens 4–10 chars with at least
+# one letter AND at least one digit so real words ("4G", "AT&T") survive.
+_SESSION_ID_RE = re.compile(
+    r"\b(?=[a-z0-9]*[a-z])(?=[a-z0-9]*\d)[a-z0-9]{4,10}\b",
+    re.IGNORECASE,
+)
 _PROCESSOR_PREFIX_RE = re.compile(
     r"^(sq\s*\*|tst\s*\*|pp\s*\*|paypal\s*\*|amzn\s+mktp\s+us\*?)\s*",
     re.IGNORECASE,
@@ -490,6 +498,21 @@ _STATE_CODE_TAIL_RE = re.compile(r"\s+[a-z]{2}\s*$", re.IGNORECASE)
 # vary 30-50% month to month; 0.60 keeps them in while still rejecting genuinely
 # noisy categories like gas stations (where the spread is typically > 1.0).
 _RECURRING_AMOUNT_SPREAD = 0.60
+
+# Categories where the merchant is *always* a recurring bill, regardless of how
+# much the dollar amount swings month-to-month (utilities follow the weather,
+# insurance bumps mid-year, phone plans get one-off fees). For these we skip
+# the amount-spread filter as long as the cadence is monthly-ish.
+_ALWAYS_RECURRING_CATEGORIES = frozenset({
+    "utilities",
+    "insurance",
+    "rent",
+    "mortgage",
+    "phone",
+    "internet",
+    "subscription",
+    "subscriptions",
+})
 
 # Categories that move money between household pockets rather than out of it.
 # Match is case-insensitive against the trimmed category. Kept in lowercase
@@ -520,6 +543,9 @@ def _normalize_merchant(description: str) -> str:
     cleaned = description.lower()
     cleaned = _PROCESSOR_PREFIX_RE.sub("", cleaned)
     cleaned = _ACH_TAIL_RE.sub(" ", cleaned)
+    # Strip mixed-alphanumeric session ids *before* the digit-only sweep so
+    # ``F4KP2T`` doesn't survive as ``fkpt``.
+    cleaned = _SESSION_ID_RE.sub(" ", cleaned)
     cleaned = _NOISE_RE.sub(" ", cleaned)
     cleaned = _WHITESPACE_RE.sub(" ", cleaned).strip()
     cleaned = _STATE_CODE_TAIL_RE.sub("", cleaned).strip()
@@ -599,12 +625,19 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
         if avg <= 0:
             continue
         spread = (max(amounts) - min(amounts)) / avg
-        if spread > _RECURRING_AMOUNT_SPREAD:
+        # Skip the spread gate for always-recurring categories — utilities and
+        # insurance routinely swing wider than 60% but are still bills.
+        item_cat = (items[-1]["category"] or "").strip().lower()
+        if item_cat not in _ALWAYS_RECURRING_CATEGORIES and spread > _RECURRING_AMOUNT_SPREAD:
             continue
 
         last_seen = max(i["date"] for i in items)
-        # Rough monthly cost: average per-charge × distinct-months frequency / span.
-        # For monthly subscriptions this collapses to ≈ average amount.
+        # Typical day-of-month — median across past charges, used by the Bills
+        # page to project the next due date. Resilient to one stray reissue.
+        days_of_month = sorted(
+            int(i["date"][8:10]) for i in items if len(i["date"]) >= 10
+        )
+        typical_day = days_of_month[len(days_of_month) // 2] if days_of_month else None
         out.append({
             "merchant_key": key,
             "sample_description": items[-1]["description"],
@@ -613,6 +646,7 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
             "occurrences": len(items),
             "months_seen": len(months_seen),
             "last_seen": last_seen,
+            "typical_day": typical_day,
             "estimated_monthly_cost": round(avg, 2),
         })
 
@@ -657,14 +691,22 @@ def _net_worth_at(
 
     total = 0.0
     for snap in chosen.values():
-        acct_type = (snap.get("type") or "").lower()
-        if acct_type == "depository":
+        bucket = _classify_account_bucket(
+            snap.get("type") or "", snap.get("subtype") or ""
+        )
+        if bucket == "cash":
             total += float(snap.get("available") or 0.0)
-        elif acct_type == "credit":
+        elif bucket == "credit":
             # ``ledger`` on a credit card is the balance owed — counts as debt.
             total -= float(snap.get("ledger") or 0.0)
-        # Other types (investment, loan, etc.) are intentionally skipped
-        # here — PR3 will handle investment as a separate bucket.
+        elif bucket == "investment":
+            # SnapTrade snapshots write the account's total value to both
+            # ``available`` and ``ledger``; prefer ``available`` for parity
+            # with the cash branch.
+            val = snap.get("available")
+            if val is None:
+                val = snap.get("ledger")
+            total += float(val or 0.0)
     return total
 
 

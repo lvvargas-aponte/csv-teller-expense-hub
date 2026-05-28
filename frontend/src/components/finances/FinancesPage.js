@@ -134,7 +134,7 @@ export default function FinancesPage() {
           <SimplePage title="Bills">
             <div style={{ display: 'grid', gap: 16 }}>
               <UpcomingBillsCard onNavigateToAccounts={() => setActiveId('accounts')} />
-              <RecurringChargesCard />
+              <RecurringChargesCard variant="detail" />
             </div>
           </SimplePage>
         )}

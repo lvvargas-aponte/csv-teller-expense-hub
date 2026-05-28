@@ -970,7 +970,44 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.18s ease, min-width 0.18s ease;
 }
+
+/* Collapsed rail: icons only. Toggle is fixed at the top-right of the rail. */
+.eh-sidebar--collapsed { width: 64px; min-width: 64px; }
+.eh-sidebar--collapsed .eh-sidebar-logo { padding: 0 0 24px; justify-content: center; }
+.eh-sidebar--collapsed .eh-sidebar-logo-text,
+.eh-sidebar--collapsed .eh-sidebar-section-label,
+.eh-sidebar--collapsed .eh-nav-text,
+.eh-sidebar--collapsed .eh-sidebar-footer { display: none; }
+.eh-sidebar--collapsed .eh-sidebar-nav { padding: 0 8px; }
+.eh-sidebar--collapsed .eh-nav-item {
+  justify-content: center;
+  padding: 9px 0;
+  gap: 0;
+}
+
+/* Collapse / expand toggle — small chevron pinned to the sidebar edge. */
+.eh-sidebar-toggle {
+  position: absolute;
+  top: 12px;
+  right: 8px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card, #fff);
+  color: var(--text-muted, #64748b);
+  font-size: 14px; font-weight: 700; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  z-index: 5;
+  padding: 0;
+}
+.eh-sidebar-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.eh-sidebar--collapsed .eh-sidebar-toggle { right: 50%; transform: translateX(50%); top: 8px; }
+.eh-sidebar--collapsed .eh-sidebar-logo { margin-top: 28px; }
 .eh-sidebar-logo {
   padding: 0 20px 24px;
   display: flex;
@@ -1353,6 +1390,70 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 }
 .eh-dcard-state--error { color: var(--red); }
 .eh-dcard-state--empty { font-style: italic; }
+
+.eh-dcard-filter { position: relative; }
+.eh-dcard-filter > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #94a3b8);
+  padding: 4px 8px;
+  border: 1px solid var(--border, #334155);
+  border-radius: 6px;
+  user-select: none;
+}
+.eh-dcard-filter > summary::-webkit-details-marker { display: none; }
+.eh-dcard-filter > summary:hover { color: var(--text-primary, #e2e8f0); }
+.eh-dcard-filter[open] > summary { color: var(--text-primary, #e2e8f0); }
+.eh-dcard-filter-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 50;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-elevated, #1e293b);
+  border: 1px solid var(--border, #334155);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 8px;
+}
+.eh-dcard-filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #64748b);
+  padding: 4px 6px 6px;
+}
+.eh-dcard-filter-clear {
+  background: none;
+  border: none;
+  color: var(--accent, #6366f1);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+.eh-dcard-filter-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.eh-dcard-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.eh-dcard-filter-item:hover { background: var(--bg-hover, rgba(255,255,255,0.04)); }
+.eh-dcard-filter-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eh-dcard-filter-amt { color: var(--text-muted, #64748b); font-variant-numeric: tabular-nums; }
 
 /* KPI hover lifts above the banner so the info tooltip isn't clipped by it. */
 .eh-kpi { z-index: 1; }
@@ -1757,10 +1858,16 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   background: white;
   border: 1px solid #d1fae5;
   border-radius: 14px;
-  overflow: hidden;
+  /* Horizontal scroll fallback so columns are never clipped on narrow
+     viewports. The radius is preserved by clipping the inner table corners. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 .tx-table {
   width: 100%;
+  min-width: 720px;     /* triggers horizontal scroll on narrow viewports
+                           rather than crushing the columns */
   border-collapse: collapse;
 }
 .tx-table thead tr {
@@ -1780,7 +1887,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 .tx-table thead th.tx-col-cb { width: 32px; padding: 9px 8px 9px 12px; }
 .tx-table thead th.tx-col-amt { text-align: right; width: 110px; }
 .tx-table thead th.tx-col-split { width: 92px; }
-.tx-table thead th.tx-col-actions { width: 78px; }
+.tx-table thead th.tx-col-actions { width: 140px; min-width: 140px; }
 
 .tx-row { border-bottom: 1px solid #f0fdf4; transition: background 0.1s; }
 .tx-row:last-child { border-bottom: none; }
@@ -1837,16 +1944,24 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 
 .icon-legend-wrap { position: relative; display: inline-block; }
 .icon-legend-btn {
-  width: 20px; height: 20px; border-radius: 50%;
-  border: 1px solid var(--border, #cbd5e1);
-  background: transparent;
-  font-size: 11px; font-weight: 700; cursor: pointer;
-  color: var(--text-muted, #64748b);
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid #34d399;
+  background: #d1fae5;
+  font-size: 12px; font-weight: 800; cursor: pointer;
+  color: #047857;
   display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1;
+  transition: background 0.12s, transform 0.12s;
 }
+.icon-legend-btn:hover { background: #a7f3d0; transform: scale(1.06); }
+.icon-legend-btn[aria-expanded="true"] { background: #059669; color: #fff; border-color: #059669; }
+[data-theme='dark'] .icon-legend-btn {
+  background: #064e3b; color: #6ee7b7; border-color: #047857;
+}
+[data-theme='dark'] .icon-legend-btn:hover { background: #065f46; }
 .icon-legend-panel {
   position: absolute; top: 26px; right: 0; z-index: 200;
-  width: 280px; padding: 12px;
+  width: 280px; max-width: calc(100vw - 32px); padding: 12px;
   background: var(--bg-card);
   border: 1px solid var(--border, #cbd5e1);
   border-radius: 8px;
@@ -1962,17 +2077,26 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 .tx-split-detail { font-size: 10.5px; color: #d97706; margin-top: 2px; }
 
 /* Row action icons */
-.tx-td-actions { width: 78px; padding-left: 0; padding-right: 8px; }
+.tx-td-actions { width: 140px; min-width: 140px; padding-left: 0; padding-right: 8px; }
 .tx-row-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 1px;
-  opacity: 0;
+  flex-wrap: wrap;
+  gap: 2px;
+  /* Always visible — hover-only was unreachable on touch and clipped on
+     narrow viewports where the row never gets hovered. */
+  opacity: 0.85;
   transition: opacity 0.15s;
 }
 .tx-row:hover .tx-row-actions { opacity: 1; }
 .tx-row.tx-row--selected .tx-row-actions { opacity: 1; }
+
+@media (max-width: 900px) {
+  .tx-table thead th.tx-col-actions,
+  .tx-td-actions { width: 96px; min-width: 96px; }
+  .tx-act-btn { width: 20px; height: 20px; font-size: 10px; }
+}
 .tx-act-btn {
   width: 22px; height: 22px;
   display: flex; align-items: center; justify-content: center;
@@ -2056,6 +2180,16 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   color: #111827;
 }
 .tx-adj-input:focus { border-color: #34d399; }
+.tx-adj-input--pct { width: 56px; text-align: right; }
+.tx-adj-quick {
+  padding: 4px 9px; border-radius: 99px;
+  background: #ecfdf5; color: #047857;
+  border: 1px solid #a7f3d0;
+  font-size: 11px; font-weight: 700; cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.tx-adj-quick:hover { background: #d1fae5; }
 .tx-adj-save {
   padding: 5px 10px; border-radius: 6px;
   background: #059669; color: white; border: none;
@@ -2082,6 +2216,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 @media (max-width: 860px) {
   .tx-col-source, .tx-td-source { display: none; }
   .tx-desc-main { -webkit-line-clamp: 3; }
+  /* With Source dropped the table fits in less width — lower the scroll
+     threshold so the remaining columns don't trigger a scrollbar too eagerly. */
+  .tx-table { min-width: 620px; }
 }
 @media (max-width: 640px) {
   .tx-page-wrap { padding: 12px 12px 60px; }
@@ -2089,6 +2226,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   .tx-brand-name { display: none; }
   .tx-tab .tx-tab-label { display: none; }
   .tx-sync-panel { flex-wrap: wrap; }
+  /* On phones, drop the Split column too — split/personal is editable from
+     the row's action menu and the bulk bar. Keeps Date · Desc · Amount · Actions. */
+  .tx-col-split, .tx-td-split { display: none; }
+  .tx-table { min-width: 480px; }
 }
 
 /* ════════════════════════════════════════════════════════════════════════

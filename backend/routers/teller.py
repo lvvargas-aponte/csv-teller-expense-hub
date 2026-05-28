@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 
 import state
-from csv_parser import Transaction as CsvTransaction, BankType
+from csv_parser import Transaction as CsvTransaction, BankType, dedupe_key
 from helpers import (
     _env_add_token,
     _env_remove_token,
@@ -154,6 +154,18 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
     total_fetched = 0
     total_added = 0
 
+    # Cross-source dedupe snapshot: an identical purchase already imported as
+    # a CSV row should not get re-added under its Teller id. Built once before
+    # the loop; we update it as we add so this also catches dupes across
+    # accounts within the same sync.
+    existing_keys = {
+        dedupe_key(
+            t.get("date"), t.get("amount"),
+            t.get("description"), t.get("transaction_type"),
+        )
+        for t in state.stored_transactions.values()
+    }
+
     token_batches, token_errors = await state.teller.list_accounts_by_token()
     results: List[Dict[str, Any]] = list(token_errors)
 
@@ -218,10 +230,17 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
                         ),
                         account_type=acct_type,
                     )
-                    if txn.transaction_id not in state.stored_transactions:
+                    key = dedupe_key(
+                        txn.date, txn.amount, txn.description, txn.transaction_type,
+                    )
+                    if (
+                        txn.transaction_id not in state.stored_transactions
+                        and key not in existing_keys
+                    ):
                         state.stored_transactions[txn.transaction_id] = txn.to_dict()
+                        existing_keys.add(key)
                         added += 1
-                    else:
+                    elif txn.transaction_id in state.stored_transactions:
                         existing = state.stored_transactions[txn.transaction_id]
                         for field in ("transaction_type", "account_type", "category",
                                       "institution", "description", "amount", "date"):

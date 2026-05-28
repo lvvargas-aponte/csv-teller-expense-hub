@@ -6,17 +6,20 @@ export default function FilterBar({
   bank,
   month,
   split,
+  category = 'all',
   search,
   onBankChange,
   onMonthChange,
   onSplitChange,
+  onCategoryChange,
   onSearchChange,
   visibleCount,
   totalCount,
 }) {
-  const bankActive  = bank  !== 'all';
-  const monthActive = month !== 'all';
-  const splitActive = split !== 'all';
+  const bankActive     = bank     !== 'all';
+  const monthActive    = month    !== 'all';
+  const splitActive    = split    !== 'all';
+  const categoryActive = category !== 'all';
 
   return (
     <div className="tx-filter-bar">
@@ -58,6 +61,21 @@ export default function FilterBar({
           <option value="shared">Shared</option>
         </select>
       </div>
+
+      {onCategoryChange && (
+        <div className="tx-sel-wrap">
+          <select
+            className={categoryActive ? 'tx-sel--active' : ''}
+            value={category}
+            onChange={(e) => onCategoryChange(e.target.value)}
+            aria-label="Filter by category"
+          >
+            <option value="all">All categories</option>
+            <option value="uncategorized">Uncategorized</option>
+            <option value="categorized">Categorized</option>
+          </select>
+        </div>
+      )}
 
       <div className="tx-search-wrap">
         <span className="tx-search-icon" aria-hidden="true">⌕</span>
