@@ -8,6 +8,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 
 /* ── Theme Variables (Emerald palette) ─────────────────────────────────── */
 :root {
+  color-scheme: light;
   /* Default = light/emerald per design handoff */
   --bg-root:        #f0fdf4;
   --bg-card:        #ffffff;
@@ -39,6 +40,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg-root:        #0b1a12;
   --bg-card:        #0e2218;
   --bg-sidebar:     #0e2218;
@@ -1782,7 +1784,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   flex-shrink: 0;
 }
 .tx-sel-wrap { position: relative; flex-shrink: 0; }
-.tx-sel-wrap select {
+.tx-sel-wrap select,
+.tx-sel-wrap input[list] {
   appearance: none;
   -webkit-appearance: none;
   background: white;
@@ -1796,7 +1799,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   outline: none;
   transition: border-color 0.14s;
 }
-.tx-sel-wrap select:focus { border-color: #34d399; }
+.tx-sel-wrap input[list] { cursor: text; }
+.tx-sel-wrap input[list]::-webkit-calendar-picker-indicator { display: none; }
+.tx-sel-wrap select:focus,
+.tx-sel-wrap input[list]:focus { border-color: #34d399; }
 .tx-sel-wrap::after {
   content: '';
   position: absolute;
@@ -1807,7 +1813,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   border-top: 5px solid #9ca3af;
   pointer-events: none;
 }
-.tx-sel-wrap select.tx-sel--active {
+.tx-sel-wrap select.tx-sel--active,
+.tx-sel-wrap input[list].tx-sel--active {
+  border-color: #34d399; background: #f0fdf4;
+  color: #059669; font-weight: 600;
+}
+.tx-filter-cat { flex-shrink: 0; width: 180px; }
+.tx-filter-cat--active .cat-combo-input {
   border-color: #34d399; background: #f0fdf4;
   color: #059669; font-weight: 600;
 }
@@ -2508,6 +2520,20 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   font-family: 'DM Mono', ui-monospace, monospace;
 }
 .ov-debt-input::placeholder { color: #9ca3af; }
+
+/* Hide native number spinners by default; reveal on hover/focus so the
+   field reads as a clean text input until the user actually engages with it. */
+input[type="number"] { -moz-appearance: textfield; }
+input[type="number"]:hover,
+input[type="number"]:focus { -moz-appearance: auto; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+input[type="number"]:hover::-webkit-inner-spin-button,
+input[type="number"]:focus::-webkit-inner-spin-button {
+  -webkit-appearance: inner-spin-button; margin: 0;
+}
 .ov-debt-input-wrap { position: relative; }
 .ov-debt-input-prefix {
   position: absolute;
@@ -3076,37 +3102,46 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 /* ── Category combobox (used in EditModal + History inline edit) ── */
 .cat-combo { position: relative; display: inline-block; width: 100%; }
 .cat-combo--compact { max-width: 220px; }
-.cat-combo-row { display: flex; align-items: center; gap: 4px; }
+.cat-combo-row { position: relative; display: flex; align-items: center; }
+.cat-combo-row::after {
+  content: '';
+  position: absolute;
+  right: 10px; top: 50%; transform: translateY(-50%);
+  width: 0; height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid #9ca3af;
+  pointer-events: none;
+}
 .cat-combo-input {
   flex: 1;
   min-width: 0;
-  padding: 4px 8px;
-  border: 1px solid var(--border-mid);
-  border-radius: 6px;
-  background: var(--bg-card);
-  color: var(--text-primary);
+  padding: 5px 28px 5px 10px;
+  border: 1px solid #d1fae5;
+  border-radius: 8px;
+  background: white;
+  color: #374151;
   font-size: 12px;
-  font-family: inherit;
-}
-.cat-combo-input:focus {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1.4;
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-light);
-}
-.cat-combo--compact .cat-combo-input { padding: 2px 6px; font-size: 11px; }
-.cat-combo-toggle {
-  border: 1px solid var(--border-mid);
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: 6px;
-  padding: 0 6px;
-  height: 26px;
+  transition: border-color 0.14s;
   cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
 }
-.cat-combo-toggle:hover { background: var(--accent-light); color: var(--accent); }
-.cat-combo--open .cat-combo-toggle { background: var(--accent-light); color: var(--accent); }
+.cat-combo-input:focus { border-color: #34d399; }
+.cat-combo--compact .cat-combo-input { padding: 3px 24px 3px 8px; font-size: 11px; }
+.cat-combo-toggle {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 28px;
+  border: none;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+  padding: 0;
+  z-index: 1;
+}
 .cat-combo-panel {
   position: absolute;
   z-index: 40;
@@ -3116,19 +3151,21 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   min-width: 220px;
   max-height: 260px;
   overflow-y: auto;
-  background: var(--bg-card);
-  border: 1px solid var(--border-mid);
+  background: white;
+  border: 1px solid #d1fae5;
   border-radius: 8px;
   box-shadow: 0 6px 16px rgba(0,0,0,.08);
   padding: 4px;
 }
+.cat-combo-panel--portal { z-index: 1000; }
 .cat-combo-option {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   padding: 6px 8px;
-  font-size: 13px;
+  font-size: 12px;
+  font-family: 'DM Sans', system-ui, sans-serif;
   color: var(--text-primary);
   border-radius: 4px;
   cursor: pointer;
@@ -3229,9 +3266,28 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 [data-theme='dark'] .tx-bulk-bar { background: #050d08; }
 
 [data-theme='dark'] .tx-filter-label { color: var(--text-muted); }
-[data-theme='dark'] .tx-sel-wrap select { background: var(--bg-card); border-color: var(--border); color: var(--text-secondary); }
+[data-theme='dark'] .tx-sel-wrap select,
+[data-theme='dark'] .tx-sel-wrap input[list] { background: var(--bg-card); border-color: var(--border); color: var(--text-secondary); }
 [data-theme='dark'] .tx-sel-wrap::after { border-top-color: var(--text-faint); }
-[data-theme='dark'] .tx-sel-wrap select.tx-sel--active { background: var(--bg-secondary); color: var(--accent); }
+[data-theme='dark'] .tx-sel-wrap select.tx-sel--active,
+[data-theme='dark'] .tx-sel-wrap input[list].tx-sel--active { background: var(--bg-secondary); color: var(--accent); }
+[data-theme='dark'] .tx-sel-wrap input[list]::placeholder { color: var(--text-faint); }
+
+[data-theme='dark'] .cat-combo-input,
+[data-theme='dark'] .cat-combo-panel {
+  background: var(--bg-card);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+[data-theme='dark'] .cat-combo-input::placeholder { color: var(--text-faint); }
+[data-theme='dark'] .cat-combo-row::after { border-top-color: var(--text-faint); }
+[data-theme='dark'] .cat-combo-input:focus { border-color: var(--accent); }
+[data-theme='dark'] .cat-combo-option { color: var(--text-secondary); }
+[data-theme='dark'] .cat-combo-option:hover { background: var(--bg-secondary); }
+[data-theme='dark'] .cat-combo-option--selected { background: var(--bg-secondary); color: var(--accent); }
+[data-theme='dark'] .tx-filter-cat--active .cat-combo-input {
+  background: var(--bg-secondary); color: var(--accent); border-color: var(--border-mid);
+}
 [data-theme='dark'] .tx-search-wrap input { background: var(--bg-card); border-color: var(--border); color: var(--text-secondary); }
 [data-theme='dark'] .tx-search-wrap input::placeholder { color: var(--text-faint); }
 [data-theme='dark'] .tx-search-icon { color: var(--text-faint); }

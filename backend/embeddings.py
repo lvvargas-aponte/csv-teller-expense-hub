@@ -500,3 +500,120 @@ def format_txn_rag_context(
     if len(block) > max_chars:
         block = block[: max_chars - 3] + "..."
     return block
+
+
+# ---------------------------------------------------------------------------
+# User-fact memory — pgvector mirror of ``user_facts`` so the agent's
+# ``recall_about_user`` tool can do semantic retrieval. Embeds the fact
+# text only (category/tags are not part of the vector — they're used as
+# post-retrieval filters instead).
+# ---------------------------------------------------------------------------
+
+async def embed_pending_user_facts(limit: int = DEFAULT_BACKFILL_LIMIT) -> int:
+    """Embed any user_facts rows missing an embedding row.
+
+    Idempotent. Called as a BackgroundTask after ``remember_about_user``
+    inserts a new fact, and on startup as a backfill pass. Stops early
+    (returns current count) when Ollama becomes unavailable.
+    """
+    with sync_engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT f.id, f.fact FROM user_facts f "
+                "LEFT JOIN user_fact_embeddings e ON e.fact_id = f.id "
+                "WHERE e.fact_id IS NULL "
+                "ORDER BY f.id LIMIT :lim"
+            ),
+            {"lim": limit},
+        ).fetchall()
+
+    embedded = 0
+    for fact_id, content in rows:
+        vec = await embed_text(content or "")
+        if vec is None:
+            if embedded == 0:
+                logger.info(
+                    f"[embeddings] user-fact embed skipped for id={fact_id} — "
+                    "Ollama unavailable or dim mismatch"
+                )
+            break
+        with sync_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO user_fact_embeddings "
+                    "  (fact_id, model, dim, embedding) "
+                    "VALUES "
+                    f"  (:fid, :model, :dim, CAST(:vec AS vector({EMBED_DIM}))) "
+                    "ON CONFLICT (fact_id) DO UPDATE SET "
+                    "  embedding = EXCLUDED.embedding, "
+                    "  model     = EXCLUDED.model, "
+                    "  dim       = EXCLUDED.dim, "
+                    "  created_at = NOW()"
+                ),
+                {
+                    "fid": fact_id,
+                    "model": state.OLLAMA_EMBED_MODEL,
+                    "dim": EMBED_DIM,
+                    "vec": _vec_literal(vec),
+                },
+            )
+        embedded += 1
+    if embedded:
+        logger.info(f"[embeddings] embedded {embedded} user facts")
+    return embedded
+
+
+async def retrieve_similar_facts(
+    query: str,
+    status: str = "confirmed",
+    category: Optional[str] = None,
+    k: int = DEFAULT_K,
+    threshold: float = 0.5,
+) -> list[dict[str, Any]]:
+    """Return up to ``k`` user facts most similar to ``query``.
+
+    ``status`` defaults to 'confirmed' — proposed facts stay quiet until
+    the user approves them in the memory panel. ``threshold`` is looser
+    than the conversation-turn default because fact text tends to be
+    shorter / less syntactically rich than full chat turns.
+    """
+    vec = await embed_text(query)
+    if vec is None:
+        return []
+
+    where = ["f.status = :status"]
+    params: dict[str, Any] = {
+        "vec": _vec_literal(vec), "thresh": threshold,
+        "k": k, "status": status,
+    }
+    if category is not None:
+        where.append("f.category = :category")
+        params["category"] = category
+
+    with sync_engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                f"SELECT f.id, f.fact, f.category, f.tags, f.sensitive, "
+                f"       f.confidence, "
+                f"       (e.embedding <=> CAST(:vec AS vector({EMBED_DIM}))) AS distance "
+                f"FROM user_facts f "
+                f"JOIN user_fact_embeddings e ON e.fact_id = f.id "
+                f"WHERE {' AND '.join(where)} "
+                f"  AND (e.embedding <=> CAST(:vec AS vector({EMBED_DIM}))) < :thresh "
+                f"ORDER BY distance ASC LIMIT :k"
+            ),
+            params,
+        ).fetchall()
+
+    return [
+        {
+            "fact_id": int(r[0]),
+            "fact": r[1],
+            "category": r[2],
+            "tags": list(r[3] or []),
+            "sensitive": bool(r[4]),
+            "confidence": float(r[5]) if r[5] is not None else 0.5,
+            "distance": float(r[6]),
+        }
+        for r in rows
+    ]

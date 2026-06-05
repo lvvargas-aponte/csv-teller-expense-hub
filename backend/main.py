@@ -18,7 +18,7 @@ _FAKE_TOKEN_RE = re.compile(r"^tok_(abc|one|two|test|fake|dummy)", re.IGNORECASE
 from routers import (
     accounts, advisor, alerts, balances, bills, budgets, credit_health, dashboard,
     documents, goals, insights, investments, layout, profile, seeds, sheets,
-    snaptrade, tools,
+    snaptrade, tools, user_facts,
 )
 from routers import teller as teller_router
 from routers import transactions
@@ -109,6 +109,7 @@ app.include_router(documents.router,    prefix="/api")
 app.include_router(seeds.router,        prefix="/api")
 app.include_router(snaptrade.router,    prefix="/api")
 app.include_router(investments.router,  prefix="/api")
+app.include_router(user_facts.router,   prefix="/api")
 
 
 # Static help site — built from /docs by mkdocs into /docs/site.

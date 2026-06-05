@@ -79,9 +79,32 @@ class TestDiscoverParser:
         transactions = DiscoverParser().parse(DISCOVER_TWO_ROWS)
         assert transactions[0].source == BankType.DISCOVER
 
-    def test_category_is_captured(self):
+    def test_category_is_captured_and_normalized(self):
+        # Discover's "Restaurants" column value normalizes to canonical "Dining"
+        # (synonym merge); "Shopping" passes through unchanged.
         transactions = DiscoverParser().parse(DISCOVER_TWO_ROWS)
-        assert transactions[0].category == "Restaurants"
+        assert transactions[0].category == "Dining"
+        assert transactions[1].category == "Shopping"
+
+    def test_category_normalized_on_messy_inputs(self):
+        messy = (
+            "Trans. Date,Post Date,Description,Amount,Category\n"
+            "01/15/2024,01/16/2024,WHOLE FOODS,-50.00,groceries\n"
+            "01/16/2024,01/17/2024,SHELL,-35.00,fuel\n"
+            "01/17/2024,01/18/2024,AMAZON,-12.99,SHOPPING\n"
+        )
+        transactions = DiscoverParser().parse(messy)
+        assert transactions[0].category == "Groceries"       # case fix
+        assert transactions[1].category == "Gas"              # synonym merge
+        assert transactions[2].category == "Shopping"         # uppercase → titlecase fallback
+
+    def test_empty_category_becomes_none(self):
+        empty_cat = (
+            "Trans. Date,Post Date,Description,Amount,Category\n"
+            "01/15/2024,01/16/2024,UNKNOWN VENDOR,-10.00,\n"
+        )
+        transactions = DiscoverParser().parse(empty_cat)
+        assert transactions[0].category is None
 
 
 # ---------------------------------------------------------------------------

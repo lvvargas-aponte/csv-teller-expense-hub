@@ -8,9 +8,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlalchemy import text as sql_text
 
+import config
 import state
-from analytics import build_financial_snapshot
-from db import documents_repo, feedback_repo, style_profile_repo
+from agent import default_tool_registry, run_agent
+from analytics import _balances_snapshot, build_financial_snapshot
+from db import documents_repo, feedback_repo, style_profile_repo, user_facts_repo
 from db.base import sync_engine
 from embeddings import (
     embed_pending_transactions,
@@ -205,6 +207,113 @@ def _render_snapshot(snapshot: Dict[str, Any]) -> str:
     return "FINANCIAL_SNAPSHOT:\n" + json.dumps(snapshot, indent=2, default=str)
 
 
+def _render_user_memory_block() -> str:
+    """Top-N confirmed user_facts rendered as a compact prompt section.
+
+    Skipped entirely (empty string) when nothing is confirmed yet, so
+    new users don't see a header for an empty list.
+    """
+    facts = user_facts_repo.list_facts(
+        status="confirmed", limit=config.ADVISOR_MEMORY_INJECT_LIMIT,
+    )
+    if not facts:
+        return ""
+    lines = [
+        "WHAT FIN REMEMBERS ABOUT THE USER (curated — treat as ground truth, "
+        "do NOT contradict; call recall_about_user for more if needed):"
+    ]
+    for f in facts:
+        tag_suffix = f" #{' #'.join(f['tags'])}" if f.get("tags") else ""
+        lines.append(f"- [{f['category']}] {f['fact']}{tag_suffix}")
+    return "\n".join(lines)
+
+
+def _render_facts_header() -> str:
+    """Lean balances + profile header for agent mode.
+
+    Agent mode pulls detailed data on demand via tools, so we only need
+    enough orientation up front for Fin to know which tools to reach for.
+    """
+    snap = _balances_snapshot()
+    facts = {
+        "net_worth": snap["net_worth"],
+        "total_cash": snap["total_cash"],
+        "total_credit_debt": snap["total_credit_debt"],
+        "total_investments": snap["total_investments"],
+        "transaction_count": len(state.stored_transactions),
+    }
+    return "FINANCIAL_FACTS (high-level — use tools for detail):\n" + json.dumps(
+        facts, indent=2, default=str
+    )
+
+
+AGENT_TOOL_GUIDE = """\
+You have tools to fetch specifics on demand. Prefer calling a tool over
+guessing — never invent dollar amounts or balances. Call at most one or
+two tools per turn; don't chain unrelated lookups.
+
+Conversation continuity (read this FIRST every turn):
+- The user's current message often refers to what YOU just said. Read the
+  previous assistant message before deciding what to do. NEVER respond
+  with "I don't have context" — the previous turn IS your context.
+- Short replies like "yes", "ok", "sure", "tell me more", "do it",
+  "the first one", "that sounds good", "go ahead" mean: act on the
+  follow-up you offered. Do NOT ask for clarification.
+- If your previous turn ended with "Want me to dig into X?" or
+  "Should I look at Y?", a positive short reply means: yes, look at it.
+  Pick the appropriate tool from the items YOU just listed and call it.
+- If your previous turn listed several categories ("Entertainment,
+  Dining, Subscriptions") and the user says "yes" or "show me", call
+  get_category_spending for each in turn (one per iteration), then
+  summarize.
+
+Example of correct continuity:
+  Turn 1 — User: "where can I save next month?"
+  Turn 1 — You:  "Looking at Entertainment, Dining, and Subscriptions.
+                  Want me to break down spend in each?"
+  Turn 2 — User: "yes"
+  Turn 2 — You:  [call get_category_spending(category="Entertainment", ...),
+                  then summarize all three based on results — do NOT
+                  ask "yes to what?"]
+
+When to use which tool:
+- get_category_spending: ROLL-UP questions — "average X", "total Y",
+  "how much did I spend on Z this year / last month". Returns count,
+  total, average, and monthly breakdown. THIS is the right tool for
+  aggregate spend; do NOT use search_transactions for aggregates.
+- search_transactions: user references ONE specific charge ("that $300
+  hit", "the Amazon thing", "what was that"). Similarity-based, returns
+  the top few hits — not suitable for sums or averages.
+- get_balance / get_debt: user asks "how much do I have / owe".
+- get_investments: user asks about stocks, ETFs, crypto, portfolio,
+  allocation, holdings, specific tickers ("how is VTI doing", "what's
+  my biggest position", "am I over-concentrated"). Returns per-holding
+  detail plus allocation + concentration; the facts header only has the
+  total investments dollar value, so reach for this tool any time the
+  question goes beyond that total.
+- get_budget_status: user asks about budget vs actual for the CURRENT month.
+- get_goal_status: user asks about savings goals or pace.
+- project_cashflow: forward-looking — upcoming bills, cash runway,
+  affordability over a horizon.
+- search_documents: user references a rule, contribution limit, formula,
+  or anything from uploaded knowledge ("what does the IRS say about
+  Roth limits", "per my tax return", "based on my statement"). Cite the
+  document title in your reply when you use a hit.
+- recall_past_conversation: user references something they discussed
+  with you before in a different chat ("like we talked about last
+  time", "what did you say about my budget?"). Pulls from past
+  conversations only — not the current one.
+
+Date hints when calling get_category_spending or search_transactions:
+- "this year" → start_date = January 1 of the current year, omit end_date.
+- "last 6 months" → start_date = today minus 6 months, omit end_date.
+- "last month" → start_date and end_date covering the previous calendar month.
+- Resolve relative dates yourself; the tools take ISO YYYY-MM-DD only.
+
+If the answer is fully in the facts header, just answer — no tool call.
+"""
+
+
 def _render_style_profile() -> str:
     """Return the user-style block to inject into the system prompt, or ""
     if the profile hasn't been built yet."""
@@ -216,6 +325,21 @@ def _render_style_profile() -> str:
         "let this shape your voice, but never override the hard rules):\n"
         + profile["style_notes"]
     )
+
+
+def _save_trajectory(turn_id: int, trajectory: List[Dict[str, Any]]) -> None:
+    """Persist the agent trajectory blob on the assistant turn row."""
+    try:
+        with sync_engine.begin() as conn:
+            conn.execute(
+                sql_text(
+                    "UPDATE conversation_turns SET trajectory = CAST(:tj AS JSONB) "
+                    "WHERE id = :id"
+                ),
+                {"id": turn_id, "tj": json.dumps(trajectory, default=str)},
+            )
+    except Exception as e:
+        logger.warning(f"[advisor] trajectory persist failed for turn {turn_id}: {e}")
 
 
 def _lookup_turn_id(conv_id: str, turn_index: int) -> Optional[int]:
@@ -293,63 +417,102 @@ async def advisor_chat(req: ChatRequest, background_tasks: BackgroundTasks) -> C
 
     # Build grounded system prompt freshly each turn so the advisor always
     # sees the current snapshot (txns/balances may have changed mid-chat).
-    snapshot = build_financial_snapshot()
     style_block = _render_style_profile()
-    system_prompt = (
-        SYSTEM_PROMPT
-        + ("\n\n" + style_block if style_block else "")
-        + "\n\n"
-        + WEALTH_ARCHITECT_PROMPT
-        + "\n\n"
-        + _render_snapshot(snapshot)
-    )
+    if config.ADVISOR_AGENT_MODE:
+        # Agent mode: lean facts header + tool guide; details come via tools.
+        memory_block = _render_user_memory_block()
+        system_prompt = (
+            SYSTEM_PROMPT
+            + ("\n\n" + style_block if style_block else "")
+            + "\n\n"
+            + WEALTH_ARCHITECT_PROMPT
+            + "\n\n"
+            + AGENT_TOOL_GUIDE
+            + ("\n\n" + memory_block if memory_block else "")
+            + "\n\n"
+            + _render_facts_header()
+        )
+    else:
+        snapshot = build_financial_snapshot()
+        system_prompt = (
+            SYSTEM_PROMPT
+            + ("\n\n" + style_block if style_block else "")
+            + "\n\n"
+            + WEALTH_ARCHITECT_PROMPT
+            + "\n\n"
+            + _render_snapshot(snapshot)
+        )
 
-    # Phase 6: retrieve semantically similar past turns (excluding this conv)
-    # and append as a context block. Silent no-op if Ollama embeddings are
-    # unavailable or nothing crosses the cosine threshold.
-    try:
-        rag_hits = await retrieve_similar(req.message, exclude_conv_id=conv_id)
-        rag_block = format_rag_context(rag_hits)
-        if rag_block:
-            system_prompt += "\n\n" + rag_block
-            logger.info(f"[advisor] RAG retrieved {len(rag_hits)} similar turns")
-    except Exception as e:
-        logger.warning(f"[advisor] RAG retrieval failed: {e}")
+    # Auto-injected RAG blocks (similar past turns, similar transactions,
+    # similar documents) are SKIPPED in agent mode because the model fetches
+    # them on demand via `recall_past_conversation`, `search_transactions`,
+    # and `search_documents` tools. Auto-injection in agent mode duplicates
+    # work and inflates the prompt — let the model decide what it needs.
+    if not config.ADVISOR_AGENT_MODE:
+        # Phase 6: retrieve semantically similar past turns (excluding this conv)
+        # and append as a context block. Silent no-op if Ollama embeddings are
+        # unavailable or nothing crosses the cosine threshold.
+        try:
+            rag_hits = await retrieve_similar(req.message, exclude_conv_id=conv_id)
+            rag_block = format_rag_context(rag_hits)
+            if rag_block:
+                system_prompt += "\n\n" + rag_block
+                logger.info(f"[advisor] RAG retrieved {len(rag_hits)} similar turns")
+        except Exception as e:
+            logger.warning(f"[advisor] RAG retrieval failed: {e}")
 
-    # Transaction-level RAG: surface specific historical charges that look
-    # related to the user's question (e.g. "what was that $300 charge?").
-    try:
-        txn_hits = await retrieve_similar_transactions(req.message)
-        txn_block = format_txn_rag_context(txn_hits)
-        if txn_block:
-            system_prompt += "\n\n" + txn_block
-            logger.info(f"[advisor] RAG retrieved {len(txn_hits)} similar transactions")
-    except Exception as e:
-        logger.warning(f"[advisor] Transaction RAG retrieval failed: {e}")
+        # Transaction-level RAG: surface specific historical charges that look
+        # related to the user's question (e.g. "what was that $300 charge?").
+        try:
+            txn_hits = await retrieve_similar_transactions(req.message)
+            txn_block = format_txn_rag_context(txn_hits)
+            if txn_block:
+                system_prompt += "\n\n" + txn_block
+                logger.info(f"[advisor] RAG retrieved {len(txn_hits)} similar transactions")
+        except Exception as e:
+            logger.warning(f"[advisor] Transaction RAG retrieval failed: {e}")
 
-    # Document-level RAG: surface excerpts from uploaded knowledge-base docs
-    # (IRS guidance, tax returns, statements, etc.).  Distance threshold of
-    # 0.4 is intentionally tighter than turn/txn retrieval — for financial
-    # advice, "no excerpt" is preferable to a weakly-related one.
-    try:
-        query_vec = await embed_text(req.message)
-        if query_vec is not None:
-            doc_hits = documents_repo.retrieve_similar_docs(
-                query_vec, k=4, max_distance=0.4
-            )
-            doc_block = documents_repo.format_doc_rag_context(doc_hits)
-            if doc_block:
-                system_prompt += "\n\n" + doc_block
-                logger.info(
-                    f"[advisor] RAG retrieved {len(doc_hits)} reference excerpts"
+        # Document-level RAG: surface excerpts from uploaded knowledge-base docs
+        # (IRS guidance, tax returns, statements, etc.).  Distance threshold of
+        # 0.4 is intentionally tighter than turn/txn retrieval — for financial
+        # advice, "no excerpt" is preferable to a weakly-related one.
+        try:
+            query_vec = await embed_text(req.message)
+            if query_vec is not None:
+                doc_hits = documents_repo.retrieve_similar_docs(
+                    query_vec, k=4, max_distance=0.4
                 )
-    except Exception as e:
-        logger.warning(f"[advisor] Document RAG retrieval failed: {e}")
+                doc_block = documents_repo.format_doc_rag_context(doc_hits)
+                if doc_block:
+                    system_prompt += "\n\n" + doc_block
+                    logger.info(
+                        f"[advisor] RAG retrieved {len(doc_hits)} reference excerpts"
+                    )
+        except Exception as e:
+            logger.warning(f"[advisor] Document RAG retrieval failed: {e}")
 
     history = _trim_history(conv["messages"])
 
-    result = await chat_ollama(messages=history, system=system_prompt)
-    reply_text = result["text"] if result["ai_available"] else None
+    trajectory_payload: Optional[List[Dict[str, Any]]] = None
+    if config.ADVISOR_AGENT_MODE:
+        agent_result = await run_agent(
+            messages=history,
+            registry=default_tool_registry(current_conversation_id=conv_id),
+            system=system_prompt,
+        )
+        reply_text = agent_result.reply
+        ai_available = agent_result.terminated_reason != "ollama_unavailable"
+        trajectory_payload = [e.model_dump() for e in agent_result.trajectory]
+        result = {"ai_available": ai_available, "text": reply_text, "raw": None}
+        logger.info(
+            f"[advisor] agent run conv={conv_id} "
+            f"terminated={agent_result.terminated_reason} "
+            f"iters={agent_result.iterations} "
+            f"events={len(agent_result.trajectory)}"
+        )
+    else:
+        result = await chat_ollama(messages=history, system=system_prompt)
+        reply_text = result["text"] if result["ai_available"] else None
 
     if result["ai_available"] and reply_text:
         conv["messages"].append({
@@ -372,6 +535,8 @@ async def advisor_chat(req: ChatRequest, background_tasks: BackgroundTasks) -> C
         if result["ai_available"] and reply_text:
             # Assistant turn was just appended at index len(messages)-1.
             assistant_turn_id = _lookup_turn_id(conv_id, len(conv["messages"]) - 1)
+            if assistant_turn_id is not None and trajectory_payload is not None:
+                _save_trajectory(assistant_turn_id, trajectory_payload)
         background_tasks.add_task(embed_pending_turns, conv_id)
         # Catch up on any newly-uploaded / edited transactions so the next
         # chat turn can semantically find them. Idempotent and short-circuits

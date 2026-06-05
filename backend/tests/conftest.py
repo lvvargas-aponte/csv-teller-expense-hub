@@ -127,6 +127,8 @@ from main import app  # noqa: E402
 # sequences so ``conversation_turns.id`` starts at 1 each test.
 _TABLES_TO_TRUNCATE = [
     "json_stores",
+    "user_fact_embeddings",
+    "user_facts",
     "advisor_turn_feedback",
     "advisor_style_profile",
     "conversation_turn_embeddings",

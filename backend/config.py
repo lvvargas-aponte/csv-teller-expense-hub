@@ -49,3 +49,14 @@ DATABASE_URL: str = os.getenv(
     "DATABASE_URL",
     "postgresql+asyncpg://expense:expense_dev@db:5432/expense_hub",
 )
+
+# Fin agent harness — when enabled, the advisor router runs a tool-use loop
+# instead of stuffing the full snapshot into a single chat call. Default off
+# until eval coverage proves the agent path matches or beats the baseline.
+ADVISOR_AGENT_MODE: bool = os.getenv("ADVISOR_AGENT_MODE", "false").lower() == "true"
+ADVISOR_AGENT_MAX_ITERS: int = int(os.getenv("ADVISOR_AGENT_MAX_ITERS", "6"))
+
+# Caps the number of confirmed user facts injected into the agent's
+# system prompt each turn. Higher = Fin remembers more without needing
+# `recall_about_user`; lower = leaner prompt and faster turns.
+ADVISOR_MEMORY_INJECT_LIMIT: int = int(os.getenv("ADVISOR_MEMORY_INJECT_LIMIT", "30"))

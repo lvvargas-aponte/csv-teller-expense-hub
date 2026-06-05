@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Spin from '../ui/Spin';
+import AdvisorMemory from './AdvisorMemory';
 import {
   sendMessage,
   listConversations,
@@ -286,6 +287,8 @@ export default function AdvisorChat() {
           )}
           {error && <div style={{ color: '#f87171', fontSize: 13 }}>{error}</div>}
         </div>
+
+        <AdvisorMemory />
 
         <div className="advisor-style-panel" style={{ borderTop: '1px solid var(--border)', padding: '8px 12px' }}>
           <button

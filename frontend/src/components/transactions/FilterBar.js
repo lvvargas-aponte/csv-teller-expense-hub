@@ -1,8 +1,12 @@
 import React from 'react';
+import CategoryCombobox from './CategoryCombobox';
+
+const CATEGORY_SPECIAL_TOKENS = ['Uncategorized', 'Categorized'];
 
 export default function FilterBar({
   banks,
   months,
+  categories = [],
   bank,
   month,
   split,
@@ -19,7 +23,9 @@ export default function FilterBar({
   const bankActive     = bank     !== 'all';
   const monthActive    = month    !== 'all';
   const splitActive    = split    !== 'all';
-  const categoryActive = category !== 'all';
+  const categoryActive = category !== 'all' && category !== '';
+  const categoryComboValue = category === 'all' ? '' : category;
+  const categoryComboList = [...CATEGORY_SPECIAL_TOKENS, ...categories];
 
   return (
     <div className="tx-filter-bar">
@@ -63,17 +69,13 @@ export default function FilterBar({
       </div>
 
       {onCategoryChange && (
-        <div className="tx-sel-wrap">
-          <select
-            className={categoryActive ? 'tx-sel--active' : ''}
-            value={category}
-            onChange={(e) => onCategoryChange(e.target.value)}
-            aria-label="Filter by category"
-          >
-            <option value="all">All categories</option>
-            <option value="uncategorized">Uncategorized</option>
-            <option value="categorized">Categorized</option>
-          </select>
+        <div className={`tx-filter-cat${categoryActive ? ' tx-filter-cat--active' : ''}`}>
+          <CategoryCombobox
+            value={categoryComboValue}
+            categories={categoryComboList}
+            onChange={(v) => onCategoryChange(v === '' ? 'all' : v)}
+            placeholder="All categories"
+          />
         </div>
       )}
 

@@ -11,6 +11,7 @@ from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
 import logging
 
+from category_normalizer import normalize as normalize_category
 from config import PERSON_1_NAME, PERSON_2_NAME
 
 logger = logging.getLogger(__name__)
@@ -221,7 +222,7 @@ class DiscoverParser(CSVParser):
                     amount=abs(raw_amount),
                     source=BankType.DISCOVER,
                     post_date=row.get('Post Date', '').strip(),
-                    category=row.get('Category', '').strip(),
+                    category=normalize_category(row.get('Category', '').strip()),
                     institution="Discover",
                     # Discover CSVs list charges as negative amounts and credits as positive.
                     # "debit" = money out (expense/charge), "credit" = money in (refund/payment).

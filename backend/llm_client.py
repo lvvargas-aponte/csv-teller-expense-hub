@@ -62,17 +62,23 @@ async def ask_ollama(
 
 
 async def chat_ollama(
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     system: Optional[str] = None,
     model: Optional[str] = None,
     timeout: Optional[float] = None,
+    tools: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Multi-turn chat via Ollama's /api/chat endpoint.
 
-    `messages` is a list of {"role": "user"|"assistant", "content": str} dicts.
+    `messages` is a list of {"role": ..., "content": str, ...} dicts.
+    Role may be "user", "assistant", "system", or "tool" (when carrying a
+    tool-call result back to the model).
     If `system` is provided, it is prepended as a role=system message.
+    If `tools` is provided, it is forwarded as Ollama's OpenAI-compatible
+    tools array; the returned dict gains a ``tool_calls`` field carrying
+    any tool calls the model emitted.
     """
-    payload_messages: List[Dict[str, str]] = []
+    payload_messages: List[Dict[str, Any]] = []
     if system:
         payload_messages.append({"role": "system", "content": system})
     payload_messages.extend(messages)
@@ -82,6 +88,8 @@ async def chat_ollama(
         "messages": payload_messages,
         "stream": False,
     }
+    if tools:
+        body["tools"] = tools
 
     try:
         async with httpx.AsyncClient(timeout=timeout or state.OLLAMA_TIMEOUT_SEC) as client:
@@ -89,13 +97,18 @@ async def chat_ollama(
             resp.raise_for_status()
             raw = resp.json()
             msg = raw.get("message") or {}
-            return {"ai_available": True, "text": msg.get("content"), "raw": raw}
+            return {
+                "ai_available": True,
+                "text": msg.get("content"),
+                "tool_calls": msg.get("tool_calls") or [],
+                "raw": raw,
+            }
     except (httpx.ConnectError, httpx.ConnectTimeout, OSError) as e:
         logger.info(f"[llm_client] Ollama chat not reachable: {e}")
-        return {"ai_available": False, "text": None, "raw": None}
+        return {"ai_available": False, "text": None, "tool_calls": [], "raw": None}
     except Exception as e:
         logger.warning(f"[llm_client] Unexpected error calling Ollama chat: {e}")
-        return {"ai_available": False, "text": None, "raw": None}
+        return {"ai_available": False, "text": None, "tool_calls": [], "raw": None}
 
 
 async def embed_ollama(

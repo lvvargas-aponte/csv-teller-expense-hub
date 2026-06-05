@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 // Combobox for selecting / creating / removing a category.
 // - Click the input to open a dropdown of all known categories.
@@ -16,15 +17,43 @@ export default function CategoryCombobox({
 }) {
   const [draft, setDraft] = useState(value || '');
   const [open, setOpen] = useState(false);
+  const [panelStyle, setPanelStyle] = useState(null);
   const wrapRef = useRef(null);
+  const rowRef = useRef(null);
+  const panelRef = useRef(null);
 
   useEffect(() => { setDraft(value || ''); }, [value]);
+
+  const updatePanelPos = useCallback(() => {
+    if (!rowRef.current) return;
+    const r = rowRef.current.getBoundingClientRect();
+    setPanelStyle({
+      position: 'fixed',
+      top: r.bottom + 4,
+      left: r.left,
+      width: Math.max(r.width, 220),
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    updatePanelPos();
+    window.addEventListener('scroll', updatePanelPos, true);
+    window.addEventListener('resize', updatePanelPos);
+    return () => {
+      window.removeEventListener('scroll', updatePanelPos, true);
+      window.removeEventListener('resize', updatePanelPos);
+    };
+  }, [open, updatePanelPos]);
 
   // Close on outside click.
   useEffect(() => {
     if (!open) return undefined;
     const onDocClick = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+      const target = e.target;
+      const insideWrap = wrapRef.current && wrapRef.current.contains(target);
+      const insidePanel = panelRef.current && panelRef.current.contains(target);
+      if (!insideWrap && !insidePanel) {
         setOpen(false);
         commitIfChanged(draft);
       }
@@ -89,7 +118,7 @@ export default function CategoryCombobox({
       ref={wrapRef}
       className={`cat-combo${compact ? ' cat-combo--compact' : ''}${open ? ' cat-combo--open' : ''}`}
     >
-      <div className="cat-combo-row">
+      <div className="cat-combo-row" ref={rowRef}>
         <input
           className="cat-combo-input"
           type="text"
@@ -109,8 +138,13 @@ export default function CategoryCombobox({
         >▾</button>
       </div>
 
-      {open && (
-        <div className="cat-combo-panel" role="listbox">
+      {open && panelStyle && createPortal(
+        <div
+          ref={panelRef}
+          className="cat-combo-panel cat-combo-panel--portal"
+          role="listbox"
+          style={panelStyle}
+        >
           {filtered.length === 0 && !showCreateOption && (
             <div className="cat-combo-empty">No categories yet — type one to add it.</div>
           )}
@@ -147,7 +181,8 @@ export default function CategoryCombobox({
               <span>+ Add “{draftTrim}”</span>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

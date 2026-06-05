@@ -16,6 +16,13 @@ import state
 
 logger = logging.getLogger(__name__)
 
+# 30 days / typical paycheck cadence:
+#   weekly   → 7d   → ×4.286
+#   biweekly → 14d  → ×2.143
+#   semi-mo  → 15d  → ×2.000
+#   monthly  → 30d  → ×1.000
+_DAYS_PER_MONTH = 30.0
+
 
 def _parse_month_key(date_str: str) -> str:
     """Return a YYYY-MM string from either YYYY-MM-DD or MM/DD/YYYY input."""
@@ -832,14 +839,6 @@ def compute_net_worth_timeseries(months: int) -> List[Dict[str, Any]]:
 # a little extra slack for bonus-month bumps and tax-bracket shifts.
 _INCOME_AMOUNT_SPREAD = 0.15
 _INCOME_MIN_OCCURRENCES = 2
-# 30 days / typical paycheck cadence:
-#   weekly   → 7d   → ×4.286
-#   biweekly → 14d  → ×2.143
-#   semi-mo  → 15d  → ×2.000
-#   monthly  → 30d  → ×1.000
-_DAYS_PER_MONTH = 30.0
-
-
 # Strict P2P-platform signals: Venmo/Zelle/Cash App/PayPal in a description
 # almost always indicates a person-to-person transfer, never a paycheck.
 # Used both to *exclude* such rows from income detection (PR2) and to
@@ -1091,6 +1090,188 @@ def compute_income_estimate() -> Dict[str, Any]:
         "monthly_estimate": round(monthly, 2),
         "sources": sources[:3],
         "confidence": confidence,
+    }
+
+
+def category_spending_summary(
+    category: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Aggregate activity for one category across a date range.
+
+    Returns count / outflow / inflow / net_outflow / average / monthly
+    breakdown. Used by the Fin agent harness for "average / total / how
+    much did I spend / save on X" style questions — the right tool when
+    the user wants a roll-up, not a similarity search.
+
+    Direction split matters for **transfer-tagged categories** (e.g. the
+    user's ``Savings`` category contains positive-amount debit rows for
+    money going INTO savings and credit rows for money coming back).
+    ``outflow`` is debits (Discover credits with positive amount also
+    count here — Discover's sign convention is inverted). ``inflow`` is
+    non-Discover credits. ``net_outflow`` is outflow minus inflow — the
+    right number for "how much did I actually put into Savings".
+
+    For pure spending categories (Dining, Drinks, Groceries…), ``inflow``
+    will be ~0 and ``outflow`` is the total spend. ``total`` is kept as
+    an alias of ``outflow`` so existing prompts that say "total" still
+    make sense.
+
+    Category match is case-insensitive against ``txn.category`` after
+    normalization. Date bounds are inclusive ISO ``YYYY-MM-DD`` strings;
+    when omitted, the range is unbounded on that side.
+    """
+    needle = (category or "").strip().lower()
+    empty = {
+        "category": category, "count": 0,
+        "outflow": 0.0, "inflow": 0.0, "net_outflow": 0.0,
+        "total": 0.0, "average": 0.0, "by_month": {},
+        "start_date": start_date, "end_date": end_date,
+    }
+    if not needle:
+        return empty
+
+    outflow = 0.0
+    inflow = 0.0
+    count = 0
+    by_month: Dict[str, float] = {}
+    for txn in state.stored_transactions.values():
+        cat = (txn.get("category") or "").strip().lower()
+        if cat != needle:
+            continue
+        date_str = (txn.get("date") or "")[:10]
+        if not date_str:
+            continue
+        if start_date and date_str < start_date:
+            continue
+        if end_date and date_str > end_date:
+            continue
+        try:
+            amount = float(txn.get("amount", 0))
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+
+        txn_type = txn.get("transaction_type")
+        source = (txn.get("source") or "")
+        # Discover stores charges as ``credit`` with positive amount — count
+        # those as outflow. Everything else: debit = outflow, credit = inflow.
+        is_outflow = (
+            txn_type == "debit"
+            or (source == "discover" and txn_type == "credit")
+            or (txn_type is None)
+        )
+        if is_outflow:
+            outflow += amount
+        else:
+            inflow += amount
+        count += 1
+        month_key = _parse_month_key(date_str)
+        if month_key:
+            # by_month tracks outflow only (matches existing spending-view
+            # mental model). Inflow shows up in the top-level inflow field.
+            delta = amount if is_outflow else 0.0
+            by_month[month_key] = round(by_month.get(month_key, 0.0) + delta, 2)
+
+    outflow = round(outflow, 2)
+    inflow = round(inflow, 2)
+    net_outflow = round(outflow - inflow, 2)
+    average = round((outflow + inflow) / count, 2) if count else 0.0
+    return {
+        "category": category,
+        "count": count,
+        "outflow": outflow,
+        "inflow": inflow,
+        "net_outflow": net_outflow,
+        "total": outflow,         # back-compat alias for spending categories
+        "average": average,
+        "by_month": dict(sorted(by_month.items())),
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+
+def project_cashflow(horizon_days: int = 30) -> Dict[str, Any]:
+    """Project net cashflow over the next ``horizon_days`` days.
+
+    Composes existing analytics — recurring charges, recurring inbound
+    transfers, and income estimate — into a forward-looking view. Used by
+    the Fin agent harness as the ``project_cashflow`` tool so the advisor
+    can answer "what's my next 30 days look like" precisely.
+
+    Shape::
+
+        {
+          "horizon_days": 30,
+          "expected_income": 7250.0,
+          "expected_recurring_outflow": 3420.5,
+          "expected_inbound_transfers": 850.0,
+          "net": 4679.5,
+          "upcoming_bills": [
+            {"merchant": "...", "amount": 84.99, "estimated_date": "2026-06-04"},
+            ...
+          ],
+        }
+
+    ``upcoming_bills`` projects each recurring charge's next due date from
+    its ``typical_day`` (median day-of-month from history), filtered to the
+    horizon window. Dates are best-effort — the user's calendar of truth
+    lives elsewhere; this exists for *rough* planning.
+    """
+    if horizon_days <= 0:
+        horizon_days = 30
+
+    today = datetime.now().date()
+    horizon_end = today + timedelta(days=horizon_days)
+
+    income = compute_income_estimate()
+    monthly_income = float(income.get("monthly_estimate") or 0.0)
+    expected_income = round(monthly_income * (horizon_days / 30.0), 2)
+
+    inbound = detect_recurring_inbound_transfers()
+    monthly_inbound = sum(float(i.get("monthly_estimate") or 0.0) for i in inbound)
+    expected_inbound = round(monthly_inbound * (horizon_days / 30.0), 2)
+
+    recurring = detect_recurring_charges()
+    upcoming: List[Dict[str, Any]] = []
+    total_outflow = 0.0
+    for r in recurring:
+        typical_day = r.get("typical_day")
+        amount = float(r.get("estimated_monthly_cost") or 0.0)
+        if not typical_day or amount <= 0:
+            continue
+        # Project the next due date in or after today using typical_day.
+        year, month = today.year, today.month
+        for _ in range(int(horizon_days / 28) + 2):
+            try:
+                candidate = date(year, month, min(int(typical_day), 28))
+            except ValueError:
+                break
+            if candidate >= today and candidate <= horizon_end:
+                upcoming.append({
+                    "merchant": r.get("sample_description") or r.get("merchant_key"),
+                    "category": r.get("category"),
+                    "amount": amount,
+                    "estimated_date": candidate.isoformat(),
+                })
+                total_outflow += amount
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+            if candidate > horizon_end:
+                break
+
+    upcoming.sort(key=lambda x: x["estimated_date"])
+    return {
+        "horizon_days": horizon_days,
+        "expected_income": expected_income,
+        "expected_recurring_outflow": round(total_outflow, 2),
+        "expected_inbound_transfers": expected_inbound,
+        "net": round(expected_income + expected_inbound - total_outflow, 2),
+        "upcoming_bills": upcoming[:30],
     }
 
 

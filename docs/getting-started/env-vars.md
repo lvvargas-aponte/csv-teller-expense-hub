@@ -51,6 +51,8 @@ SnapTrade has no sandbox/production switch — these two credentials are the ent
 | `OLLAMA_HOST` | `http://localhost:11434` (Docker uses `http://host.docker.internal:11434`) | LLM endpoint |
 | `OLLAMA_MODEL` | `qwen2.5:14b-instruct` | Used by insights + payoff advice |
 | `OLLAMA_CHAT_MODEL` | `OLLAMA_MODEL` | Used by the advisor chat |
+| `ADVISOR_AGENT_MODE` | `false` | When `true`, the advisor uses a bounded tool-use loop instead of single-shot RAG. See [AI advisor → Agent harness mode](../concepts/advisor.md#agent-harness-mode-opt-in). Recommended chat model: Qwen 2.5 14B+ for reliable tool calling. |
+| `ADVISOR_AGENT_MAX_ITERS` | `6` | Hard cap on harness iterations per chat turn. Ignored when `ADVISOR_AGENT_MODE=false`. |
 
 ## Database
 

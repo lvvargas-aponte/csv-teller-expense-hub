@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 
 import state
+from category_normalizer import normalize as normalize_category
 from csv_parser import Transaction as CsvTransaction, BankType, dedupe_key
 from helpers import (
     _env_add_token,
@@ -134,7 +135,7 @@ async def replace_teller_token(req: ReplaceTokenRequest):
 
 
 @router.post("/teller/sync")
-async def sync_teller_transactions(req: TellerSyncRequest = None):
+async def sync_teller_transactions(req: Optional[TellerSyncRequest] = None):
     """Pull transactions from ALL stored access tokens, filtered by date range."""
     if req is None:
         req = TellerSyncRequest()
@@ -220,7 +221,7 @@ async def sync_teller_transactions(req: TellerSyncRequest = None):
                         source=BankType.TELLER,
                         transaction_id=t.get("id"),
                         account_id=account["id"],
-                        category=t.get("details", {}).get("category"),
+                        category=normalize_category(t.get("details", {}).get("category")),
                         institution=acct_institution,
                         transaction_type=infer_txn_type(
                             t, amt,

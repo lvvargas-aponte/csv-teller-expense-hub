@@ -411,6 +411,7 @@ export default function App() {
                   <FilterBar
                     banks={availableInstitutions}
                     months={availableMonths}
+                    categories={categories}
                     bank={filterInstitution}
                     month={filterMonth}
                     split={filterShared}

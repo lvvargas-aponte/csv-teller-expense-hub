@@ -37,10 +37,17 @@ export function useFilters(transactions) {
       const m = txnMonthKey(t.date);
       if (!m || m.key !== filterMonth) return false;
     }
-    if (filterCategory !== 'all') {
-      const hasCat = !!(t.category && String(t.category).trim());
-      if (filterCategory === 'uncategorized' && hasCat) return false;
-      if (filterCategory === 'categorized' && !hasCat) return false;
+    if (filterCategory !== 'all' && filterCategory !== '') {
+      const catVal = (t.category || '').trim();
+      const hasCat = !!catVal;
+      const needle = filterCategory.trim().toLowerCase();
+      if (needle === 'uncategorized') {
+        if (hasCat) return false;
+      } else if (needle === 'categorized') {
+        if (!hasCat) return false;
+      } else if (!catVal.toLowerCase().includes(needle)) {
+        return false;
+      }
     }
     if (search) {
       const q = search.toLowerCase();

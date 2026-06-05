@@ -87,6 +87,16 @@ class TestTellerSyncAccountFK:
         # Single account record regardless of how many times we sync.
         assert list(accounts_repo_memory.get_accounts().keys()).count("acc_xyz") == 1
 
+    def test_teller_categories_normalized_on_sync(self, client):
+        """Teller's ``details.category`` lands in canonical form (case fixes
+        + synonym merges) so Fin sees the same labels as the rest of the app.
+        """
+        _invoke_sync(client)
+        # "restaurants" (lower) → "Dining" (synonym merge through canonical title)
+        # "groceries"   (lower) → "Groceries" (case fix)
+        assert state.stored_transactions["teller_tx_1"]["category"] == "Dining"
+        assert state.stored_transactions["teller_tx_2"]["category"] == "Groceries"
+
 
 class TestCsvUploadHasNoAccountId:
     def test_csv_txns_leave_account_id_null(self, client, sample_discover_csv):

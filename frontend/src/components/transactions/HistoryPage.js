@@ -233,6 +233,7 @@ export default function HistoryPage() {
       <FilterBar
         banks={availableInstitutions}
         months={availableMonths}
+        categories={categories}
         bank={filterInstitution}
         month={filterMonth}
         split={filterShared}

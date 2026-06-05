@@ -1,7 +1,23 @@
 """Tests for the virtual advisor router: chat + conversation CRUD."""
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 import state
+
+
+@pytest.fixture(autouse=True)
+def _force_legacy_advisor_path(monkeypatch):
+    """Pin ADVISOR_AGENT_MODE=False for tests in this module.
+
+    Without this, a developer .env with ADVISOR_AGENT_MODE=true silently
+    routes /advisor/chat through ``agent.harness.chat_ollama`` (which the
+    _mock_chat helper does not patch), causing the legacy-path tests below
+    to hit real Ollama. The agent-mode branch has its own dedicated tests
+    in ``TestAgentModeBranch`` which set the flag explicitly.
+    """
+    import routers.advisor as advisor_router
+    monkeypatch.setattr(advisor_router.config, "ADVISOR_AGENT_MODE", False)
 
 
 def _mock_chat(ai_available=True, text="advisor reply"):
@@ -144,3 +160,79 @@ class TestDeleteConversation:
     def test_404_for_unknown_id(self, client):
         r = client.delete("/api/advisor/conversations/conv_nope")
         assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Agent-mode branch coverage — flag flips the router between chat_ollama and
+# run_agent. We confirm the right path runs without exercising a live model.
+# ---------------------------------------------------------------------------
+
+class TestAgentModeBranch:
+    _endpoint = "/api/advisor/chat"
+
+    def test_flag_off_uses_chat_ollama_not_agent(self, client, monkeypatch):
+        import routers.advisor as advisor_router
+        monkeypatch.setattr(advisor_router.config, "ADVISOR_AGENT_MODE", False)
+
+        chat_mock = AsyncMock(return_value={
+            "ai_available": True, "text": "non-agent reply", "raw": None,
+        })
+        agent_mock = AsyncMock()
+        with patch("routers.advisor.chat_ollama", new=chat_mock), \
+             patch("routers.advisor.run_agent", new=agent_mock):
+            r = client.post(self._endpoint, json={"message": "hi"})
+
+        assert r.status_code == 200
+        assert r.json()["reply"] == "non-agent reply"
+        chat_mock.assert_awaited_once()
+        agent_mock.assert_not_awaited()
+
+    def test_flag_on_uses_run_agent_not_chat_ollama_directly(self, client, monkeypatch):
+        import routers.advisor as advisor_router
+        from agent.schemas import AgentResult, TrajectoryEvent
+        monkeypatch.setattr(advisor_router.config, "ADVISOR_AGENT_MODE", True)
+
+        agent_result = AgentResult(
+            reply="agent reply",
+            trajectory=[TrajectoryEvent(iteration=1, kind="final", result_summary="agent reply")],
+            terminated_reason="ok",
+            iterations=1,
+        )
+        agent_mock = AsyncMock(return_value=agent_result)
+        # Patch chat_ollama too so a stray call would surface as a test failure
+        # (the route should NOT call it directly in agent mode).
+        chat_mock = AsyncMock(return_value={
+            "ai_available": True, "text": "WRONG PATH", "raw": None,
+        })
+        with patch("routers.advisor.run_agent", new=agent_mock), \
+             patch("routers.advisor.chat_ollama", new=chat_mock):
+            r = client.post(self._endpoint, json={"message": "hi"})
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["reply"] == "agent reply"
+        assert body["ai_available"] is True
+        agent_mock.assert_awaited_once()
+        # The router calls chat_ollama only from inside run_agent; here run_agent
+        # is mocked so chat_ollama must not be hit from the router body.
+        chat_mock.assert_not_awaited()
+
+    def test_flag_on_ollama_unavailable_surfaces_to_response(self, client, monkeypatch):
+        import routers.advisor as advisor_router
+        from agent.schemas import AgentResult
+        monkeypatch.setattr(advisor_router.config, "ADVISOR_AGENT_MODE", True)
+
+        agent_result = AgentResult(
+            reply=None, trajectory=[], terminated_reason="ollama_unavailable", iterations=0,
+        )
+        with patch("routers.advisor.run_agent", new=AsyncMock(return_value=agent_result)):
+            r = client.post(self._endpoint, json={"message": "hi"})
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ai_available"] is False
+        assert body["reply"] is None
+
+        # User message still persisted, no assistant message appended.
+        conv = state.conversations[body["conversation_id"]]
+        assert [m["role"] for m in conv["messages"]] == ["user"]
