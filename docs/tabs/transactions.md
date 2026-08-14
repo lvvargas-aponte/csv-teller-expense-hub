@@ -12,7 +12,7 @@ The home tab. A review queue of every transaction (Teller-synced + CSV-uploaded)
 | **Control bar** | Stats pills (total / shared count / shared amount / unreviewed). Buttons: **📂 Upload CSV**, **📊 Send to Sheet**. |
 | **Bulk bar** (only when rows selected) | **Mark personal**, **50/50 split**, **Suggest categories**, **Clear selection**. |
 | **Filter bar** | Bank dropdown, month dropdown, split-type dropdown, search box. Shows visible/total count. |
-| **Transaction table** | One row per transaction. Inline split toggle, type flip, note + adjust expanders. |
+| **Transaction table** | One row per transaction. Inline split toggle, type flip, note + adjust expanders. Clicking a row expands the [transaction detail editor](../modals/edit-transaction.md) beneath it. |
 | **Supporting rail** (right side) | Review progress, shared-with-person total, category breakdown, and — when a row is expanded — "Apply to similar". See [Supporting rail](#supporting-rail). |
 
 ## Supporting rail
@@ -39,6 +39,12 @@ The rail is pinned — it stays in place as you scroll the table. Below ~1600px 
 1. Click **🧮** on the row → an inline adjust panel opens below it.
 2. Enter how much each person owes, or click **50/50** for a quick equal split.
 3. Save.
+
+### Edit several fields at once
+
+1. Click the row → the [transaction detail editor](../modals/edit-transaction.md) expands beneath it.
+2. Change category, split, type, reviewed state, notes.
+3. **Save**. **Collapse** closes the editor.
 
 ### Add a note
 

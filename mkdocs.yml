@@ -71,6 +71,7 @@ nav:
       - Environment variables: getting-started/env-vars.md
   - Tabs & Pages:
       - Transactions: tabs/transactions.md
+      - Transaction detail: modals/edit-transaction.md
       - Finances → Dashboard: tabs/finances-dashboard.md
       - Finances → Overview: tabs/finances-overview.md
       - Finances → Accounts: tabs/finances-accounts.md
@@ -85,7 +86,6 @@ nav:
       - Sync Bank: modals/sync-bank.md
       - Linked Accounts: modals/accounts-modal.md
       - Add Account: modals/add-account.md
-      - Edit Transaction: modals/edit-transaction.md
       - Note: modals/note.md
       - Suggest Categories: modals/suggest-preview.md
   - Concepts:
