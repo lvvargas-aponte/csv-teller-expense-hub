@@ -13,6 +13,20 @@ The home tab. A review queue of every transaction (Teller-synced + CSV-uploaded)
 | **Bulk bar** (only when rows selected) | **Mark personal**, **50/50 split**, **Suggest categories**, **Clear selection**. |
 | **Filter bar** | Bank dropdown, month dropdown, split-type dropdown, search box. Shows visible/total count. |
 | **Transaction table** | One row per transaction. Inline split toggle, type flip, note + adjust expanders. |
+| **Supporting rail** (right side) | Review progress, shared-with-person total, category breakdown, and — when a row is expanded — "Apply to similar". See [Supporting rail](#supporting-rail). |
+
+## Supporting rail
+
+A column of cards to the right of the table, on both **Transactions** and **Historical transactions**. Every figure is computed from the *currently filtered* rows, not the whole account.
+
+| Card | What it shows |
+|---|---|
+| **Review progress** | How many visible rows are reviewed, with a progress bar and a jump-to-next-unreviewed button. |
+| **Apply to similar** | Only while a row is expanded and other rows share its merchant. Applies the open row's category / shared flag to all matches at once. |
+| **Shared with \<person\>** | Running total of shared amounts in view, with a **Send to Sheet** shortcut. |
+| **Where it went** | Top spending categories in view, ranked with bars. |
+
+The rail is pinned — it stays in place as you scroll the table. Below ~1600px of window width there isn't room beside the table, so the cards stack underneath it and scroll with the page instead.
 
 ## Common workflows
 
