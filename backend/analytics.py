@@ -220,7 +220,11 @@ def _balances_snapshot() -> Dict[str, Any]:
     accounts live under their own ``snaptrade_accounts`` cache key.
     """
     cache = state._balances_cache or {}
-    teller_accounts = cache.get("teller_accounts", []) or []
+    # Bundled under the historical "teller_accounts" key so every downstream
+    # consumer (debts, "teller" bucket in build_financial_snapshot, agent
+    # tools) picks up SimpleFIN-synced accounts too without each needing its
+    # own SimpleFIN-aware branch — both sources share the same account shape.
+    teller_accounts = list(cache.get("teller_accounts", []) or []) + list(cache.get("simplefin_accounts", []) or [])
     snaptrade_accounts = cache.get("snaptrade_accounts", []) or []
 
     manual_accounts: List[Dict[str, Any]] = []

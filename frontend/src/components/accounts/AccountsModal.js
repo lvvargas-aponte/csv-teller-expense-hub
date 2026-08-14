@@ -21,6 +21,8 @@ export default function AccountsModal({ onClose }) {
   const [connectStatus, setConnectStatus] = useState(null);  // { type: 'success'|'error', message }
   const [tellerConfig,  setTellerConfig]  = useState(null);
   const [configError,   setConfigError]   = useState(null);
+  const [simplefinToken,    setSimplefinToken]    = useState('');
+  const [claimingSimplefin, setClaimingSimplefin] = useState(false);
 
   const refreshAccounts = useCallback(() => {
     setLoading(true);
@@ -162,6 +164,26 @@ export default function AccountsModal({ onClose }) {
     });
   };
 
+  const handleClaimSimplefin = async () => {
+    const token = simplefinToken.trim();
+    if (!token) return;
+    setClaimingSimplefin(true);
+    setConnectStatus(null);
+    try {
+      const res = await axios.post(`${API}/api/simplefin/claim`, { setup_token: token });
+      const msg = res.data.claimed === false
+        ? 'This SimpleFIN connection was already added.'
+        : 'SimpleFIN connected! Its accounts will appear after your next Sync.';
+      setConnectStatus({ type: 'success', message: msg });
+      setSimplefinToken('');
+      refreshAccounts();
+    } catch (e) {
+      setConnectStatus({ type: 'error', message: 'Failed to connect SimpleFIN: ' + (e.response?.data?.detail || e.message) });
+    } finally {
+      setClaimingSimplefin(false);
+    }
+  };
+
   return (
     <Backdrop onClose={onClose} zIndex={Z_BACKDROP_PANEL}>
       <div className="modal modal--sm">
@@ -221,7 +243,7 @@ export default function AccountsModal({ onClose }) {
                 <div className="account-row-actions">
                   {acct._connection_error && !isConfirming ? (
                     <>
-                      {!isRateLimited && (
+                      {!isRateLimited && acct._source !== 'simplefin' && (
                         <button
                           type="button"
                           className="btn btn-teller btn-sm"
@@ -274,6 +296,34 @@ export default function AccountsModal({ onClose }) {
               </div>
             );
           })}
+
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border, #334155)' }}>
+            <div className="field-label" style={{ marginBottom: 6 }}>Connect via SimpleFIN</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+              Visit <a href="https://bridge.simplefin.org/simplefin/create" target="_blank" rel="noopener noreferrer">
+                bridge.simplefin.org
+              </a>, connect a bank, and paste the Setup Token it gives you below.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="text"
+                value={simplefinToken}
+                onChange={(e) => setSimplefinToken(e.target.value)}
+                placeholder="Paste Setup Token"
+                disabled={claimingSimplefin}
+                className="form-input"
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={claimingSimplefin || !simplefinToken.trim()}
+                onClick={handleClaimSimplefin}
+              >
+                {claimingSimplefin ? <><Spin /> Connecting…</> : 'Connect'}
+              </button>
+            </div>
+          </div>
 
           {connectStatus && (
             <div style={{

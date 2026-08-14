@@ -82,6 +82,16 @@ class TellerSyncRequest(BaseModel):
     account_ids: Optional[List[str]] = None  # if set, only sync these account IDs (None = all)
 
 
+class SimplefinClaimRequest(BaseModel):
+    setup_token: str
+
+
+class SimplefinSyncRequest(BaseModel):
+    from_date: Optional[str] = None         # YYYY-MM-DD; defaults to first day of previous month
+    to_date: Optional[str] = None           # YYYY-MM-DD; defaults to last day of previous month
+    account_ids: Optional[List[str]] = None  # if set, only sync these account IDs (None = all)
+
+
 class SendToSheetRequest(BaseModel):
     sheet_name:   Optional[str] = None   # overrides SHEET_NAME env var when provided
     filter_month: Optional[str] = None   # "YYYY-MM" — restrict to transactions in this month

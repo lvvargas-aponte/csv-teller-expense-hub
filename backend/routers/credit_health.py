@@ -24,7 +24,8 @@ def _status_for(pct: float) -> str:
 
 @router.get("/accounts/credit-health")
 async def credit_health() -> Dict[str, Any]:
-    teller_accounts = state._balances_cache.get("teller_accounts", []) or []
+    teller_accounts = (state._balances_cache.get("teller_accounts", []) or []) + \
+        (state._balances_cache.get("simplefin_accounts", []) or [])
     manual_accounts = list(state._manual_accounts.values())
 
     out: List[Dict[str, Any]] = []

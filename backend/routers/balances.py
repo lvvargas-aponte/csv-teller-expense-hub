@@ -266,6 +266,95 @@ async def persist_teller_balances(
     return accounts_out, total_cash, total_credit_debt
 
 
+async def persist_simplefin_balances(
+    url_batches: List[Tuple[str, List[Dict[str, Any]]]],
+) -> Tuple[List[AccountBalance], float, float]:
+    """Walk already-fetched SimpleFIN account data, write the cache, and
+    return (accounts, simplefin_cash, simplefin_credit_debt).
+
+    SimpleFIN bundles balance + transactions in the same ``/accounts``
+    response Teller needs two calls for, so there is no separate per-account
+    balance fetch here. Mirrors ``persist_teller_balances`` so
+    ``/simplefin/sync`` and a forced ``/balances/summary`` refresh share one
+    code path.
+    """
+    from simplefin import infer_account_bucket
+
+    accounts_out: List[AccountBalance] = []
+    total_cash = 0.0
+    total_credit_debt = 0.0
+    seen_ids: set[str] = set()
+
+    for _url, accounts in url_batches:
+        for acct in accounts:
+            acct_id = acct.get("id")
+            if not acct_id or acct_id in seen_ids:
+                continue
+            # SimpleFIN has no per-account revoke — "disconnecting" one
+            # account (routers/simplefin.py) just hides it locally via a
+            # manual shadow. Skip it here so it doesn't reappear on sync.
+            shadow = state._manual_accounts.get(acct_id)
+            if shadow and shadow.get("disconnected_from") == "simplefin":
+                continue
+            seen_ids.add(acct_id)
+
+            org_name = (acct.get("org") or {}).get("name") or "Bank"
+            name = acct.get("name") or acct_id
+            acct_type, acct_subtype = infer_account_bucket(name, org_name)
+
+            try:
+                raw_balance = float(acct.get("balance") or 0.0)
+            except (TypeError, ValueError):
+                raw_balance = 0.0
+
+            if acct_type == "credit":
+                # SimpleFIN reports credit-card/loan balances as negative
+                # (money owed); this app's convention stores debt positive.
+                available = ledger = round(abs(raw_balance), 2)
+                total_credit_debt += ledger
+            else:
+                available = ledger = round(raw_balance, 2)
+                total_cash += available
+
+            accounts_out.append(AccountBalance(
+                id=acct_id,
+                institution=org_name,
+                name=name,
+                type=acct_type,
+                subtype=acct_subtype,
+                available=available,
+                ledger=ledger,
+            ))
+
+    state._balances_cache_store.data.update({
+        "simplefin_fetched_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+        "simplefin_accounts": [a.model_dump() for a in accounts_out],
+        "simplefin_cash": round(total_cash, 2),
+        "simplefin_credit_debt": round(total_credit_debt, 2),
+    })
+    state._balances_cache_store.save()
+
+    return accounts_out, total_cash, total_credit_debt
+
+
+def _append_simplefin_accounts(
+    accounts_out: List[AccountBalance],
+    total_cash: float,
+    total_credit_debt: float,
+) -> Tuple[List[AccountBalance], float, float]:
+    """Merge cached SimpleFIN accounts (and their cash/debt totals) into the
+    running summary — the SimpleFIN analogue of the Teller cache merge above.
+    """
+    for a in state._balances_cache.get("simplefin_accounts", []) or []:
+        try:
+            accounts_out.append(AccountBalance(**a))
+        except Exception as e:
+            logger.warning(f"[SimpleFIN] skipping malformed cached account: {e}")
+    total_cash += state._balances_cache.get("simplefin_cash", 0.0) or 0.0
+    total_credit_debt += state._balances_cache.get("simplefin_credit_debt", 0.0) or 0.0
+    return accounts_out, total_cash, total_credit_debt
+
+
 @router.get("/balances/summary", response_model=BalancesSummary)
 async def get_balances_summary(force: bool = Query(False)):
     """Aggregate balances across all accounts and compute net worth.
@@ -282,8 +371,11 @@ async def get_balances_summary(force: bool = Query(False)):
         ]
         teller_cash = state._balances_cache.get("teller_cash", 0.0)
         teller_credit = state._balances_cache.get("teller_credit_debt", 0.0)
-        cached_accounts, total_cash, total_credit_debt = _append_manual_accounts(
+        cached_accounts, total_cash, total_credit_debt = _append_simplefin_accounts(
             cached_accounts, teller_cash, teller_credit
+        )
+        cached_accounts, total_cash, total_credit_debt = _append_manual_accounts(
+            cached_accounts, total_cash, total_credit_debt
         )
         cached_accounts = _append_snaptrade_accounts(cached_accounts)
         fetched_at = state._balances_cache.get("fetched_at")
@@ -298,21 +390,27 @@ async def get_balances_summary(force: bool = Query(False)):
             cache_fetched_at=fetched_at,
         )
 
-    # ── force=true: fetch live from Teller ───────────────────────────────────
-    if not state.TELLER_ACCESS_TOKENS:
-        accounts_out, total_cash, total_credit_debt = _append_manual_accounts([], 0.0, 0.0)
-        accounts_out = _append_snaptrade_accounts(accounts_out)
-        total_investments = _compute_investments(accounts_out)
-        return BalancesSummary(
-            net_worth=round(total_cash + total_investments - total_credit_debt, 2),
-            total_cash=round(total_cash, 2),
-            total_credit_debt=round(total_credit_debt, 2),
-            total_investments=total_investments,
-            accounts=accounts_out,
-        )
+    # ── force=true: fetch live from Teller and/or SimpleFIN ──────────────────
+    accounts_out: List[AccountBalance] = []
+    total_cash = 0.0
+    total_credit_debt = 0.0
 
-    token_batches, _ = await state.teller.list_accounts_by_token()
-    accounts_out, total_cash, total_credit_debt = await persist_teller_balances(token_batches)
+    if state.TELLER_ACCESS_TOKENS:
+        token_batches, _ = await state.teller.list_accounts_by_token()
+        accounts_out, total_cash, total_credit_debt = await persist_teller_balances(token_batches)
+
+    if state.SIMPLEFIN_ACCESS_URLS:
+        url_batches, _ = await state.simplefin.list_accounts_by_url()
+        sf_accounts, sf_cash, sf_credit = await persist_simplefin_balances(url_batches)
+        accounts_out += sf_accounts
+        total_cash += sf_cash
+        total_credit_debt += sf_credit
+    else:
+        # No live SimpleFIN connection — still surface whatever the last sync
+        # cached rather than silently dropping those accounts from the summary.
+        accounts_out, total_cash, total_credit_debt = _append_simplefin_accounts(
+            accounts_out, total_cash, total_credit_debt
+        )
 
     accounts_out, total_cash, total_credit_debt = _append_manual_accounts(
         accounts_out, total_cash, total_credit_debt
@@ -410,12 +508,17 @@ async def update_manual_account(account_id: str, req: ManualAccountUpdate):
 
 @router.put("/balances/{account_id}", response_model=AccountBalance)
 async def update_account_balance(account_id: str, req: ManualAccountUpdate):
-    """Edit available/ledger for any account — manual, csv-synth, or Teller-cached.
+    """Edit available/ledger for any account — manual, csv-synth, Teller-cached,
+    or SimpleFIN-cached.
 
-    For Teller accounts the override is written into the cached balances
-    payload; the next ``?force=true`` refresh will overwrite it with whatever
-    Teller reports. A balance_snapshots row is appended either way so the
-    edit shows up on net-worth history.
+    For Teller/SimpleFIN accounts the override is written into the cached
+    balances payload; the next ``?force=true`` refresh (or sync, for
+    SimpleFIN) will overwrite it with whatever the source reports. A
+    balance_snapshots row is appended either way so the edit shows up on
+    net-worth history. Also how a SimpleFIN account's guessed type (see
+    ``simplefin.infer_account_bucket``) gets corrected if it flips the
+    cash/debt sign wrong — editing the balance here doesn't change ``type``,
+    but it does let the number itself be fixed immediately.
     """
     from db.accounts_repo import get_repo
 
@@ -429,41 +532,46 @@ async def update_account_balance(account_id: str, req: ManualAccountUpdate):
     if account_id in state._manual_accounts:
         return await update_manual_account(account_id, req)
 
-    # Teller-cached account — mutate the cache in place.
-    teller_accounts = state._balances_cache.get("teller_accounts") or []
-    target = next((a for a in teller_accounts if a.get("id") == account_id), None)
-    if target is None:
-        raise HTTPException(status_code=404, detail="Account not found")
+    for cache_key, cash_key, credit_key in (
+        ("teller_accounts", "teller_cash", "teller_credit_debt"),
+        ("simplefin_accounts", "simplefin_cash", "simplefin_credit_debt"),
+    ):
+        cached_accounts = state._balances_cache.get(cache_key) or []
+        target = next((a for a in cached_accounts if a.get("id") == account_id), None)
+        if target is None:
+            continue
 
-    if req.available is not None:
-        target["available"] = float(req.available)
-    if req.ledger is not None:
-        target["ledger"] = float(req.ledger)
+        if req.available is not None:
+            target["available"] = float(req.available)
+        if req.ledger is not None:
+            target["ledger"] = float(req.ledger)
 
-    # Recompute cached totals from the (possibly mutated) account list so
-    # the summary endpoint reflects the override on the very next call.
-    total_cash = sum(
-        float(a.get("available") or 0.0)
-        for a in teller_accounts if a.get("type") == "depository"
-    )
-    total_credit = sum(
-        float(a.get("ledger") or 0.0)
-        for a in teller_accounts if a.get("type") == "credit"
-    )
-    state._balances_cache_store.data["teller_accounts"] = teller_accounts
-    state._balances_cache_store.data["teller_cash"] = round(total_cash, 2)
-    state._balances_cache_store.data["teller_credit_debt"] = round(total_credit, 2)
-    state._balances_cache_store.save()
+        # Recompute cached totals from the (possibly mutated) account list so
+        # the summary endpoint reflects the override on the very next call.
+        total_cash = sum(
+            float(a.get("available") or 0.0)
+            for a in cached_accounts if a.get("type") == "depository"
+        )
+        total_credit = sum(
+            float(a.get("ledger") or 0.0)
+            for a in cached_accounts if a.get("type") == "credit"
+        )
+        state._balances_cache_store.data[cache_key] = cached_accounts
+        state._balances_cache_store.data[cash_key] = round(total_cash, 2)
+        state._balances_cache_store.data[credit_key] = round(total_credit, 2)
+        state._balances_cache_store.save()
 
-    get_repo().insert_balance_snapshot(
-        account_id=account_id,
-        source="override",
-        available=target.get("available"),
-        ledger=target.get("ledger"),
-        raw={"available": target.get("available"), "ledger": target.get("ledger")},
-    )
+        get_repo().insert_balance_snapshot(
+            account_id=account_id,
+            source="override",
+            available=target.get("available"),
+            ledger=target.get("ledger"),
+            raw={"available": target.get("available"), "ledger": target.get("ledger")},
+        )
 
-    return AccountBalance(**target)
+        return AccountBalance(**target)
+
+    raise HTTPException(status_code=404, detail="Account not found")
 
 
 @router.post("/balances/snapshots/refresh")

@@ -3,6 +3,7 @@ and per-account user-supplied details (APR, due day, etc.)."""
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -14,12 +15,64 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _fetch_simplefin_accounts_normalized() -> List[Dict[str, Any]]:
+    """GET all SimpleFIN accounts, normalized into the Teller-shaped dict the
+    frontend (AccountsModal/SyncModal) already knows how to render.
+
+    Hidden accounts (see ``_promote_simplefin_account_to_manual_shadow``) are
+    dropped, and a failed access URL becomes one ``_connection_error`` row —
+    SimpleFIN reports errors per access URL, not per account, so there is no
+    finer-grained placeholder to build.
+    """
+    from simplefin import infer_account_bucket
+
+    url_batches, url_errors = await state.simplefin.list_accounts_by_url()
+    out: List[Dict[str, Any]] = []
+
+    for _url, accounts in url_batches:
+        for acct in accounts:
+            acct_id = acct.get("id")
+            if not acct_id:
+                continue
+            shadow = state._manual_accounts.get(acct_id)
+            if shadow and shadow.get("disconnected_from") == "simplefin":
+                continue
+            org_name = (acct.get("org") or {}).get("name") or "Bank"
+            name = acct.get("name") or acct_id
+            acct_type, acct_subtype = infer_account_bucket(name, org_name)
+            out.append({
+                "id": acct_id,
+                "name": name,
+                "type": acct_type,
+                "subtype": acct_subtype,
+                "institution": {"name": org_name},
+                "balance": {},
+                "_source": "simplefin",
+            })
+
+    for err in url_errors:
+        masked = err.get("url", "")
+        out.append({
+            "id": f"_sferror_{quote(masked, safe='')}",
+            "name": "Unknown account",
+            "type": "", "subtype": "",
+            "institution": {"name": "SimpleFIN"},
+            "balance": {},
+            "_connection_error": True,
+            "_source": "simplefin",
+        })
+
+    return out
+
+
 @router.get("/accounts")
 async def get_accounts():
-    """Fetch bank accounts across all stored access tokens."""
-    if not state.TELLER_ACCESS_TOKENS:
-        return []
-    accounts = await state.teller.list_accounts()
+    """Fetch bank accounts across all stored Teller tokens and SimpleFIN access URLs."""
+    accounts: List[Dict[str, Any]] = []
+    if state.TELLER_ACCESS_TOKENS:
+        accounts.extend(await state.teller.list_accounts())
+    if state.SIMPLEFIN_ACCESS_URLS:
+        accounts.extend(await _fetch_simplefin_accounts_normalized())
     _fill_error_institution_from_cache(accounts)
     return accounts
 
@@ -36,7 +89,9 @@ def _fill_error_institution_from_cache(accounts: List[Dict[str, Any]]) -> None:
     error row gets that name; otherwise we round-robin through the
     disconnected institutions in cache order.
     """
-    error_rows = [a for a in accounts if a.get("_connection_error")]
+    # Only Teller rows lack a `_source` tag (SimpleFIN rows already carry
+    # their own institution name and must not be overwritten below).
+    error_rows = [a for a in accounts if a.get("_connection_error") and not a.get("_source")]
     if not error_rows:
         return
 
@@ -165,6 +220,61 @@ def _promote_teller_account_to_manual_shadow(account_id: str) -> Optional[Dict[s
     return shadow
 
 
+def _promote_simplefin_account_to_manual_shadow(account_id: str) -> Optional[Dict[str, Any]]:
+    """Convert a hidden SimpleFIN account into a manual shadow record.
+
+    SimpleFIN has no per-account revoke endpoint — the access URL stays
+    active for every other account behind it. This purely local hide keeps
+    the id out of ``/accounts`` and every future sync (both check for the
+    ``disconnected_from == "simplefin"`` shadow). To "reconnect", the user
+    deletes this shadow permanently (the modal's "Delete permanently" flow)
+    and the account reappears on the next fetch/sync.
+    """
+    cached = state._balances_cache.get("simplefin_accounts") or []
+    target = next((a for a in cached if a.get("id") == account_id), None)
+    if target is None:
+        return None
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    shadow: Dict[str, Any] = {
+        "id":               account_id,
+        "institution":      target.get("institution", "") or "",
+        "name":             target.get("name", "") or "",
+        "type":             target.get("type", "") or "",
+        "subtype":          target.get("subtype", "") or "",
+        "available":        float(target.get("available") or 0.0),
+        "ledger":           float(target.get("ledger") or 0.0),
+        "disconnected_from": "simplefin",
+        "disconnected_at":  now,
+    }
+    state._manual_accounts[account_id] = shadow
+    state._manual_accounts_store.save()
+
+    remaining = [a for a in cached if a.get("id") != account_id]
+    total_cash = sum(
+        float(a.get("available") or 0.0)
+        for a in remaining if a.get("type") == "depository"
+    )
+    total_credit = sum(
+        float(a.get("ledger") or 0.0)
+        for a in remaining if a.get("type") == "credit"
+    )
+    state._balances_cache_store.data["simplefin_accounts"] = remaining
+    state._balances_cache_store.data["simplefin_cash"] = round(total_cash, 2)
+    state._balances_cache_store.data["simplefin_credit_debt"] = round(total_credit, 2)
+    state._balances_cache_store.save()
+
+    from db.accounts_repo import get_repo
+    get_repo().upsert_manual_account(
+        account_id=account_id,
+        institution=shadow["institution"],
+        name=shadow["name"],
+        type_=shadow["type"],
+        subtype=shadow["subtype"],
+    )
+    return shadow
+
+
 @router.delete("/accounts/{account_id}")
 async def delete_account(
     account_id: str,
@@ -185,9 +295,27 @@ async def delete_account(
     ``?purge=true`` variant removes the local record entirely — the frontend
     gates this behind a "type 'delete' to confirm" prompt.
     """
-    if not state.TELLER_ACCESS_TOKENS and not account_id.startswith("_error_"):
+    if (
+        not state.TELLER_ACCESS_TOKENS
+        and not state.SIMPLEFIN_ACCESS_URLS
+        and not account_id.startswith(("_error_", "_sferror_"))
+    ):
         if not (purge and account_id in state._manual_accounts):
-            raise HTTPException(status_code=500, detail="No Teller access tokens configured.")
+            raise HTTPException(status_code=500, detail="No Teller or SimpleFIN connections configured.")
+
+    # SimpleFIN error placeholder (id starts with "_sferror_") — SimpleFIN
+    # reports errors per access URL, not per account, so removing it drops
+    # the whole connection (every account behind that URL disappears too).
+    if account_id.startswith("_sferror_"):
+        from helpers import _env_remove_simplefin_url
+
+        masked = unquote(account_id[len("_sferror_"):])
+        removed = state.simplefin.remove_by_masked(masked)
+        if not removed:
+            raise HTTPException(status_code=404, detail="No matching SimpleFIN connection found.")
+        _env_remove_simplefin_url(removed)
+        logger.info("[SimpleFIN] Removed broken access URL (error account deleted).")
+        return {"deleted": account_id, "purged": True}
 
     # Error-placeholder accounts (id starts with "_error_") have no real Teller account to
     # call; just remove the broken token from memory and .env directly. There is no
@@ -208,11 +336,19 @@ async def delete_account(
         logger.info(f"[Teller] Removed broken token {token_to_remove[:8]}... (error account deleted).")
         return {"deleted": account_id, "purged": True}
 
+    is_simplefin_account = any(
+        a.get("id") == account_id
+        for a in (state._balances_cache.get("simplefin_accounts") or [])
+    )
+
     if purge:
         # Hard delete: revoke at Teller if we still hold a token for it, then
         # drop the local manual shadow + details. Tolerate the Teller call
         # failing (token already gone) — the user explicitly asked to wipe.
-        if state.TELLER_ACCESS_TOKENS:
+        # SimpleFIN accounts skip the revoke call entirely — there is no
+        # per-account revoke endpoint, so purging one just drops local state
+        # (the access URL itself is untouched; see /simplefin/connections).
+        if state.TELLER_ACCESS_TOKENS and not is_simplefin_account:
             try:
                 await state.teller.delete_account(account_id)
             except Exception as e:
@@ -232,6 +368,14 @@ async def delete_account(
             state._balances_cache_store.save()
             existed = True
 
+        sf_cached = state._balances_cache.get("simplefin_accounts") or []
+        if any(a.get("id") == account_id for a in sf_cached):
+            state._balances_cache_store.data["simplefin_accounts"] = [
+                a for a in sf_cached if a.get("id") != account_id
+            ]
+            state._balances_cache_store.save()
+            existed = True
+
         if account_id in state.account_details:
             del state.account_details[account_id]
             state._account_details_store.save()
@@ -243,6 +387,13 @@ async def delete_account(
         if not existed:
             raise HTTPException(status_code=404, detail="Account not found.")
         return {"deleted": account_id, "purged": True}
+
+    # SimpleFIN: no per-account revoke — hide locally, leave the access URL
+    # (and every other account behind it) untouched.
+    if is_simplefin_account:
+        if not _promote_simplefin_account_to_manual_shadow(account_id):
+            raise HTTPException(status_code=404, detail="Account not found.")
+        return {"deleted": account_id, "purged": False}
 
     # Default: disconnect at Teller, keep the record locally as a manual shadow.
     if not await state.teller.delete_account(account_id):
@@ -283,6 +434,9 @@ async def get_all_account_details():
     known_ids.update(state.account_details.keys())
     known_ids.update(state._manual_accounts.keys())
     for acct in state._balances_cache.get("teller_accounts", []) or []:
+        if isinstance(acct, dict) and acct.get("id"):
+            known_ids.add(acct["id"])
+    for acct in state._balances_cache.get("simplefin_accounts", []) or []:
         if isinstance(acct, dict) and acct.get("id"):
             known_ids.add(acct["id"])
 

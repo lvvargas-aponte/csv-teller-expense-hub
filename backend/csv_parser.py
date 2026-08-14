@@ -55,6 +55,7 @@ class BankType(str, Enum):
     DISCOVER = "discover"
     BARCLAYS = "barclays"
     TELLER = "teller"
+    SIMPLEFIN = "simplefin"
     UNKNOWN = "unknown"
 
 

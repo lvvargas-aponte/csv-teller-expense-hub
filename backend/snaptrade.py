@@ -138,7 +138,10 @@ class SnapTradeClient:
         self._sdk: Any = None
         if client_id and consumer_key:
             try:
+                import os
+
                 from snaptrade_client import SnapTrade
+                from snaptrade_client.configuration import Configuration
 
                 # The SDK warns "X is deprecated" on every call to several
                 # account_information methods even when the replacement isn't
@@ -146,12 +149,27 @@ class SnapTradeClient:
                 # the source so our logs stay readable. Errors still surface.
                 logging.getLogger("snaptrade_client").setLevel(logging.ERROR)
 
-                self._sdk = SnapTrade(consumer_key=consumer_key, client_id=client_id)
+                # The SDK hardcodes certifi's bundle for ca_certs unless
+                # ``ssl_ca_cert`` is set explicitly — it ignores REQUESTS_CA_BUNDLE
+                # / SSL_CERT_FILE, so behind a TLS-inspecting proxy or antivirus
+                # (e.g. Norton Web/Mail Shield) it fails cert verification even
+                # though the rest of the app's outbound calls are fine. Point it
+                # at the same merged system bundle the Dockerfile already builds.
+                config = Configuration(consumer_key=consumer_key, client_id=client_id)
+                config.ssl_ca_cert = os.environ.get("REQUESTS_CA_BUNDLE") or config.ssl_ca_cert
+                self._sdk = SnapTrade(configuration=config)
                 logger.info("[SnapTrade] SDK initialized")
             except Exception as e:  # pragma: no cover - import/SDK failure path
                 logger.warning(f"[SnapTrade] SDK init failed — integration disabled: {e}")
         else:
             logger.info("[SnapTrade] Not configured (no client_id / consumer_key)")
+
+        # Personal API keys (client_id like "PERS-...") are already scoped to a
+        # single SnapTrade user — there's no registerUser call and no separate
+        # userId/userSecret. Commercial/partner keys manage many end users and
+        # need both. Detect which mode we're in so every call below knows
+        # whether to send household creds or omit them entirely.
+        self.is_personal = bool(client_id) and client_id.strip().upper().startswith("PERS-")
 
     @property
     def configured(self) -> bool:
@@ -166,11 +184,23 @@ class SnapTradeClient:
             )
         return self._sdk
 
+    def _creds(self, user_id: str, user_secret: str) -> Dict[str, str]:
+        """User-identity kwargs for an SDK call: omitted for Personal keys
+        (the key itself is the identity), passed through for Commercial keys."""
+        if self.is_personal:
+            return {}
+        return {"user_id": user_id, "user_secret": user_secret}
+
     async def register_user(self, user_id: str) -> Dict[str, str]:
         """Register the household SnapTrade user; return ``{user_id, user_secret}``.
 
+        Personal API keys skip registration entirely — SnapTrade rejects
+        registerUser for them since the key already identifies one user.
         Raises so the caller can surface a registration failure to the user.
         """
+        if self.is_personal:
+            return {"user_id": "personal", "user_secret": "personal"}
+
         sdk = self._require()
 
         def _call() -> Dict[str, Any]:
@@ -187,9 +217,7 @@ class SnapTradeClient:
         sdk = self._require()
 
         def _call() -> Any:
-            return sdk.authentication.login_snap_trade_user(
-                user_id=user_id, user_secret=user_secret
-            ).body
+            return sdk.authentication.login_snap_trade_user(**self._creds(user_id, user_secret)).body
 
         body = await asyncio.to_thread(_call)
         if isinstance(body, dict):
@@ -208,9 +236,7 @@ class SnapTradeClient:
         sdk = self._require()
 
         def _list_accounts() -> Any:
-            return sdk.account_information.list_user_accounts(
-                user_id=user_id, user_secret=user_secret
-            ).body
+            return sdk.account_information.list_user_accounts(**self._creds(user_id, user_secret)).body
 
         accounts = await asyncio.to_thread(_list_accounts)
         logger.info(f"[SnapTrade] list_user_accounts returned {len(accounts or [])} account(s)")
@@ -228,12 +254,12 @@ class SnapTradeClient:
 
             def _positions(aid: str = account_id) -> Any:
                 return sdk.account_information.get_user_account_positions(
-                    user_id=user_id, user_secret=user_secret, account_id=aid
+                    account_id=aid, **self._creds(user_id, user_secret)
                 ).body
 
             def _balance(aid: str = account_id) -> Any:
                 return sdk.account_information.get_user_account_balance(
-                    user_id=user_id, user_secret=user_secret, account_id=aid
+                    account_id=aid, **self._creds(user_id, user_secret)
                 ).body
 
             try:
@@ -273,9 +299,7 @@ class SnapTradeClient:
         sdk = self._require()
 
         def _list_accounts() -> Any:
-            return sdk.account_information.list_user_accounts(
-                user_id=user_id, user_secret=user_secret
-            ).body
+            return sdk.account_information.list_user_accounts(**self._creds(user_id, user_secret)).body
 
         accounts = await asyncio.to_thread(_list_accounts)
         match = next(
@@ -288,12 +312,12 @@ class SnapTradeClient:
 
         def _positions() -> Any:
             return sdk.account_information.get_user_account_positions(
-                user_id=user_id, user_secret=user_secret, account_id=account_id
+                account_id=account_id, **self._creds(user_id, user_secret)
             ).body
 
         def _balance() -> Any:
             return sdk.account_information.get_user_account_balance(
-                user_id=user_id, user_secret=user_secret, account_id=account_id
+                account_id=account_id, **self._creds(user_id, user_secret)
             ).body
 
         try:
@@ -329,9 +353,7 @@ class SnapTradeClient:
         sdk = self._require()
 
         def _call() -> Any:
-            return sdk.connections.list_brokerage_authorizations(
-                user_id=user_id, user_secret=user_secret
-            ).body
+            return sdk.connections.list_brokerage_authorizations(**self._creds(user_id, user_secret)).body
 
         try:
             body = await asyncio.to_thread(_call)
@@ -359,9 +381,7 @@ class SnapTradeClient:
 
         def _call() -> bool:
             sdk.connections.remove_brokerage_authorization(
-                authorization_id=authorization_id,
-                user_id=user_id,
-                user_secret=user_secret,
+                authorization_id=authorization_id, **self._creds(user_id, user_secret)
             )
             return True
 

@@ -11,12 +11,14 @@ import sys
 from typing import Any, MutableMapping
 
 from config import (
+    SIMPLEFIN_ACCESS_URLS,
     SNAPTRADE_CLIENT_ID,
     SNAPTRADE_CONSUMER_KEY,
     TELLER_ACCESS_TOKENS,
     TELLER_CERT_PATH,
     TELLER_KEY_PATH,
 )
+from simplefin import SimpleFinClient
 from snaptrade import SnapTradeClient
 from store import PgStore
 from teller import TellerClient
@@ -150,6 +152,15 @@ snaptrade = SnapTradeClient(
     client_id=SNAPTRADE_CLIENT_ID,
     consumer_key=SNAPTRADE_CONSUMER_KEY,
 )
+
+# ---------------------------------------------------------------------------
+# SimpleFinClient instance
+# ---------------------------------------------------------------------------
+# state.SIMPLEFIN_ACCESS_URLS (imported above) is a live list reference so
+# routers can append/remove URLs in place — the same pattern TELLER_ACCESS_TOKENS
+# uses (see routers/simplefin.py).
+
+simplefin = SimpleFinClient(access_urls=SIMPLEFIN_ACCESS_URLS)
 
 
 # ---------------------------------------------------------------------------

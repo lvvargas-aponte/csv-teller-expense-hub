@@ -65,6 +65,51 @@ def _env_remove_token(token: str) -> None:
         logger.error(f"[Teller] Could not update .env while removing token: {e}")
 
 
+def _env_add_simplefin_url(access_url: str) -> None:
+    """Append an access URL to SIMPLEFIN_ACCESS_URLS in .env, creating the entry if absent."""
+    try:
+        env_text = _ENV_PATH.read_text(encoding="utf-8") if _ENV_PATH.exists() else ""
+        if re.search(r"^SIMPLEFIN_ACCESS_URLS=", env_text, re.MULTILINE):
+            match = re.search(r"^SIMPLEFIN_ACCESS_URLS=(.*)$", env_text, re.MULTILINE)
+            existing = [u.strip() for u in (match.group(1) if match else "").split(",") if u.strip()]
+            if access_url not in existing:
+                existing.append(access_url)
+            env_text = re.sub(
+                r"^SIMPLEFIN_ACCESS_URLS=.*$",
+                "SIMPLEFIN_ACCESS_URLS=" + ",".join(existing),
+                env_text,
+                flags=re.MULTILINE,
+            )
+        else:
+            sep = "\n" if env_text and not env_text.endswith("\n") else ""
+            env_text = env_text + sep + f"\nSIMPLEFIN_ACCESS_URLS={access_url}\n"
+        _ENV_PATH.write_text(env_text, encoding="utf-8")
+        logger.info("[SimpleFIN] .env updated — access URL added.")
+    except OSError as e:
+        logger.error(f"[SimpleFIN] Could not write to .env: {e}")
+
+
+def _env_remove_simplefin_url(access_url: str) -> None:
+    """Remove a specific access URL from SIMPLEFIN_ACCESS_URLS in .env."""
+    try:
+        if not _ENV_PATH.exists():
+            return
+        env_text = _ENV_PATH.read_text(encoding="utf-8")
+        match = re.search(r"^SIMPLEFIN_ACCESS_URLS=(.*)$", env_text, re.MULTILINE)
+        if match:
+            remaining = [u.strip() for u in match.group(1).split(",") if u.strip() and u.strip() != access_url]
+            env_text = re.sub(
+                r"^SIMPLEFIN_ACCESS_URLS=.*$",
+                "SIMPLEFIN_ACCESS_URLS=" + ",".join(remaining),
+                env_text,
+                flags=re.MULTILINE,
+            )
+            _ENV_PATH.write_text(env_text, encoding="utf-8")
+            logger.info("[SimpleFIN] .env updated — access URL removed.")
+    except OSError as e:
+        logger.error(f"[SimpleFIN] Could not update .env while removing access URL: {e}")
+
+
 def _log_token_event(*, token: str, enrollment_id: str, institution: str, note: str = "") -> None:
     """Append an audit line to teller-tokens.log."""
     try:

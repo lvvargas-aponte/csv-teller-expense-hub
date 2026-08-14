@@ -20,6 +20,7 @@ from routers import (
     documents, goals, insights, investments, layout, profile, seeds, sheets,
     snaptrade, tools, user_facts,
 )
+from routers import simplefin as simplefin_router
 from routers import teller as teller_router
 from routers import transactions
 
@@ -92,6 +93,7 @@ app.add_middleware(
 app.include_router(transactions.router, prefix="/api")
 app.include_router(accounts.router,     prefix="/api")
 app.include_router(teller_router.router, prefix="/api")
+app.include_router(simplefin_router.router, prefix="/api")
 app.include_router(balances.router,     prefix="/api")
 app.include_router(sheets.router,       prefix="/api")
 app.include_router(tools.router,        prefix="/api")
