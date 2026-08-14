@@ -6,7 +6,7 @@ Opens from **+ Add Account** in the Balances section (Overview tab) or the cash 
 
 ## Purpose
 
-Track an account that **isn't connected via Teller** — typically:
+Track an account that **isn't connected via SimpleFIN** — typically:
 
 - A 401(k) / brokerage you only check manually
 - An old savings account you don't want to enroll

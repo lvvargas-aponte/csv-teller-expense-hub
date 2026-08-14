@@ -1,7 +1,7 @@
 """Analytics helpers — shared aggregations used by insights and advisor routers.
 
 Keeps the advisor lightweight: reads from in-memory stores and the balances
-cache (never triggers a live Teller fetch) so chat turns stay fast.
+cache (never triggers a live SimpleFIN fetch) so chat turns stay fast.
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def _parse_month_key(date_str: str) -> str:
 def _parse_date_obj(date_str: str) -> Optional[date]:
     """Parse a transaction date string into a ``date`` object.
 
-    Accepts YYYY-MM-DD or MM/DD/YYYY (the two formats CSV imports + Teller
+    Accepts YYYY-MM-DD or MM/DD/YYYY (the two formats CSV imports + SimpleFIN
     sync produce). Returns ``None`` on anything we don't recognize so
     callers can simply skip the row instead of catching exceptions.
     """
@@ -105,9 +105,10 @@ def _shared_split_totals(recent_months: int = 2) -> Dict[str, Any]:
 
 
 # Subtypes that should be classified as investments rather than spendable cash.
-# Teller surfaces ``type='investment'`` reliably, but subtype labels vary
-# across institutions — match case-insensitively against the user's free-text
-# input from the Accounts modal too.
+# SimpleFIN's account-type inference doesn't reliably surface
+# ``type='investment'``, and subtype labels vary across institutions — match
+# case-insensitively against the user's free-text input from the Accounts
+# modal too.
 _INVESTMENT_SUBTYPES = frozenset({
     "401k", "401(k)", "403b", "403(b)", "ira", "roth_ira", "roth ira",
     "brokerage", "hsa", "investment", "retirement", "rollover_ira",
@@ -210,21 +211,18 @@ def summarize_holdings(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _balances_snapshot() -> Dict[str, Any]:
-    """Read cached Teller balances + live manual accounts without calling Teller.
+    """Read cached SimpleFIN balances + live manual accounts without calling SimpleFIN.
 
     Walks the raw account list and reclassifies each one through
     ``_classify_account_bucket`` so investment / retirement accounts surface
-    as their own bucket — the pre-summed ``teller_cash`` / ``teller_credit_debt``
-    scalars in the cache only cover depository + credit and would otherwise
-    silently drop investment value from net worth. SnapTrade-synced investment
-    accounts live under their own ``snaptrade_accounts`` cache key.
+    as their own bucket — the pre-summed ``simplefin_cash`` /
+    ``simplefin_credit_debt`` scalars in the cache only cover depository +
+    credit and would otherwise silently drop investment value from net worth.
+    SnapTrade-synced investment accounts live under their own
+    ``snaptrade_accounts`` cache key.
     """
     cache = state._balances_cache or {}
-    # Bundled under the historical "teller_accounts" key so every downstream
-    # consumer (debts, "teller" bucket in build_financial_snapshot, agent
-    # tools) picks up SimpleFIN-synced accounts too without each needing its
-    # own SimpleFIN-aware branch — both sources share the same account shape.
-    teller_accounts = list(cache.get("teller_accounts", []) or []) + list(cache.get("simplefin_accounts", []) or [])
+    linked_accounts = list(cache.get("simplefin_accounts", []) or [])
     snaptrade_accounts = cache.get("snaptrade_accounts", []) or []
 
     manual_accounts: List[Dict[str, Any]] = []
@@ -243,15 +241,15 @@ def _balances_snapshot() -> Dict[str, Any]:
     total_cash = 0.0
     total_credit = 0.0
     total_investments = 0.0
-    for acct in list(teller_accounts) + list(snaptrade_accounts) + manual_accounts:
+    for acct in list(linked_accounts) + list(snaptrade_accounts) + manual_accounts:
         bucket = _classify_account_bucket(acct.get("type", ""), acct.get("subtype", ""))
         if bucket == "cash":
             total_cash += float(acct.get("available", 0.0) or 0.0)
         elif bucket == "credit":
             total_credit += float(acct.get("ledger", 0.0) or 0.0)
         elif bucket == "investment":
-            # Investments report value via ``available`` (Teller's convention
-            # for non-depository accounts is to put the position value there);
+            # Investments report value via ``available`` (the convention for
+            # non-depository accounts is to put the position value there);
             # fall back to ``ledger`` if available is empty.
             value = float(acct.get("available", 0.0) or 0.0)
             if value == 0.0:
@@ -263,10 +261,10 @@ def _balances_snapshot() -> Dict[str, Any]:
         "total_cash": round(total_cash, 2),
         "total_credit_debt": round(total_credit, 2),
         "total_investments": round(total_investments, 2),
-        "teller_accounts": teller_accounts,
+        "linked_accounts": linked_accounts,
         "snaptrade_accounts": snaptrade_accounts,
         "manual_accounts": manual_accounts,
-        "cache_fetched_at": cache.get("fetched_at"),
+        "cache_fetched_at": cache.get("simplefin_fetched_at"),
     }
 
 
@@ -276,7 +274,7 @@ def _debts_from_accounts(snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
     are attached here so the advisor can reason over them without asking.
     """
     debts: List[Dict[str, Any]] = []
-    for acct in snapshot.get("teller_accounts", []) + snapshot.get("manual_accounts", []):
+    for acct in snapshot.get("linked_accounts", []) + snapshot.get("manual_accounts", []):
         if acct.get("type") != "credit":
             continue
         entry: Dict[str, Any] = {
@@ -337,7 +335,7 @@ def _account_balance_by_id(account_id: str) -> Optional[float]:
     """Look up an account's `available` balance across cache + manual accounts."""
     if not account_id:
         return None
-    for acct in state._balances_cache.get("teller_accounts", []) or []:
+    for acct in state._balances_cache.get("simplefin_accounts", []) or []:
         if acct.get("id") == account_id:
             return float(acct.get("available", 0.0))
     acct = state._manual_accounts.get(account_id)
@@ -371,7 +369,7 @@ def _compute_account_velocity(
     last ``days`` days.
 
     Uses the earliest and most recent snapshots within the window — this
-    is robust to irregular snapshot cadence (Teller sync may not run
+    is robust to irregular snapshot cadence (SimpleFIN sync may not run
     every day) but smooths out daily fluctuations.
 
     Returns ``None`` when fewer than two snapshots are available within
@@ -668,7 +666,7 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Balance trajectory — surface the slope of net worth over recent windows so
 # the advisor can frame answers around direction, not just current totals.
-# Reads ``balance_snapshots`` via the repo abstraction; never calls Teller.
+# Reads ``balance_snapshots`` via the repo abstraction; never calls SimpleFIN.
 # ---------------------------------------------------------------------------
 
 _TREND_LOOKBACK_DAYS = (30, 60, 90)
@@ -867,12 +865,12 @@ def _is_income_candidate(txn: Dict[str, Any]) -> bool:
 
     Filters:
     * Must be a credit (money coming in).
-    * Amount must be positive — Teller occasionally returns signed amounts;
+    * Amount must be positive — sources occasionally return signed amounts;
       we standardize to positive elsewhere but keep the guard.
     * Discover CSVs use ``transaction_type='credit'`` for *purchases* (their
       sign convention is inverted), so we exclude them outright.
     * Exclude credit-card account credits (statement payments / refunds).
-      ``account_type`` from Teller is e.g. ``credit_card``; CSV uploads to
+      ``account_type`` from SimpleFIN is e.g. ``credit_card``; CSV uploads to
       a credit-typed account also tag the row.
     * Exclude P2P-platform credits (Venmo/Zelle/Cash App/PayPal). Those flow
       through ``detect_recurring_inbound_transfers`` instead so a roommate's
@@ -1365,8 +1363,8 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
     """Return a compact dict describing the household's financial state.
 
     Used as the advisor's grounding context.  Everything is read from the DB
-    / in-memory stores (no Teller / SnapTrade / GSheet calls) so this is safe
-    to call on every chat turn.
+    / in-memory stores (no SimpleFIN / SnapTrade / GSheet calls) so this is
+    safe to call on every chat turn.
     """
     spending_by_month = group_debit_spending()
     recent = sorted(spending_by_month.keys())[-months:]
@@ -1395,7 +1393,7 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
         "balance_trend": balance_trend,
         "income": income,
         "accounts": {
-            "teller": balances["teller_accounts"],
+            "simplefin": balances["linked_accounts"],
             "snaptrade": balances["snaptrade_accounts"],
             "manual": balances["manual_accounts"],
         },

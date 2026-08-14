@@ -3,9 +3,9 @@ SnapTradeClient — all SnapTrade API interaction lives here.
 
 SnapTrade aggregates brokerage + crypto accounts (Robinhood, M1, E-trade, ...)
 and returns per-position holdings with current market value and average
-purchase price.  Modeled on ``TellerClient``: route handlers call methods on
-the module-level ``snaptrade`` instance (created in ``state.py``) and never
-touch the SnapTrade SDK directly.
+purchase price.  Modeled on ``SimpleFinClient``: route handlers call methods
+on the module-level ``snaptrade`` instance (created in ``state.py``) and
+never touch the SnapTrade SDK directly.
 
 Auth model: one household-level ``(user_id, user_secret)`` pair, registered
 once and persisted in the ``snaptrade_creds`` PgStore.  The SnapTrade
@@ -18,6 +18,7 @@ Mocking in tests: patch async methods on the instance, e.g.
     patch.object(state.snaptrade, "get_all_holdings", AsyncMock(return_value=[...]))
 """
 import asyncio
+import contextlib
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -191,6 +192,29 @@ class SnapTradeClient:
             return {}
         return {"user_id": user_id, "user_secret": user_secret}
 
+    @contextlib.contextmanager
+    def _query_validation_bypass(self, api_group: Any):
+        """Work around a SnapTrade SDK v11 bug: every generated endpoint's
+        ``RequestQueryParams`` schema marks userId/userSecret as unconditionally
+        required, even though SnapTrade's own docs say Personal API keys must
+        *omit* both (identity comes from the key itself). That leaves Personal
+        keys unable to call the SDK at all without this.
+
+        Only the client-side schema check is skipped here — the actual HTTP
+        request and its signature (``request_before_hook`` / signing hook in
+        the SDK) never depended on userId/userSecret being present, so this is
+        safe. No-op for Commercial keys, which supply real creds normally.
+        """
+        if not self.is_personal:
+            yield
+            return
+        original = api_group._verify_typed_dict_inputs_oapg
+        api_group._verify_typed_dict_inputs_oapg = lambda *a, **k: None
+        try:
+            yield
+        finally:
+            api_group._verify_typed_dict_inputs_oapg = original
+
     async def register_user(self, user_id: str) -> Dict[str, str]:
         """Register the household SnapTrade user; return ``{user_id, user_secret}``.
 
@@ -217,7 +241,8 @@ class SnapTradeClient:
         sdk = self._require()
 
         def _call() -> Any:
-            return sdk.authentication.login_snap_trade_user(**self._creds(user_id, user_secret)).body
+            with self._query_validation_bypass(sdk.authentication):
+                return sdk.authentication.login_snap_trade_user(**self._creds(user_id, user_secret)).body
 
         body = await asyncio.to_thread(_call)
         if isinstance(body, dict):
@@ -236,7 +261,8 @@ class SnapTradeClient:
         sdk = self._require()
 
         def _list_accounts() -> Any:
-            return sdk.account_information.list_user_accounts(**self._creds(user_id, user_secret)).body
+            with self._query_validation_bypass(sdk.account_information):
+                return sdk.account_information.list_user_accounts(**self._creds(user_id, user_secret)).body
 
         accounts = await asyncio.to_thread(_list_accounts)
         logger.info(f"[SnapTrade] list_user_accounts returned {len(accounts or [])} account(s)")
@@ -253,32 +279,47 @@ class SnapTradeClient:
             )
 
             def _positions(aid: str = account_id) -> Any:
-                return sdk.account_information.get_user_account_positions(
-                    account_id=aid, **self._creds(user_id, user_secret)
-                ).body
+                with self._query_validation_bypass(sdk.account_information):
+                    return sdk.account_information.get_user_account_positions(
+                        account_id=aid, **self._creds(user_id, user_secret)
+                    ).body
 
             def _balance(aid: str = account_id) -> Any:
-                return sdk.account_information.get_user_account_balance(
-                    account_id=aid, **self._creds(user_id, user_secret)
-                ).body
+                with self._query_validation_bypass(sdk.account_information):
+                    return sdk.account_information.get_user_account_balance(
+                        account_id=aid, **self._creds(user_id, user_secret)
+                    ).body
 
             try:
                 positions = await asyncio.to_thread(_positions)
             except Exception as e:
-                logger.warning(f"[SnapTrade] positions fetch failed for {account_id}: {e}")
-                continue
+                # Some SnapTrade account tiers (e.g. Personal API keys) don't
+                # have access to ticker-level positions — the account and its
+                # total value are still worth syncing, just without a holdings
+                # breakdown, so this is a degrade-not-drop, not a skip.
+                logger.warning(
+                    f"[SnapTrade] positions fetch failed for {account_id} "
+                    f"(syncing account total only, no holdings detail): {e}"
+                )
+                positions = []
             logger.info(f"[SnapTrade]   {account_id}: {len(positions or [])} position(s)")
-            try:
-                balance = await asyncio.to_thread(_balance)
-            except Exception as e:
-                logger.warning(f"[SnapTrade] balance fetch failed for {account_id}: {e}")
-                balance = None
-            total_value = None
-            for b in (balance or []):
-                bd = dict(b)
-                v = _num(_dig(bd, "cash") or _dig(bd, "amount"))
-                if v is not None:
-                    total_value = (total_value or 0.0) + v
+
+            # ``list_user_accounts`` already includes each account's brokerage-
+            # reported total — prefer it over summing positions (more accurate,
+            # and works even when the balance/positions endpoints are
+            # restricted for this account's plan tier).
+            total_value = _num(_dig(account, "balance", "total", "amount"))
+            if total_value is None:
+                try:
+                    balance = await asyncio.to_thread(_balance)
+                except Exception as e:
+                    logger.warning(f"[SnapTrade] balance fetch failed for {account_id}: {e}")
+                    balance = None
+                for b in (balance or []):
+                    bd = dict(b)
+                    v = _num(_dig(bd, "cash") or _dig(bd, "amount"))
+                    if v is not None:
+                        total_value = (total_value or 0.0) + v
             item: Dict[str, Any] = {
                 "account": account,
                 "positions": list(positions or []),
@@ -299,7 +340,8 @@ class SnapTradeClient:
         sdk = self._require()
 
         def _list_accounts() -> Any:
-            return sdk.account_information.list_user_accounts(**self._creds(user_id, user_secret)).body
+            with self._query_validation_bypass(sdk.account_information):
+                return sdk.account_information.list_user_accounts(**self._creds(user_id, user_secret)).body
 
         accounts = await asyncio.to_thread(_list_accounts)
         match = next(
@@ -311,32 +353,38 @@ class SnapTradeClient:
             return None
 
         def _positions() -> Any:
-            return sdk.account_information.get_user_account_positions(
-                account_id=account_id, **self._creds(user_id, user_secret)
-            ).body
+            with self._query_validation_bypass(sdk.account_information):
+                return sdk.account_information.get_user_account_positions(
+                    account_id=account_id, **self._creds(user_id, user_secret)
+                ).body
 
         def _balance() -> Any:
-            return sdk.account_information.get_user_account_balance(
-                account_id=account_id, **self._creds(user_id, user_secret)
-            ).body
+            with self._query_validation_bypass(sdk.account_information):
+                return sdk.account_information.get_user_account_balance(
+                    account_id=account_id, **self._creds(user_id, user_secret)
+                ).body
 
         try:
             positions = await asyncio.to_thread(_positions)
         except Exception as e:
-            logger.warning(f"[SnapTrade] positions fetch failed for {account_id}: {e}")
-            return None
-        try:
-            balance = await asyncio.to_thread(_balance)
-        except Exception as e:
-            logger.warning(f"[SnapTrade] balance fetch failed for {account_id}: {e}")
-            balance = None
+            logger.warning(
+                f"[SnapTrade] positions fetch failed for {account_id} "
+                f"(syncing account total only, no holdings detail): {e}"
+            )
+            positions = []
 
-        total_value = None
-        for b in (balance or []):
-            bd = dict(b)
-            v = _num(_dig(bd, "cash") or _dig(bd, "amount"))
-            if v is not None:
-                total_value = (total_value or 0.0) + v
+        total_value = _num(_dig(match, "balance", "total", "amount"))
+        if total_value is None:
+            try:
+                balance = await asyncio.to_thread(_balance)
+            except Exception as e:
+                logger.warning(f"[SnapTrade] balance fetch failed for {account_id}: {e}")
+                balance = None
+            for b in (balance or []):
+                bd = dict(b)
+                v = _num(_dig(bd, "cash") or _dig(bd, "amount"))
+                if v is not None:
+                    total_value = (total_value or 0.0) + v
 
         item: Dict[str, Any] = {
             "account": match,
@@ -353,7 +401,8 @@ class SnapTradeClient:
         sdk = self._require()
 
         def _call() -> Any:
-            return sdk.connections.list_brokerage_authorizations(**self._creds(user_id, user_secret)).body
+            with self._query_validation_bypass(sdk.connections):
+                return sdk.connections.list_brokerage_authorizations(**self._creds(user_id, user_secret)).body
 
         try:
             body = await asyncio.to_thread(_call)
@@ -380,9 +429,10 @@ class SnapTradeClient:
         sdk = self._require()
 
         def _call() -> bool:
-            sdk.connections.remove_brokerage_authorization(
-                authorization_id=authorization_id, **self._creds(user_id, user_secret)
-            )
+            with self._query_validation_bypass(sdk.connections):
+                sdk.connections.remove_brokerage_authorization(
+                    authorization_id=authorization_id, **self._creds(user_id, user_secret)
+                )
             return True
 
         try:

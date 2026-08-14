@@ -65,7 +65,7 @@ nav:
   - Getting Started:
       - Install & Run: getting-started/install.md
       - Ollama (AI features): getting-started/ollama.md
-      - Teller (bank sync): getting-started/teller.md
+      - SimpleFIN (bank sync): getting-started/simplefin.md
       - SnapTrade (investments): getting-started/snaptrade.md
       - Google Sheets: getting-started/google-sheets.md
       - Environment variables: getting-started/env-vars.md

@@ -25,8 +25,8 @@ class InMemoryAccountsRepo:
         # account_id -> list of holding dicts (current position snapshot).
         self.holdings: Dict[str, List[Dict[str, Any]]] = {}
 
-    def upsert_teller_account(
-        self, account: Dict[str, Any], source: str = "teller"
+    def upsert_synced_account(
+        self, account: Dict[str, Any], source: str = "simplefin"
     ) -> None:
         aid = account["id"]
         institution = (account.get("institution") or {}).get("name", "") or ""

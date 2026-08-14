@@ -4,27 +4,6 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel
 
 
-class RegisterTokenRequest(BaseModel):
-    access_token: str
-    enrollment_id: str
-    institution: str = ""
-    # When the user is reconnecting from a "Connection Error" row but the
-    # backend lost its in-memory enrollment_map (e.g. after a restart), the
-    # frontend can pass that row's id here so the stale token is removed as
-    # part of registering the fresh one — otherwise the dead token lingers.
-    old_account_id: Optional[str] = None
-
-
-class ReplaceTokenRequest(BaseModel):
-    old_enrollment_id: str   # identifies the broken token to remove
-    new_access_token: str
-    new_enrollment_id: str
-    institution: str = ""
-    # Belt-and-suspenders fallback: if the enrollment map has been cleared,
-    # the frontend can also send the _error_ row id to guarantee cleanup.
-    old_account_id: Optional[str] = None
-
-
 class Account(BaseModel):
     id: str
     name: str
@@ -75,13 +54,6 @@ class ApplyCategoriesRequest(BaseModel):
     items: List[CategoryAssignment]
 
 
-class TellerSyncRequest(BaseModel):
-    from_date: Optional[str] = None         # YYYY-MM-DD; defaults to first day of previous month
-    to_date: Optional[str] = None           # YYYY-MM-DD; defaults to last day of previous month
-    count: int = 500                        # max transactions to fetch per account before date filtering
-    account_ids: Optional[List[str]] = None  # if set, only sync these account IDs (None = all)
-
-
 class SimplefinClaimRequest(BaseModel):
     setup_token: str
 
@@ -105,26 +77,26 @@ class AccountBalance(BaseModel):
     subtype: str
     available: float
     ledger: float
-    manual: bool = False   # True for user-added accounts not sourced from Teller
+    manual: bool = False   # True for user-added accounts not sourced from SimpleFIN
     # For manual accounts: the user-edited balance is treated as a starting
     # point and the live ``available``/``ledger`` above is computed as
     # ``starting + signed delta of linked transactions``. This field exposes
-    # the starting value so the UI can show both. None for Teller accounts.
+    # the starting value so the UI can show both. None for SimpleFIN accounts.
     starting_balance: Optional[float] = None
     txn_delta: Optional[float] = None  # signed delta applied to starting balance
     # Count of transactions feeding the delta + most-recent date among them.
     # Drives the "Last updated · from N linked transactions" badge in the UI.
     linked_txn_count: int = 0
     linked_last_date: Optional[str] = None
-    # Set when a previously-Teller-connected account was disconnected but kept
-    # locally. UI shows a "Disconnected" badge instead of treating it as a
-    # native manual account. None for both fresh manuals and live Teller rows.
+    # Set when a previously-connected SimpleFIN account was disconnected but
+    # kept locally. UI shows a "Disconnected" badge instead of treating it as
+    # a native manual account. None for both fresh manuals and live rows.
     disconnected_from: Optional[str] = None
     disconnected_at: Optional[str] = None
 
 
 class AccountDetailsIn(BaseModel):
-    """User-supplied credit-card / savings metadata (not exposed by Teller)."""
+    """User-supplied credit-card / savings metadata (not exposed by SimpleFIN)."""
     apr: Optional[float] = None
     credit_limit: Optional[float] = None
     minimum_payment: Optional[float] = None

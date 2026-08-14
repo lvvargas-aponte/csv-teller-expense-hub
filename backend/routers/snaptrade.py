@@ -1,6 +1,6 @@
 """SnapTrade routes: config, user registration, brokerage connect, and holdings sync.
 
-Models the Teller router pattern. SnapTrade aggregates brokerage + crypto
+Models the SimpleFIN router pattern. SnapTrade aggregates brokerage + crypto
 accounts; this router owns the *integration* surface (connect + sync) while
 ``routers/investments.py`` owns the read/display surface.
 
@@ -141,7 +141,7 @@ def _persist_portfolio(repo: Any, portfolio: Dict[str, Any]) -> Optional[Dict[st
     subtype = _account_subtype(holdings)
     total_value = round(float(portfolio.get("total_value") or 0.0), 2)
 
-    repo.upsert_teller_account(
+    repo.upsert_synced_account(
         {
             "id": account_id,
             "name": account["name"],

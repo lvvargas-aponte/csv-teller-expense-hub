@@ -31,7 +31,7 @@ class Account(Base):
     __tablename__ = "accounts"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    # teller | manual | csv_synth
+    # simplefin | manual | csv_synth
     source: Mapped[str] = mapped_column(String(20), nullable=False)
     institution: Mapped[Optional[str]] = mapped_column(String)
     name: Mapped[Optional[str]] = mapped_column(String)
@@ -94,7 +94,7 @@ class BalanceSnapshot(Base):
     )
     available: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     ledger: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
-    source: Mapped[str] = mapped_column(String(20), nullable=False)  # teller | manual
+    source: Mapped[str] = mapped_column(String(20), nullable=False)  # simplefin | manual
     raw: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)
 
     __table_args__ = (

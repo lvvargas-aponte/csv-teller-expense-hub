@@ -1,7 +1,7 @@
-"""Shared application singletons — stores, teller client, and constants.
+"""Shared application singletons — stores, provider clients, and constants.
 
 Routers import this module (``import state``) and access attributes as
-``state.teller``, ``state.stored_transactions``, etc.  Using module-level
+``state.simplefin``, ``state.stored_transactions``, etc.  Using module-level
 attribute access (rather than ``from state import X``) ensures that
 test patches applied to ``state.X`` are visible inside routers.
 """
@@ -14,14 +14,10 @@ from config import (
     SIMPLEFIN_ACCESS_URLS,
     SNAPTRADE_CLIENT_ID,
     SNAPTRADE_CONSUMER_KEY,
-    TELLER_ACCESS_TOKENS,
-    TELLER_CERT_PATH,
-    TELLER_KEY_PATH,
 )
 from simplefin import SimpleFinClient
 from snaptrade import SnapTradeClient
 from store import PgStore
-from teller import TellerClient
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +25,6 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-TELLER_MAX_TX_COUNT  = 500          # Hard cap on transactions fetched per account per sync
 PAYOFF_MAX_MONTHS    = 600          # ~50 years; prevents infinite loops in the simulation
 OLLAMA_TIMEOUT_SEC   = 120.0        # HTTP timeout when calling the local Ollama server
 # Default model for one-shot analytical prompts (insights summary, payoff advice).
@@ -52,20 +47,6 @@ ADVISOR_MAX_HISTORY  = 20           # Max chat turns sent to LLM (older turns tr
 
 # Forecast weights for a simple 3-month weighted average (most-recent month = highest weight)
 _FORECAST_WEIGHTS = (0.5, 0.3, 0.2)
-
-# ---------------------------------------------------------------------------
-# mTLS certificate setup
-# ---------------------------------------------------------------------------
-
-_teller_cert = None
-if TELLER_CERT_PATH and TELLER_KEY_PATH:
-    if os.path.exists(TELLER_CERT_PATH) and os.path.exists(TELLER_KEY_PATH):
-        _teller_cert = (TELLER_CERT_PATH, TELLER_KEY_PATH)
-        logger.info(f"[Teller] mTLS certificates loaded: {TELLER_CERT_PATH}")
-    else:
-        logger.warning("[Teller] cert paths set but files not found — running without mTLS")
-else:
-    logger.info("[Teller] No certificates configured (sandbox mode or not required)")
 
 # ---------------------------------------------------------------------------
 # Persistent Postgres-backed stores
@@ -126,23 +107,12 @@ conversations:       MutableMapping[str, Any]  = _conversations_store.data
 budgets:             MutableMapping[str, Any]  = _budgets_store.data
 # Keyed by goal id (goal_<hex>).
 goals:               MutableMapping[str, Any]  = _goals_store.data
-# Keyed by account_id (Teller or manual).  Side-car for APR / due dates / limits
-# because the Teller API doesn't expose these and re-fetches blow away edits to
-# the live account object.
+# Keyed by account_id (SimpleFIN or manual).  Side-car for APR / due dates /
+# limits because SimpleFIN doesn't expose these and re-syncs would otherwise
+# blow away edits to the live account object.
 account_details:     MutableMapping[str, Any]  = _account_details_store.data
 # Single-key store ('household') holding the SnapTrade user_id / user_secret.
 snaptrade_creds:     MutableMapping[str, Any]  = _snaptrade_creds_store.data
-
-# ---------------------------------------------------------------------------
-# TellerClient instance
-# ---------------------------------------------------------------------------
-
-teller = TellerClient(
-    tokens=TELLER_ACCESS_TOKENS,
-    base_url="https://api.teller.io",
-    cert=_teller_cert,
-    max_tx_count=TELLER_MAX_TX_COUNT,
-)
 
 # ---------------------------------------------------------------------------
 # SnapTradeClient instance
@@ -157,8 +127,7 @@ snaptrade = SnapTradeClient(
 # SimpleFinClient instance
 # ---------------------------------------------------------------------------
 # state.SIMPLEFIN_ACCESS_URLS (imported above) is a live list reference so
-# routers can append/remove URLs in place — the same pattern TELLER_ACCESS_TOKENS
-# uses (see routers/simplefin.py).
+# routers can append/remove URLs in place (see routers/simplefin.py).
 
 simplefin = SimpleFinClient(access_urls=SIMPLEFIN_ACCESS_URLS)
 

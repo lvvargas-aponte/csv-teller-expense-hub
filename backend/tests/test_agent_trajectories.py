@@ -51,7 +51,7 @@ def agent_mode_on(monkeypatch):
 
 def _seed_credit_account(account_id: str, name: str, balance: float, apr: float) -> None:
     """Drop a credit account into the balances cache + account_details side-car."""
-    state._balances_cache["teller_accounts"] = [
+    state._balances_cache["simplefin_accounts"] = [
         {
             "id": account_id,
             "institution": "Chase",

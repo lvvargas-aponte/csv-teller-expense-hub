@@ -5,7 +5,7 @@ accounts into an ``income`` block on the financial snapshot. The advisor
 relies on this block to stop asking "what's your income?" on every chat.
 
 Tests construct ``state.stored_transactions`` directly — no DB reads, no
-Teller calls — so the suite stays fast and deterministic.
+SimpleFIN calls — so the suite stays fast and deterministic.
 """
 from datetime import date, timedelta
 
@@ -27,7 +27,7 @@ def _add_credit(
     amount: float,
     days_ago: int,
     account_type: str = "depository",
-    source: str = "teller",
+    source: str = "simplefin",
 ) -> None:
     d = (date.today() - timedelta(days=days_ago)).isoformat()
     state.stored_transactions[tid] = {
@@ -55,7 +55,7 @@ def _add_debit(tid: str, description: str, amount: float, days_ago: int) -> None
         "amount": amount,
         "transaction_type": "debit",
         "account_type": "depository",
-        "source": "teller",
+        "source": "simplefin",
         "is_shared": False,
         "category": "",
         "notes": "",

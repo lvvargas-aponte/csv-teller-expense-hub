@@ -13,7 +13,7 @@ from db.accounts_repo import get_repo
 
 
 def _seed_account(repo, account_id="st_acc_1"):
-    repo.upsert_teller_account(
+    repo.upsert_synced_account(
         {
             "id": account_id,
             "name": "Robinhood Individual",

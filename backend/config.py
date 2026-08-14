@@ -17,19 +17,10 @@ def _resolve_path(raw: str | None) -> str | None:
     p = Path(raw)
     return str(p if p.is_absolute() else _PROJECT_ROOT / p)
 
-# Teller.io
-TELLER_APP_ID: str | None = os.getenv("TELLER_APP_ID")
-_raw_teller_key: str = os.getenv("TELLER_API_KEY", "")
-TELLER_ACCESS_TOKENS: list[str] = [t.strip() for t in _raw_teller_key.split(",") if t.strip()]
-TELLER_ENVIRONMENT: str = os.getenv("TELLER_ENVIRONMENT", "development")
-TELLER_CERT_PATH: str | None = _resolve_path(os.getenv("TELLER_CERT_PATH"))
-TELLER_KEY_PATH: str | None = _resolve_path(os.getenv("TELLER_KEY_PATH"))
-
 # SimpleFIN — flat-fee bank/credit-card aggregator (https://www.simplefin.org).
 # Each entry is a durable "Access URL" obtained by claiming a one-time Setup
-# Token (see routers/simplefin.py). Multiple entries are supported the same
-# way TELLER_API_KEY supports multiple tokens, in case the user claims more
-# than one SimpleFIN Bridge over time.
+# Token (see routers/simplefin.py). Multiple entries are supported in case
+# the user claims more than one SimpleFIN Bridge over time.
 _raw_simplefin_urls: str = os.getenv("SIMPLEFIN_ACCESS_URLS", "")
 SIMPLEFIN_ACCESS_URLS: list[str] = [u.strip() for u in _raw_simplefin_urls.split(",") if u.strip()]
 

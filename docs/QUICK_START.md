@@ -35,9 +35,7 @@ Replace `[YOUR_NAME]` and `[PARTNER_NAME]` with actual names (e.g., "Alice Owes 
    - [ ] `SPREADSHEET_ID` — from your Google Sheet URL
    - [ ] `PERSON_1_NAME` — your name (e.g., "Alice")
    - [ ] `PERSON_2_NAME` — your partner's/roommate's name (e.g., "Bob")
-   - [ ] `TELLER_APP_ID` — from your [Teller dashboard](https://teller.io)
-   - [ ] `TELLER_ENVIRONMENT` — `sandbox` to test, `development` or `production` for real banks
-   - [ ] Leave `TELLER_API_KEY` blank — tokens are saved automatically from the UI
+   - [ ] Leave `SIMPLEFIN_ACCESS_URLS` blank — it's saved automatically from the UI once you connect a bank
 
 ## ✅ Run the App
 
@@ -55,11 +53,11 @@ Open **http://localhost:3000**
 
 ## ✅ Connect Your Bank (first time)
 
-1. - [ ] Click **🏦 Accounts** in the header
-2. - [ ] Click **+ Connect a Bank**
-3. - [ ] Complete the Teller Connect popup (sandbox credentials: username `user_good`, password `pass_good`)
-4. - [ ] Your account appears in the list with an **Active** badge
-5. - [ ] Your access token is saved automatically — no `.env` editing needed
+1. - [ ] Go to [bridge.simplefin.org/simplefin/create](https://bridge.simplefin.org/simplefin/create) and link your bank(s) there
+2. - [ ] Generate a **Setup Token** (a one-time-use blob)
+3. - [ ] In the app, click **🏦 Accounts** in the header
+4. - [ ] Paste the Setup Token into **Connect via SimpleFIN** and click **Connect**
+5. - [ ] Your access URL is saved automatically — no `.env` editing needed
 
 ## ✅ Sync & Review Transactions
 
@@ -74,7 +72,7 @@ Open **http://localhost:3000**
 
 To import from a CSV bank statement:
 1. - [ ] Click **📂 Upload CSV** and select a Discover or Barclays file
-2. - [ ] Transactions appear in the review table alongside Teller ones
+2. - [ ] Transactions appear in the review table alongside synced ones
 
 ## ✅ Optional: CSV Auto-Import (watch folder)
 
@@ -167,14 +165,9 @@ Once `ollama serve` is running with a compatible model pulled, the AI features a
 
 ## 🆘 Troubleshooting
 
-**"Connect a Bank" button not visible?**
-- Check that `TELLER_APP_ID` is set in `.env` and the backend has been restarted
-
-**Account shows "Connection Error"?**
-- Click **↺** on the row to re-authenticate with your bank
-
-**Account shows "Rate Limited"?**
-- Teller is temporarily throttling — wait a few minutes and sync again; no action needed
+**SimpleFIN sync failing?**
+- Confirm `SIMPLEFIN_ACCESS_URLS` is populated in `.env` (it's written automatically after you connect via the Accounts modal)
+- SimpleFIN rate-limits to ~24 requests/day per Access URL — space out syncs if you're hitting it repeatedly
 
 **Google Sheets issues?**
 - Confirm `credentials.json` is in `backend/`

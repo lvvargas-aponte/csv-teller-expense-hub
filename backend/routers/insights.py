@@ -29,8 +29,8 @@ def _group_debit_spending() -> Dict[str, Dict[str, float]]:
 
     Convention note: Discover CSVs list charges as negative raw amounts, so the
     CSV parser stores them as transaction_type="credit" with a positive amount.
-    Teller and Barclays use transaction_type="debit" for purchases.  Both cases
-    are counted here as spending.
+    SimpleFIN and Barclays use transaction_type="debit" for purchases.  Both
+    cases are counted here as spending.
     """
     spending: Dict[str, Dict[str, float]] = {}
     for txn in state.stored_transactions.values():

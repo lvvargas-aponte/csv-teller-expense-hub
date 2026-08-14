@@ -28,9 +28,6 @@ export const bulkSuggestCategories = (transaction_ids) =>
 export const applyCategoryAssignments = (items) =>
   axios.put(`${API}/api/transactions/categories`, { items });
 
-export const syncTeller = (body) =>
-  axios.post(`${API}/api/teller/sync`, body);
-
 export const deleteTransaction = (id) =>
   axios.delete(`${API}/api/transactions/${encodeURIComponent(id)}`);
 

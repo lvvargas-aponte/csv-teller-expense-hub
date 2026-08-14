@@ -28,14 +28,13 @@ All endpoints are mounted under `/api`. The static help site lives at `/help/`. 
 | `PUT` | `/api/balances/manual/{id}` | Update a manual balance |
 | `DELETE` | `/api/balances/manual/{id}` | Remove a manual balance |
 
-## Teller
+## SimpleFIN
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/config/teller` | App ID + environment for the Connect popup |
-| `POST` | `/api/teller/register-token` | Store new enrollment token |
-| `POST` | `/api/teller/replace-token` | Reconnect an enrollment |
-| `POST` | `/api/teller/sync` | Pull transactions for date range + account list |
+| `POST` | `/api/simplefin/claim` | Exchange a Setup Token for a durable Access URL |
+| `DELETE` | `/api/simplefin/connections` | Drop a stored Access URL (query param `access_url_masked`) |
+| `POST` | `/api/simplefin/sync` | Pull transactions for date range + account list |
 
 ## SnapTrade (investments sync)
 

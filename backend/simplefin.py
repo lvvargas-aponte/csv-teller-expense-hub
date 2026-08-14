@@ -3,21 +3,20 @@ SimpleFinClient — all SimpleFIN Bridge HTTP interaction lives here.
 
 SimpleFIN (https://www.simplefin.org) is a flat-fee bank/credit-card
 aggregator built for personal-finance apps rather than multi-tenant fintech
-products, unlike Teller. Modeled on ``TellerClient``: route handlers call
-methods on the module-level ``simplefin`` instance (created in ``state.py``)
-and never touch httpx directly.
+products. Route handlers call methods on the module-level ``simplefin``
+instance (created in ``state.py``) and never touch httpx directly.
 
 Auth model: the user visits their SimpleFIN Bridge in a browser, connects
 banks there, and generates a one-time "Setup Token" (base64 of a claim URL).
 The backend claims it exactly once to get back an "Access URL" — a URL with
 HTTP Basic Auth credentials embedded in its userinfo component. That access
-URL is the durable credential (like a Teller access token) and is reused for
-every future accounts/transactions fetch.
+URL is the durable credential and is reused for every future
+accounts/transactions fetch.
 
-Important difference from Teller: SimpleFIN has no per-account disconnect
-endpoint. One access URL covers every account the user connected in a given
-Bridge session, so "disconnecting" a single account (routers/simplefin.py)
-is a local hide, not a revoke at SimpleFIN.
+Important: SimpleFIN has no per-account disconnect endpoint. One access URL
+covers every account the user connected in a given Bridge session, so
+"disconnecting" a single account (routers/simplefin.py) is a local hide, not
+a revoke at SimpleFIN.
 
 Mocking in tests: patch individual async methods on the instance, e.g.
     patch.object(state.simplefin, "list_accounts_by_url", AsyncMock(return_value=([], [])))
@@ -35,10 +34,9 @@ from config import DEBUG
 logger = logging.getLogger(__name__)
 
 # Keyword heuristics used to guess an account's type/subtype — SimpleFIN's
-# protocol carries no account-type field at all (unlike Teller's
-# depository/credit + subtype), so this is a best-effort default. Users can
-# correct a misclassified account's balance sign via the existing manual
-# balance-override endpoint if a heuristic ever guesses wrong.
+# protocol carries no account-type field at all, so this is a best-effort
+# default. Users can correct a misclassified account's balance sign via the
+# existing manual balance-override endpoint if a heuristic ever guesses wrong.
 _CREDIT_KEYWORDS = ("credit card", "credit", "visa", "mastercard", "amex", "discover", "card")
 _LOAN_KEYWORDS = ("loan", "mortgage")
 _SAVINGS_KEYWORDS = ("saving", "hysa", "money market")
@@ -69,15 +67,31 @@ def _split_auth(access_url: str) -> Tuple[str, Optional[Tuple[str, str]]]:
     return base, auth
 
 
-def infer_account_bucket(name: str, org_name: str) -> Tuple[str, str]:
-    """Best-effort ``(type, subtype)`` guess from account/institution name text."""
-    text = f"{name} {org_name}".lower()
+def infer_account_bucket(
+    name: str, org_name: str, raw_balance: Optional[float] = None
+) -> Tuple[str, str]:
+    """Best-effort ``(type, subtype)`` guess from account/institution name text.
+
+    "credit union" is stripped before matching — an enormous share of US
+    credit unions have "Credit Union" literally in their name, which would
+    otherwise false-positive every single one of their accounts (checking,
+    savings, escrow, ...) as a credit card.
+
+    When no keyword matches at all (e.g. a card product name like "Blue Cash
+    Everyday" that doesn't contain "card" or "credit"), ``raw_balance`` — if
+    given — breaks the tie: a negative balance on an unlabeled account is a
+    far stronger signal of a credit-type (liability) account than of a
+    genuinely overdrawn depository one.
+    """
+    text = f"{name} {org_name}".lower().replace("credit union", "")
     if any(kw in text for kw in _LOAN_KEYWORDS):
         return "credit", "loan"
     if any(kw in text for kw in _CREDIT_KEYWORDS):
         return "credit", "credit_card"
     if any(kw in text for kw in _SAVINGS_KEYWORDS):
         return "depository", "savings"
+    if raw_balance is not None and raw_balance < 0:
+        return "credit", "credit_card"
     return "depository", "checking"
 
 
@@ -160,8 +174,8 @@ class SimpleFinClient:
     ) -> Tuple[List[Tuple[str, List[Dict[str, Any]]]], List[Dict[str, Any]]]:
         """GET /accounts?version=2 for every stored access URL.
 
-        Transactions come bundled inline on each account (unlike Teller,
-        which needs a second call per account). ``start_date``/``end_date``
+        Transactions come bundled inline on each account, so no second
+        per-account call is needed. ``start_date``/``end_date``
         are Unix timestamps (seconds) per the SimpleFIN protocol.
 
         Returns ``(successes, errors)`` where successes is
@@ -189,6 +203,27 @@ class SimpleFinClient:
                     top_errors = payload.get("errors") or payload.get("errlist") or []
                     for err in top_errors:
                         logger.warning(f"[SimpleFIN] {masked} reported: {err}")
+
+                    # version=2 nests institution name under a top-level
+                    # "connections" array, joined by each account's conn_id —
+                    # NOT inline per account. (Some implementations may still
+                    # inline an "org" object per account, so that's tried
+                    # first.) Resolved once here so every caller downstream
+                    # gets the real bank name via acct["_org_name"] instead of
+                    # duplicating this lookup.
+                    conn_names = {
+                        c.get("conn_id"): c.get("org_name")
+                        for c in (payload.get("connections") or [])
+                        if c.get("conn_id")
+                    }
+                    for acct in accounts:
+                        inline_org = (acct.get("org") or {}).get("name")
+                        acct["_org_name"] = (
+                            inline_org
+                            or conn_names.get(acct.get("conn_id"))
+                            or "Bank"
+                        )
+
                     successes.append((url, accounts))
                 except httpx.HTTPStatusError as e:
                     logger.warning(f"[SimpleFIN] {masked} failed ({e.response.status_code}): {e.response.text}")

@@ -29,7 +29,7 @@ def _insert_snapshot(account_id: str, available: float, days_ago: float) -> None
             text(
                 "INSERT INTO balance_snapshots "
                 "  (account_id, captured_at, available, ledger, source) "
-                "VALUES (:aid, :ts, :avail, NULL, 'teller')"
+                "VALUES (:aid, :ts, :avail, NULL, 'simplefin')"
             ),
             {"aid": account_id, "ts": captured, "avail": available},
         )
@@ -44,7 +44,7 @@ def _seed_txn(tid: str, date_str: str, category: str, amount: float) -> None:
         "amount": amount,
         "transaction_type": "debit",
         "category": category,
-        "source": "teller",
+        "source": "simplefin",
         "is_shared": False,
     }
 

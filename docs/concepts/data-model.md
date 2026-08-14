@@ -8,7 +8,7 @@ All data lives in **Postgres 16** with the **pgvector** extension. Migrations ar
 
 | Table | Purpose |
 |---|---|
-| `accounts` | One row per account (Teller bank, SnapTrade brokerage, manual, or CSV-synth) |
+| `accounts` | One row per account (SimpleFIN bank, SnapTrade brokerage, manual, or CSV-synth) |
 | `transactions` | Every transaction; the heart of the app |
 | `account_details` | Credit-card metadata (APR, limit, statement/due day) |
 | `balance_snapshots` | Point-in-time balance (live + manual + SnapTrade) — feeds net-worth history |
@@ -35,8 +35,8 @@ All data lives in **Postgres 16** with the **pgvector** extension. Migrations ar
 
 ## Lifecycle highlights
 
-- **Transactions** — inserted from Teller sync or CSV upload; rows persist (the in-memory "review queue" is a working set, not the source of truth).
-- **Balances** — live values come from Teller API per request; manual values from `balance_snapshots`.
+- **Transactions** — inserted from SimpleFIN sync or CSV upload; rows persist (the in-memory "review queue" is a working set, not the source of truth).
+- **Balances** — live values come from the SimpleFIN API per request; manual values from `balance_snapshots`.
 - **Embeddings** — written async; backfilled on startup if any are NULL.
 - **Conversations** — soft state; safe to delete entire rows.
 

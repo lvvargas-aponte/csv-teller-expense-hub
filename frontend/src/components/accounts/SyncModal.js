@@ -169,7 +169,7 @@ export default function SyncModal({ onSync, onClose }) {
 
         <div className="modal-footer">
           <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-teller"
+          <button type="button" className="btn btn-primary"
                   onClick={handleSync}
                   disabled={!fromDate || !toDate || fromDate > toDate || noneSelected}
           >

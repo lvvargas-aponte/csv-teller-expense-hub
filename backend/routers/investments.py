@@ -65,14 +65,25 @@ async def get_portfolio() -> Dict[str, Any]:
 
     holdings = get_repo().get_holdings()
     summary = summarize_holdings(holdings)
+    holdings_accounts = {h["account_id"] for h in summary["holdings"]}
 
+    # Accounts on some SnapTrade plan tiers (e.g. Personal API keys) never
+    # get ticker-level positions — only an account-level total from the sync.
+    # Use that as the account's value instead of leaving it at $0, and fold it
+    # into the portfolio total. Cost basis/gain/allocation stay holdings-only
+    # since there's no per-position data to attribute them to.
+    balance_only_total = 0.0
     by_account: Dict[str, Dict[str, Any]] = {}
     for snap in _synced_snaptrade_accounts():
+        has_holdings = snap["id"] in holdings_accounts
+        value = 0.0 if has_holdings else round(float(snap.get("available") or 0.0), 2)
+        if not has_holdings:
+            balance_only_total += value
         by_account[snap["id"]] = {
             "account_id": snap["id"],
             "account_name": snap["name"],
             "institution": snap["institution"],
-            "value": 0.0,
+            "value": value,
             "holding_count": 0,
         }
     for h in summary["holdings"]:
@@ -91,4 +102,6 @@ async def get_portfolio() -> Dict[str, Any]:
     summary["by_account"] = sorted(
         by_account.values(), key=lambda a: a["value"], reverse=True
     )
+    if balance_only_total:
+        summary["total_value"] = round(summary["total_value"] + balance_only_total, 2)
     return summary

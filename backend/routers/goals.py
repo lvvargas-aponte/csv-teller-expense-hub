@@ -1,7 +1,8 @@
 """Savings goal routes — named targets with optional account linkage.
 
-Goals can be linked to an account (Teller or manual) so that progress reflects
-the live ``available`` balance, or tracked manually via ``current_balance``.
+Goals can be linked to an account (SimpleFIN or manual) so that progress
+reflects the live ``available`` balance, or tracked manually via
+``current_balance``.
 The advisor consumes goals through ``build_financial_snapshot``.
 """
 import uuid

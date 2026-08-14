@@ -29,8 +29,8 @@ const ALLOC_COLORS = {
 };
 
 // InvestmentsTab — connects brokerages via SnapTrade and shows holdings,
-// allocation, and unrealized gain/loss. Mirrors the connect-popup pattern
-// used for Teller (accounts/AccountsModal.js) but SnapTrade hands back a
+// allocation, and unrealized gain/loss. Mirrors the connect flow used for
+// bank accounts (accounts/AccountsModal.js) but SnapTrade hands back a
 // portal URL rather than a JS SDK, so we open it and sync once it closes.
 export default function InvestmentsTab() {
   const [config, setConfig] = useState(null);

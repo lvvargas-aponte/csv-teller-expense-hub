@@ -7,7 +7,7 @@
 - **Docker + Docker Compose** (recommended path), OR
 - **Python 3.10+** and **Node 18+** for local development
 - A **Google Cloud service account** for the Sheets export ([setup](google-sheets.md))
-- A **Teller.io app** if you want bank sync ([setup](teller.md))
+- A **SimpleFIN** account if you want bank sync ([setup](simplefin.md))
 - A **SnapTrade account** if you want investment/crypto holdings sync ([setup](snaptrade.md))
 - Optional: **Ollama** for AI features ([setup](ollama.md))
 
@@ -79,6 +79,6 @@ Drop CSV files into `csv_imports/`; processed files move to `csv_imports/process
 ## Next steps
 
 1. Fill out your `.env` — see [Environment variables](env-vars.md).
-2. Connect a bank — see [Teller setup](teller.md).
+2. Connect a bank — see [SimpleFIN setup](simplefin.md).
 3. Connect a brokerage — see [SnapTrade setup](snaptrade.md).
 4. (Optional) Install Ollama — see [Ollama setup](ollama.md).

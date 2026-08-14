@@ -3,7 +3,7 @@ import axios from 'axios';
 import { API_BASE } from '../utils/formatting';
 import { userMessage } from '../utils/errorMessage';
 
-// Owns the bank sync (Teller + SimpleFIN), CSV upload, and Send-to-Sheet
+// Owns the bank sync (SimpleFIN), CSV upload, and Send-to-Sheet
 // flows plus the modal visibility flags they trigger. Reaches back into
 // App's transaction-list hook via `reload` and surfaces failures via `setError`.
 export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sharedCount }) {
@@ -16,40 +16,23 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
   const [pendingCsvFile, setPendingCsvFile] = useState(null);
   const [accountsRefreshKey, setAccountsRefreshKey] = useState(0);
 
-  // Syncs every connected source (Teller + SimpleFIN) in parallel. Either one
-  // is allowed to have zero connections configured — that source's request
-  // just 500s and is filtered out below — so this works whether the
-  // household uses Teller, SimpleFIN, or both side by side.
+  // Syncs the connected SimpleFIN source.
   const syncBanks = useCallback(async (fromDate, toDate, accountIds) => {
     setShowSyncModal(false);
     setSyncing(true);
     const body = { from_date: fromDate, to_date: toDate };
     if (accountIds !== null) body.account_ids = accountIds;
 
-    const [tellerResult, simplefinResult] = await Promise.allSettled([
-      axios.post(`${API_BASE}/api/teller/sync`, body),
-      axios.post(`${API_BASE}/api/simplefin/sync`, body),
-    ]);
-
-    const successes = [tellerResult, simplefinResult]
-      .filter((r) => r.status === 'fulfilled')
-      .map((r) => r.value.data);
-
-    if (successes.length === 0) {
-      const firstError = tellerResult.reason || simplefinResult.reason;
-      setError(userMessage(firstError, 'Bank sync failed — please try again.'));
+    try {
+      const res = await axios.post(`${API_BASE}/api/simplefin/sync`, body);
+      setSyncToast(res.data);
+      setAccountsRefreshKey((k) => k + 1);
+      await reload();
+    } catch (e) {
+      setError(userMessage(e, 'Bank sync failed — please try again.'));
+    } finally {
       setSyncing(false);
-      return;
     }
-
-    const merged = successes.reduce((acc, r) => ({
-      total_new: (acc.total_new || 0) + (r.total_new || 0),
-      details: [...(acc.details || []), ...(r.details || [])],
-    }), {});
-    setSyncToast(merged);
-    setAccountsRefreshKey((k) => k + 1);
-    await reload();
-    setSyncing(false);
   }, [reload, setError]);
 
   const handleCsvPicked = useCallback((e) => {

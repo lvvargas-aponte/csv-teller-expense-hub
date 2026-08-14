@@ -273,7 +273,7 @@ class TestInvestmentsSnapshot:
 
     def test_snapshot_block_after_holdings(self):
         repo = accounts_repo_memory.active()
-        repo.upsert_teller_account(
+        repo.upsert_synced_account(
             {"id": "st_acc_1", "name": "Brokerage", "type": "investment",
              "subtype": "brokerage", "institution": {"name": "Robinhood"}},
             source="snaptrade",

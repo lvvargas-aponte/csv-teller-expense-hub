@@ -14,7 +14,7 @@ from models import (
     BulkSuggestRequest,
     ApplyCategoriesRequest,
 )
-from teller import _detail
+from simplefin import _detail
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -151,7 +151,7 @@ async def upload_csv(
         new_transactions = []
         duplicates = 0
         # Build a snapshot of existing dedupe keys once so cross-source
-        # duplicates (e.g. CSV row matching an already-Teller-imported txn) are
+        # duplicates (e.g. CSV row matching an already-imported txn) are
         # rejected even when transaction_ids differ. PgStore .values() is a
         # snapshot, so this is safe to read here.
         existing_keys = {
@@ -225,7 +225,7 @@ async def upload_csv(
 
 @router.get("/transactions/all")
 async def get_all_transactions() -> List[Dict[str, Any]]:
-    """Get all transactions (CSV + Teller combined)."""
+    """Get all transactions (CSV + SimpleFIN combined)."""
     return list(state.stored_transactions.values())
 
 
@@ -276,7 +276,7 @@ async def dedupe_transactions(payload: Optional[Dict[str, Any]] = None) -> Dict[
     Two transactions are duplicates when they share the same canonical
     dedupe-key (date + 2dp amount + normalized description + direction) —
     catches the cross-source case where the same purchase exists as both a
-    CSV row and a Teller-imported row with different transaction_ids.
+    CSV row and a SimpleFIN-imported row with different transaction_ids.
 
     Modes:
       * ``preview`` (default) → returns groups, does not mutate.

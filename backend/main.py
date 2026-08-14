@@ -1,6 +1,5 @@
 """Application entry point — app setup, middleware, and router registration."""
 import logging
-import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,25 +8,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 import state
-from config import (
-    TELLER_ACCESS_TOKENS, SPREADSHEET_ID, CREDENTIALS_FILE, TELLER_ENVIRONMENT,
-)
+from config import SPREADSHEET_ID, CREDENTIALS_FILE, SIMPLEFIN_ACCESS_URLS
 
-# Patterns used in tests / docs that should never be real production tokens.
-_FAKE_TOKEN_RE = re.compile(r"^tok_(abc|one|two|test|fake|dummy)", re.IGNORECASE)
 from routers import (
     accounts, advisor, alerts, balances, bills, budgets, credit_health, dashboard,
     documents, goals, insights, investments, layout, profile, seeds, sheets,
     snaptrade, tools, user_facts,
 )
 from routers import simplefin as simplefin_router
-from routers import teller as teller_router
 from routers import transactions
 
 # Re-export singletons so existing test imports (``from main import ...``) keep working.
 stored_transactions = state.stored_transactions
 _balances_cache     = state._balances_cache
-teller              = state.teller
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,21 +34,11 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     if not SPREADSHEET_ID:
         logger.warning("SPREADSHEET_ID not configured — Google Sheets export will not work")
-    if not TELLER_ACCESS_TOKENS:
-        logger.warning("TELLER_API_KEY not configured — Teller sync will not work")
+    if not SIMPLEFIN_ACCESS_URLS:
+        logger.warning("SIMPLEFIN_ACCESS_URLS not configured — SimpleFIN sync will not work")
     if not CREDENTIALS_FILE.exists():
         logger.warning(
             f"credentials.json not found at {CREDENTIALS_FILE} — Google Sheets export will fail"
-        )
-    # Surface stale/fake tokens so zombie "Connection Error" accounts in the
-    # Accounts modal are easy to diagnose.  Non-destructive — use
-    # `py backend/scripts/prune_tokens.py` to clean them out.
-    fakes = [t for t in TELLER_ACCESS_TOKENS if _FAKE_TOKEN_RE.match(t)]
-    if fakes:
-        logger.warning(
-            f"TELLER_API_KEY contains {len(fakes)} token(s) matching test patterns "
-            "(tok_abc…, tok_one, tok_two, tok_test…).  Run "
-            "`py backend/scripts/prune_tokens.py` to remove them."
         )
 
     # Phase 6: catch up on any ``conversation_turns`` rows whose embeddings
@@ -92,7 +75,6 @@ app.add_middleware(
 
 app.include_router(transactions.router, prefix="/api")
 app.include_router(accounts.router,     prefix="/api")
-app.include_router(teller_router.router, prefix="/api")
 app.include_router(simplefin_router.router, prefix="/api")
 app.include_router(balances.router,     prefix="/api")
 app.include_router(sheets.router,       prefix="/api")
@@ -132,7 +114,7 @@ async def root() -> dict:
 
 @app.get("/health")
 async def health_check() -> dict:
-    return {"status": "healthy", "environment": TELLER_ENVIRONMENT}
+    return {"status": "healthy"}
 
 
 if __name__ == "__main__":

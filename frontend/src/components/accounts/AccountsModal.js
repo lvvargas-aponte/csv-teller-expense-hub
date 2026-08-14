@@ -16,11 +16,7 @@ export default function AccountsModal({ onClose }) {
   const [purging,       setPurging]       = useState(null);  // account being permanently deleted: { id, label }
   const [purgeText,     setPurgeText]     = useState('');    // what the user has typed so far
   const [deleting,      setDeleting]      = useState(null);  // account id whose DELETE call is in flight
-  const [connecting,    setConnecting]    = useState(false);
-  const [reconnecting,  setReconnecting]  = useState(null);  // account id being re-authenticated
   const [connectStatus, setConnectStatus] = useState(null);  // { type: 'success'|'error', message }
-  const [tellerConfig,  setTellerConfig]  = useState(null);
-  const [configError,   setConfigError]   = useState(null);
   const [simplefinToken,    setSimplefinToken]    = useState('');
   const [claimingSimplefin, setClaimingSimplefin] = useState(false);
 
@@ -35,17 +31,11 @@ export default function AccountsModal({ onClose }) {
 
   useEffect(() => { refreshAccounts(); }, [refreshAccounts]);
 
-  useEffect(() => {
-    axios.get(`${API}/api/config/teller`)
-      .then((res) => setTellerConfig(res.data))
-      .catch((e) => setConfigError(e.response?.data?.detail || e.message));
-  }, []);
-
   const handleDisconnect = async (acctId) => {
-    // Default disconnect: revokes the Teller token but keeps the local
+    // Default disconnect: revokes the connection but keeps the local
     // record so transactions, last-known balance, and APR/limit details stay
     // around — a later reconnect of the same account picks them right back
-    // up. The Linked Accounts list (this modal) only shows Teller-connected
+    // up. The Linked Accounts list (this modal) only shows connected
     // rows, so the row disappears here after the call succeeds.
     setDeleting(acctId);
     setConfirming(null);
@@ -73,95 +63,6 @@ export default function AccountsModal({ onClose }) {
     } finally {
       setDeleting(null);
     }
-  };
-
-  // Shared helper: open TellerConnect and call onSuccess with the enrollment object
-  const openTellerConnect = ({ enrollmentId, onSuccess }) => {
-    if (!tellerConfig) return;
-    if (!window.TellerConnect) {
-      setConnectStatus({ type: 'error', message: 'Teller SDK failed to load. Check your connection and reload.' });
-      return;
-    }
-
-    const options = {
-      applicationId: tellerConfig.application_id,
-      environment:   tellerConfig.environment,
-      onSuccess,
-      onExit: () => {
-        setConnecting(false);
-        setReconnecting(null);
-      },
-    };
-    if (enrollmentId) options.enrollmentId = enrollmentId;
-
-    window.TellerConnect.setup(options).open();
-  };
-
-  const handleConnect = () => {
-    setConnecting(true);
-    setConnectStatus(null);
-
-    openTellerConnect({
-      onSuccess: async (enrollment) => {
-        setConnecting(false);
-        try {
-          const res = await axios.post(`${API}/api/teller/register-token`, {
-            access_token:  enrollment.accessToken,
-            enrollment_id: enrollment.enrollment.id,
-            institution:   enrollment.enrollment.institution.name,
-          });
-          const msg = res.data.registered === false
-            ? 'This account was already connected.'
-            : `${enrollment.enrollment.institution.name} connected!`;
-          setConnectStatus({ type: 'success', message: msg });
-          refreshAccounts();
-        } catch (e) {
-          setConnectStatus({ type: 'error', message: 'Failed to save token: ' + (e.response?.data?.detail || e.message) });
-        }
-      },
-    });
-  };
-
-  const handleReconnect = (acct) => {
-    setReconnecting(acct.id);
-    setConnectStatus(null);
-
-    openTellerConnect({
-      // If we have the enrollment id, Teller Connect opens directly in re-auth mode
-      enrollmentId: acct._enrollment_id || undefined,
-      onSuccess: async (enrollment) => {
-        setReconnecting(null);
-        try {
-          if (acct._enrollment_id) {
-            // Known enrollment — swap out the broken token.  old_account_id
-            // is a belt-and-suspenders so the dead token is still cleaned up
-            // if the backend's in-memory enrollment map has been cleared.
-            await axios.post(`${API}/api/teller/replace-token`, {
-              old_enrollment_id: acct._enrollment_id,
-              new_access_token:  enrollment.accessToken,
-              new_enrollment_id: enrollment.enrollment.id,
-              institution:       enrollment.enrollment.institution.name,
-              old_account_id:    acct.id,
-            });
-          } else {
-            // No stored enrollment id (e.g. after a backend restart) — register
-            // as a fresh connection.  Passing old_account_id lets the backend
-            // remove the broken token alongside the new one so the
-            // "Connection Error" row doesn't linger.
-            await axios.post(`${API}/api/teller/register-token`, {
-              access_token:  enrollment.accessToken,
-              enrollment_id: enrollment.enrollment.id,
-              institution:   enrollment.enrollment.institution.name,
-              old_account_id: acct.id,
-            });
-          }
-          setConnectStatus({ type: 'success', message: `${enrollment.enrollment.institution.name} reconnected!` });
-          refreshAccounts();
-        } catch (e) {
-          setConnectStatus({ type: 'error', message: 'Failed to update credentials: ' + (e.response?.data?.detail || e.message) });
-        }
-      },
-    });
   };
 
   const handleClaimSimplefin = async () => {
@@ -208,7 +109,6 @@ export default function AccountsModal({ onClose }) {
             const subtype      = formatAccountType(acct.subtype || acct.type || '');
             const isConfirming = confirming    === acct.id;
             const isDeleting   = deleting      === acct.id;
-            const isReconnecting = reconnecting === acct.id;
 
             const isRateLimited = acct._connection_error && acct._error_status === 429;
 
@@ -242,24 +142,11 @@ export default function AccountsModal({ onClose }) {
 
                 <div className="account-row-actions">
                   {acct._connection_error && !isConfirming ? (
-                    <>
-                      {!isRateLimited && acct._source !== 'simplefin' && (
-                        <button
-                          type="button"
-                          className="btn btn-teller btn-sm"
-                          aria-label={isReconnecting ? 'Reconnecting…' : 'Reconnect account'}
-                          disabled={isReconnecting || !tellerConfig}
-                          onClick={() => handleReconnect(acct)}
-                        >
-                          {isReconnecting ? <><Spin /> Reconnecting…</> : '↺'}
-                        </button>
-                      )}
-                      <button type="button" className="btn btn-secondary btn-sm"
-                              disabled={isDeleting}
-                              onClick={() => setConfirming(acct.id)}>
-                        {isDeleting ? <Spin /> : '🗑️'} Disconnect
-                      </button>
-                    </>
+                    <button type="button" className="btn btn-secondary btn-sm"
+                            disabled={isDeleting}
+                            onClick={() => setConfirming(acct.id)}>
+                      {isDeleting ? <Spin /> : '🗑️'} Disconnect
+                    </button>
                   ) : isConfirming ? (
                     <>
                       <span className="account-row-confirm-label">Disconnect? Local data stays.</span>
@@ -351,23 +238,7 @@ export default function AccountsModal({ onClose }) {
           )}
         </div>
 
-        <div className="modal-footer" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            {configError ? (
-              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                Bank connection unavailable: {configError}
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-teller"
-                onClick={handleConnect}
-                disabled={connecting || !tellerConfig}
-              >
-                {connecting ? <><Spin /> Connecting…</> : '+ Connect a Bank'}
-              </button>
-            )}
-          </div>
+        <div className="modal-footer" style={{ justifyContent: 'flex-end' }}>
           <button type="button" className="btn btn-secondary" onClick={onClose}>Close</button>
         </div>
       </div>

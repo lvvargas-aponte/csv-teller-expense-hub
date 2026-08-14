@@ -9,7 +9,7 @@ from config import SPREADSHEET_ID, SHEET_NAME, PERSON_1_NAME, PERSON_2_NAME
 from gsheet_integration import append_to_sheet, get_sheet_headers
 from helpers import _parse_month_key
 from models import SendToSheetRequest
-from teller import _detail
+from simplefin import _detail
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

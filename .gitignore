@@ -36,7 +36,6 @@ csv_imports/
 
 # ── Crash dumps & logs ────────────────────────────────────────────────────────
 *.stackdump
-teller-tokens.log
 
 # ── Docs (built site) ─────────────────────────────────────────────────────────
 /site/

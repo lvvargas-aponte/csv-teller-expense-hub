@@ -1,9 +1,9 @@
 """SimpleFIN routes: setup-token claim and sync.
 
-SimpleFIN bundles transactions inline on each account object, so unlike
-``routers/teller.py`` there is no separate per-account transactions call —
-one ``/accounts`` fetch (``state.simplefin.list_accounts_by_url``) returns
-everything needed for a sync.
+SimpleFIN bundles transactions inline on each account object, so there is
+no separate per-account transactions call — one ``/accounts`` fetch
+(``state.simplefin.list_accounts_by_url``) returns everything needed for a
+sync.
 """
 import logging
 from datetime import datetime, timezone
@@ -54,9 +54,8 @@ async def remove_simplefin_connection(access_url_masked: str):
     """Drop a stored access URL entirely (all accounts behind it disappear).
 
     SimpleFIN has no API to revoke just this URL server-side — it's simply
-    removed from local storage, the same way a Teller token removal doesn't
-    call Teller if the token is already dead. Matched by masked form since
-    the frontend never holds the raw URL after claiming it.
+    removed from local storage. Matched by masked form since the frontend
+    never holds the raw URL after claiming it.
     """
     match = state.simplefin.remove_by_masked(access_url_masked)
     if not match:
@@ -124,7 +123,7 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
             if shadow and shadow.get("disconnected_from") == "simplefin":
                 continue
 
-            org_name = (account.get("org") or {}).get("name") or "Bank"
+            org_name = account.get("_org_name") or "Bank"
             acct_name = f"{org_name} – {account.get('name', acct_id)}"
 
             try:
@@ -151,8 +150,7 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                         category=normalize_category((t.get("extra") or {}).get("category")),
                         institution=org_name,
                         # SimpleFIN's amount sign is always balance-effect based
-                        # (positive = money in), unlike Teller's account-type-
-                        # dependent convention — no CR/DR heuristic needed.
+                        # (positive = money in) — no CR/DR heuristic needed.
                         transaction_type="credit" if amt > 0 else "debit",
                         account_type=account.get("name", ""),
                     )

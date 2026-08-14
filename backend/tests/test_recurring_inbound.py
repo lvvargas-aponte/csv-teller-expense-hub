@@ -29,7 +29,7 @@ def _add_credit(
     amount: float,
     days_ago: int,
     account_type: str = "depository",
-    source: str = "teller",
+    source: str = "simplefin",
 ) -> None:
     d = (date.today() - timedelta(days=days_ago)).isoformat()
     state.stored_transactions[tid] = {

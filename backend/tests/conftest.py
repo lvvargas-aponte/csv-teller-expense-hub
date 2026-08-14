@@ -183,30 +183,24 @@ def clear_storage():
 
 @pytest.fixture(autouse=True)
 def _block_env_and_token_leaks(monkeypatch):
-    """Keep tests from writing fake tokens to the real .env / token log.
+    """Keep tests from writing fake access URLs to the real .env.
 
-    The Teller register-token route calls `_env_add_token` and `_log_token_event`
-    which write to the repo's .env and teller-tokens.log files.  Previously,
-    `test_teller_connect.py` tried to patch `helpers.Path` to redirect writes,
-    but `_ENV_PATH` is resolved at import time so the patch had no effect —
-    fake tokens (tok_abc123, tok_one, tok_two) kept ending up in the real .env.
-
-    This fixture neutralises the side-effects for ALL tests and snapshots
-    TELLER_ACCESS_TOKENS so in-memory mutations don't bleed across test files.
+    The SimpleFIN claim route calls `_env_add_simplefin_url` which writes to
+    the repo's .env file. This fixture neutralises that side-effect for ALL
+    tests and snapshots SIMPLEFIN_ACCESS_URLS so in-memory mutations don't
+    bleed across test files.
     """
     import helpers
-    import routers.teller as teller_router
+    import routers.simplefin as simplefin_router
 
-    monkeypatch.setattr(helpers,       "_env_add_token",    lambda _t: None)
-    monkeypatch.setattr(helpers,       "_env_remove_token", lambda _t: None)
-    monkeypatch.setattr(helpers,       "_log_token_event",  lambda **_kw: None)
-    monkeypatch.setattr(teller_router, "_env_add_token",    lambda _t: None)
-    monkeypatch.setattr(teller_router, "_env_remove_token", lambda _t: None)
-    monkeypatch.setattr(teller_router, "_log_token_event",  lambda **_kw: None)
+    monkeypatch.setattr(helpers,          "_env_add_simplefin_url",    lambda _u: None)
+    monkeypatch.setattr(helpers,          "_env_remove_simplefin_url", lambda _u: None)
+    monkeypatch.setattr(simplefin_router, "_env_add_simplefin_url",    lambda _u: None)
+    monkeypatch.setattr(simplefin_router, "_env_remove_simplefin_url", lambda _u: None)
 
-    original_tokens = list(state.TELLER_ACCESS_TOKENS)
+    original_urls = list(state.SIMPLEFIN_ACCESS_URLS)
     yield
-    state.TELLER_ACCESS_TOKENS[:] = original_tokens
+    state.SIMPLEFIN_ACCESS_URLS[:] = original_urls
 
 
 @pytest.fixture
