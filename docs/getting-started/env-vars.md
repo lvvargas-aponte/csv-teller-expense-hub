@@ -51,8 +51,12 @@ SnapTrade has no sandbox/production switch — these two credentials are the ent
 | `OLLAMA_HOST` | `http://localhost:11434` (Docker uses `http://host.docker.internal:11434`) | LLM endpoint |
 | `OLLAMA_MODEL` | `qwen2.5:14b-instruct` | Used by insights + payoff advice |
 | `OLLAMA_CHAT_MODEL` | `OLLAMA_MODEL` | Used by the advisor chat |
-| `ADVISOR_AGENT_MODE` | `false` | When `true`, the advisor uses a bounded tool-use loop instead of single-shot RAG. See [AI advisor → Agent harness mode](../concepts/advisor.md#agent-harness-mode-opt-in). Recommended chat model: Qwen 2.5 14B+ for reliable tool calling. |
-| `ADVISOR_AGENT_MAX_ITERS` | `6` | Hard cap on harness iterations per chat turn. Ignored when `ADVISOR_AGENT_MODE=false`. |
+| `OLLAMA_NUM_CTX` | `16384` | Context window requested per LLM call. Ollama's default (4096) silently truncates the advisor's system prompt + tool schemas. |
+| `ADVISOR_AGENT_MAX_ITERS` | `10` | Hard cap on harness iterations per chat turn. The advisor always runs the tool-use loop; recommended chat model: Qwen 2.5 14B+ for reliable tool calling. |
+| `ADVISOR_WEB_TOOLS_ENABLED` | `true` | Enables Fin's `web_search`, `fetch_webpage`, and stock quote/history/fundamentals tools. Set `false` for offline installs. |
+| `WEB_SEARCH_MAX_RESULTS` | `5` | Max results per `web_search` call (1–10). |
+| `ADVISOR_FETCH_TIMEOUT_SEC` | `20` | Total timeout for advisor `fetch_webpage` requests. |
+| `ADVISOR_FETCH_MAX_BYTES` | `2097152` | Byte cap for advisor `fetch_webpage` bodies (2 MiB). |
 
 ## Database
 

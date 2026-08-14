@@ -22,13 +22,25 @@ _DISCOVER_CSV = (
 )
 
 
-def _post(client, *, extra_form=None, filename="march.csv"):
+_BARCLAYS_CSV = (
+    "Barclays Bank Delaware\n"
+    "Account Number: XXXXXXXXXXXX8198\n"
+    "Account Balance as of June 24 2026:    $2843.16\n"
+    " \n"
+    "Transaction Date,Description,Category,Amount,Card Last 4 Digits,Purchased by\n"
+    '05/31/2026,"PRIMARY ANNUAL FEE","DEBIT","-99.00",="8198",LUZ\n'
+    '05/29/2026,"Payment Received","CREDIT","29.00",="8198",LUZ\n'
+)
+
+
+def _post(client, *, extra_form=None, filename="march.csv", content=None):
     data = {}
     if extra_form:
         data.update(extra_form)
+    payload = content if content is not None else _DISCOVER_CSV
     return client.post(
         "/api/upload-csv",
-        files={"file": (filename, io.BytesIO(_DISCOVER_CSV.encode("utf-8")), "text/csv")},
+        files={"file": (filename, io.BytesIO(payload.encode("utf-8")), "text/csv")},
         data=data,
     )
 
@@ -231,3 +243,58 @@ class TestUploadAttachingToExistingAccount:
             extra_form={"account_id": "nonexistent"},
         )
         assert res.status_code == 404
+
+
+class TestBarclaysUnattendedDrop:
+    """A Barclays CSV dropped by the watcher carries no account metadata, but
+    embeds its closing balance in the preamble. It should auto-bind to an
+    existing Barclays credit account; with none, txns import and balance skips.
+    """
+
+    def _make_barclays_account(self, client) -> str:
+        created = client.post(
+            "/api/balances/manual",
+            json={
+                "institution": "Barclays",
+                "name":        "Barclays Credit Card",
+                "type":        "credit",
+                "subtype":     "",
+                "available":   0.0,
+                "ledger":      0.0,
+            },
+        )
+        return created.json()["id"]
+
+    def test_balance_binds_to_existing_barclays_account(self, client):
+        acct_id = self._make_barclays_account(client)
+        pre = _count_snapshots(acct_id)
+
+        res = _post(client, content=_BARCLAYS_CSV, filename="CreditCard_20260501_20260531.csv")
+        assert res.status_code == 200, res.text
+        assert res.json()["account_id"] == acct_id
+
+        assert _count_snapshots(acct_id) == pre + 1
+        with sync_engine.connect() as conn:
+            ledger = conn.execute(
+                text(
+                    "SELECT ledger FROM balance_snapshots "
+                    "WHERE account_id = :id AND source = 'csv' "
+                    "ORDER BY id DESC LIMIT 1"
+                ),
+                {"id": acct_id},
+            ).scalar()
+        assert float(ledger) == 2843.16
+
+    def test_no_barclays_account_imports_txns_skips_balance(self, client):
+        res = _post(client, content=_BARCLAYS_CSV, filename="CreditCard_20260501_20260531.csv")
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["account_id"] is None
+        assert body["count"] == 2  # transactions still imported
+
+    def test_ambiguous_two_barclays_accounts_skips_balance(self, client):
+        self._make_barclays_account(client)
+        self._make_barclays_account(client)
+        res = _post(client, content=_BARCLAYS_CSV, filename="CreditCard_20260501_20260531.csv")
+        assert res.status_code == 200, res.text
+        assert res.json()["account_id"] is None

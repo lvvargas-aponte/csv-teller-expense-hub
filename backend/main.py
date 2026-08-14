@@ -17,8 +17,8 @@ from config import (
 _FAKE_TOKEN_RE = re.compile(r"^tok_(abc|one|two|test|fake|dummy)", re.IGNORECASE)
 from routers import (
     accounts, advisor, alerts, balances, bills, budgets, credit_health, dashboard,
-    documents, goals, insights, investments, layout, profile, seeds, sheets,
-    snaptrade, tools, user_facts,
+    digest, documents, goals, insights, investments, layout, profile, seeds, sheets,
+    snaptrade, subscriptions, tools, user_facts,
 )
 from routers import teller as teller_router
 from routers import transactions
@@ -71,7 +71,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[startup] Embedding backfill skipped: {e}")
 
+    # Recurring data syncs (weekly transaction/holdings pulls, etc.) —
+    # jobs live in the scheduled_tasks table, managed via Fin's tools.
+    scheduler_task = None
+    try:
+        from scheduler import start_scheduler
+        scheduler_task = start_scheduler()
+    except Exception as e:
+        logger.warning(f"[startup] Scheduler not started: {e}")
+
     yield
+
+    if scheduler_task is not None:
+        scheduler_task.cancel()
 
 
 app = FastAPI(title="Bank Statement API", version="1.0.0", lifespan=lifespan)
@@ -110,6 +122,8 @@ app.include_router(seeds.router,        prefix="/api")
 app.include_router(snaptrade.router,    prefix="/api")
 app.include_router(investments.router,  prefix="/api")
 app.include_router(user_facts.router,   prefix="/api")
+app.include_router(subscriptions.router, prefix="/api")
+app.include_router(digest.router,       prefix="/api")
 
 
 # Static help site — built from /docs by mkdocs into /docs/site.

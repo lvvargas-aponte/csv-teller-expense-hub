@@ -123,6 +123,56 @@ test('checkbox is checked when isSelected is true', () => {
   expect(screen.getByRole('checkbox')).toBeChecked();
 });
 
+test('clicking the row body opens the detail panel', () => {
+  const mockOpen = jest.fn();
+  renderRow({}, { onOpenDetail: mockOpen });
+  fireEvent.click(screen.getByText('01/15/24'));
+  expect(mockOpen).toHaveBeenCalledWith('test_1');
+});
+
+test('the description is a keyboard-reachable button that opens details', () => {
+  const mockOpen = jest.fn();
+  renderRow({}, { onOpenDetail: mockOpen });
+  fireEvent.click(screen.getByRole('button', { name: 'Open details for STARBUCKS' }));
+  expect(mockOpen).toHaveBeenCalledWith('test_1');
+});
+
+test.each([
+  ['checkbox',     () => screen.getByRole('checkbox')],
+  ['split pill',   () => screen.getByRole('button', { name: 'Personal' })],
+  ['note button',  () => screen.getByLabelText('Add note')],
+  ['adjust split', () => screen.getByTitle('Adjust split')],
+  ['CR/DR badge',  () => screen.getByText('DR')],
+])('clicking the %s does not open the detail panel', (_label, pick) => {
+  const mockOpen = jest.fn();
+  renderRow({}, { onOpenDetail: mockOpen });
+  fireEvent.click(pick());
+  expect(mockOpen).not.toHaveBeenCalled();
+});
+
+test('applies tx-row--detail only when the panel is open for this row', () => {
+  const { rerender } = renderRow({}, { isDetailOpen: false });
+  expect(screen.getByRole('row')).not.toHaveClass('tx-row--detail');
+  rerender(
+    <table><tbody>
+      <TxnRow
+        txn={baseTxn}
+        otherPersonName="Bob"
+        isSelected={false}
+        onToggle={jest.fn()}
+        onSplitChange={jest.fn().mockResolvedValue()}
+        onToggleType={jest.fn().mockResolvedValue()}
+        onOpenAdj={jest.fn()}
+        onOpenNote={jest.fn()}
+        expandNote={false}
+        expandAdj={false}
+        isDetailOpen
+      />
+    </tbody></table>
+  );
+  expect(screen.getByRole('row')).toHaveClass('tx-row--detail');
+});
+
 test('shows DR badge for debit and CR badge for credit', () => {
   const { rerender } = renderRow({ transaction_type: 'debit' });
   expect(screen.getByText('DR')).toBeInTheDocument();

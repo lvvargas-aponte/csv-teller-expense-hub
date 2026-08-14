@@ -28,6 +28,12 @@ class GetBalanceArgs(BaseModel):
     account_type: Literal["cash", "credit", "investment", "all"] = "all"
 
 
+class ListAccountsArgs(BaseModel):
+    account_type: Literal["cash", "credit", "investment", "all"] = Field(
+        "all", description="Filter to one bucket, or 'all' for every account."
+    )
+
+
 class GetDebtArgs(BaseModel):
     account_name: Optional[str] = Field(
         None, description="Substring match on the account name; omit for all credit accounts"
@@ -93,6 +99,72 @@ class RememberAboutUserArgs(BaseModel):
         False,
         description="Mark true if this fact involves medical, relationship, or income detail the user may not want shoulder-surfed.",
     )
+
+
+class SyncTransactionsArgs(BaseModel):
+    from_date: Optional[str] = Field(
+        None, description="ISO YYYY-MM-DD lower bound; omit for the default previous-month range."
+    )
+    to_date: Optional[str] = Field(
+        None, description="ISO YYYY-MM-DD upper bound; omit for the default previous-month range."
+    )
+
+
+class RefreshBalancesArgs(BaseModel):
+    pass
+
+
+class SyncInvestmentsArgs(BaseModel):
+    pass
+
+
+_SyncTaskType = Literal["sync_transactions", "refresh_balances", "sync_investments"]
+
+
+class ScheduleSyncArgs(BaseModel):
+    task_type: _SyncTaskType = Field(
+        ..., description="Which sync to run on a schedule."
+    )
+    interval_days: int = Field(
+        7, ge=1, le=90, description="Days between runs; 7 = weekly (default)."
+    )
+
+
+class ListScheduledTasksArgs(BaseModel):
+    pass
+
+
+class CancelScheduledTaskArgs(BaseModel):
+    task_id: int = Field(..., description="Id from list_scheduled_tasks.")
+
+
+class ThinkArgs(BaseModel):
+    thought: str = Field(..., description="A short numbered plan or reasoning note for yourself.")
+
+
+class WebSearchArgs(BaseModel):
+    query: str = Field(..., description="Search query, e.g. 'NVDA earnings outlook 2026' or 'current high-yield savings rates'.")
+    max_results: int = Field(5, ge=1, le=10)
+
+
+class FetchWebpageArgs(BaseModel):
+    url: str = Field(..., description="Full https:// URL to fetch and read, usually from a web_search result.")
+
+
+class GetStockQuoteArgs(BaseModel):
+    symbols: List[str] = Field(
+        ..., min_length=1, max_length=10,
+        description="Ticker symbols to quote, e.g. ['NVDA', 'VOO']. Max 10.",
+    )
+
+
+class GetStockHistoryArgs(BaseModel):
+    symbol: str = Field(..., description="Single ticker symbol, e.g. 'NVDA'.")
+    period: Literal["1mo", "3mo", "6mo", "1y", "5y"] = "6mo"
+
+
+class GetStockFundamentalsArgs(BaseModel):
+    symbol: str = Field(..., description="Single ticker symbol, e.g. 'NVDA'.")
 
 
 class RecallAboutUserArgs(BaseModel):

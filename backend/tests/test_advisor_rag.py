@@ -27,14 +27,15 @@ _FAKE_VEC = [0.1] * 768
 
 
 def _mock_chat(text_reply="ok"):
-    return patch(
-        "routers.advisor.chat_ollama",
-        new=AsyncMock(return_value={
-            "ai_available": True,
-            "text": text_reply,
-            "raw": None,
-        }),
+    from agent.schemas import AgentResult, TrajectoryEvent
+
+    result = AgentResult(
+        reply=text_reply,
+        trajectory=[TrajectoryEvent(iteration=1, kind="final", result_summary=text_reply)],
+        terminated_reason="ok",
+        iterations=1,
     )
+    return patch("routers.advisor.run_agent", new=AsyncMock(return_value=result))
 
 
 def _mock_embed(available=True, vec=None):

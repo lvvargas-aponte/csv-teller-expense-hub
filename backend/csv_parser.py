@@ -13,6 +13,7 @@ import logging
 
 from category_normalizer import normalize as normalize_category
 from config import PERSON_1_NAME, PERSON_2_NAME
+from helpers import derive_direction
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,7 @@ class Transaction:
         """
         d = asdict(self)
         d['id'] = self.transaction_id  # frontend expects 'id'
+        d['direction'] = derive_direction(self.transaction_type)
         return d
 
 

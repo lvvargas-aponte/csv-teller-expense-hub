@@ -25,6 +25,7 @@ from agent.schemas import (
 )
 from agent.tools import (
     _get_balance,
+    _list_accounts,
     _get_budget_status,
     _get_category_spending,
     _get_debt,
@@ -156,6 +157,50 @@ class TestGetBalance:
         assert out["total_cash"] == 0.0
         assert out["total_credit_debt"] == 0.0
         assert out["net_worth"] == 0.0
+
+
+class TestListAccounts:
+    def _seed(self):
+        state._balances_cache["teller_accounts"] = [
+            {"id": "acc_ally", "institution": "Ally", "name": "Interest Checking",
+             "type": "depository", "subtype": "checking",
+             "available": 25300.46, "ledger": 25300.46},
+            {"id": "acc_chase", "institution": "Chase", "name": "Sapphire",
+             "type": "credit", "subtype": "credit_card",
+             "available": 0.0, "ledger": 1200.0},
+        ]
+        state._manual_accounts["m1"] = {
+            "id": "m1", "institution": "Fidelity", "name": "Brokerage",
+            "type": "investment", "subtype": "brokerage",
+            "available": 5000.0, "ledger": 5000.0,
+        }
+
+    def test_lists_names_across_sources(self):
+        self._seed()
+        from agent.schemas import ListAccountsArgs
+        out = _run(_list_accounts(ListAccountsArgs()))
+        assert out["count"] == 3
+        names = {a["name"] for a in out["accounts"]}
+        assert names == {"Interest Checking", "Sapphire", "Brokerage"}
+        checking = next(a for a in out["accounts"] if a["name"] == "Interest Checking")
+        assert checking["bucket"] == "cash"
+        assert checking["institution"] == "Ally"
+        assert checking["balance"] == 25300.46
+        manual = next(a for a in out["accounts"] if a["name"] == "Brokerage")
+        assert manual["source"] == "manual"
+
+    def test_bucket_filter(self):
+        self._seed()
+        from agent.schemas import ListAccountsArgs
+        out = _run(_list_accounts(ListAccountsArgs(account_type="credit")))
+        assert out["count"] == 1
+        assert out["accounts"][0]["name"] == "Sapphire"
+        assert out["accounts"][0]["balance"] == 1200.0
+
+    def test_empty_cache(self):
+        from agent.schemas import ListAccountsArgs
+        out = _run(_list_accounts(ListAccountsArgs()))
+        assert out == {"count": 0, "accounts": [], "as_of": None}
 
 
 # ---------------------------------------------------------------------------
@@ -573,17 +618,39 @@ class TestRecallPastConversation:
         assert async_fn.call_args.kwargs["exclude_conv_id"] is None
 
 
+_CORE_TOOLS = {
+    "think",
+    "search_transactions", "get_balance", "get_debt", "list_accounts",
+    "get_budget_status", "get_goal_status",
+    "get_category_spending", "project_cashflow",
+    "get_investments",
+    "search_documents", "recall_past_conversation",
+    "remember_about_user", "recall_about_user",
+}
+
+_ACTION_TOOLS = {
+    "sync_transactions", "refresh_balances", "sync_investments",
+    "schedule_sync", "list_scheduled_tasks", "cancel_scheduled_task",
+}
+
+_WEB_TOOLS = {
+    "web_search", "fetch_webpage",
+    "get_stock_quote", "get_stock_history", "get_stock_fundamentals",
+}
+
+
 class TestRegistry:
-    def test_all_tools_present(self):
+    def test_all_tools_present_with_web_enabled(self, monkeypatch):
+        import config
+        monkeypatch.setattr(config, "ADVISOR_WEB_TOOLS_ENABLED", True)
         reg = default_tool_registry()
-        assert set(reg.names()) == {
-            "search_transactions", "get_balance", "get_debt",
-            "get_budget_status", "get_goal_status",
-            "get_category_spending", "project_cashflow",
-            "get_investments",
-            "search_documents", "recall_past_conversation",
-            "remember_about_user", "recall_about_user",
-        }
+        assert set(reg.names()) == _CORE_TOOLS | _ACTION_TOOLS | _WEB_TOOLS
+
+    def test_web_tools_absent_when_disabled(self, monkeypatch):
+        import config
+        monkeypatch.setattr(config, "ADVISOR_WEB_TOOLS_ENABLED", False)
+        reg = default_tool_registry()
+        assert set(reg.names()) == _CORE_TOOLS | _ACTION_TOOLS
 
     def test_openai_tools_have_required_shape(self):
         reg = default_tool_registry()

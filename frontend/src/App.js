@@ -11,6 +11,7 @@ import FilterBar        from './components/transactions/FilterBar';
 import TransactionTable from './components/transactions/TransactionTable';
 import UploadCsvModal   from './components/transactions/UploadCsvModal';
 import SuggestPreviewModal from './components/transactions/SuggestPreviewModal';
+import TransactionsRail from './components/transactions/TransactionsRail';
 import { bulkSuggestCategories, applyCategoryAssignments, deleteTransaction, previewDuplicates, applyDeduplication } from './api/transactions';
 import SyncModal        from './components/accounts/SyncModal';
 import SyncToast        from './components/ui/SyncToast';
@@ -23,6 +24,7 @@ import { useFilters } from './hooks/useFilters';
 import { useSelection } from './hooks/useSelection';
 import { useSyncFlow } from './hooks/useSyncFlow';
 import { useCategories } from './hooks/useCategories';
+import { useTransactionDetail } from './hooks/useTransactionDetail';
 import { getBalancesSummary } from './api/balances';
 
 const API = API_BASE;
@@ -70,6 +72,14 @@ export default function App() {
   const [suggestingBulk, setSuggestingBulk] = useState(false);
   const [txnView, setTxnView] = useState('current');  // 'current' | 'history'
   const [dedupingNow, setDedupingNow] = useState(false);
+
+  const {
+    detailId, detailTxn, detailDraft, setDetailDraft,
+    openDetail, closeDetail, saveDetail, applyToSimilar,
+  } = useTransactionDetail({
+    transactions, setTransactions, setError, addCategoryLocal,
+    listTxns: unreviewedVisibleEarly,
+  });
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem('theme');
     return saved ? saved === 'dark' : false;
@@ -362,109 +372,130 @@ export default function App() {
             <TransactionsSidebar activeId={txnView} onNavigate={setTxnView} />
             <div className="eh-main">
               {txnView === 'current' ? (
-                <main className="tx-page-wrap">
-                  <SyncPanel
-                    onOpenAccounts={() => sync.setShowAccountsModal(true)}
-                    onOpenSync={() => sync.setShowSyncModal(true)}
-                    syncing={sync.syncing}
-                    refreshKey={sync.accountsRefreshKey}
-                  />
-
-                  {error && (
-                    <div className="tx-error-banner">
-                      <span>⚠️ {error}</span>
-                      <button
-                        type="button"
-                        className="tx-error-close"
-                        aria-label="Dismiss error"
-                        onClick={() => setError(null)}
-                      >✕</button>
-                    </div>
-                  )}
-
-                  <ControlBar
-                    totalCount={stats.total}
-                    sharedCount={stats.shared}
-                    sharedAmt={stats.sharedAmt}
-                    unreviewedCount={stats.unreviewed}
-                    uploading={sync.uploading}
-                    sendingSheet={sync.sendingSheet}
-                    dedupingNow={dedupingNow}
-                    onPickCsv={sync.handleCsvPicked}
-                    onSendToSheet={sync.sendToSheet}
-                    onFindDuplicates={handleFindDuplicates}
-                  />
-
-                  {selected.size > 0 && (
-                    <BulkBar
-                      selectedCount={selected.size}
-                      sharedSelectedAmt={sharedSelectedAmt}
-                      onMarkPersonal={() => bulkMark(false)}
-                      onMark5050={() => bulkMark(true)}
-                      onMarkReviewed={bulkMarkReviewed}
-                      onSuggest={bulkSuggest}
-                      onClear={clearSelection}
-                      suggesting={suggestingBulk}
+                <div className="tx-layout">
+                  <main className="tx-page-wrap">
+                    <SyncPanel
+                      onOpenAccounts={() => sync.setShowAccountsModal(true)}
+                      onOpenSync={() => sync.setShowSyncModal(true)}
+                      syncing={sync.syncing}
+                      refreshKey={sync.accountsRefreshKey}
                     />
-                  )}
 
-                  <FilterBar
-                    banks={availableInstitutions}
-                    months={availableMonths}
-                    categories={categories}
-                    bank={filterInstitution}
-                    month={filterMonth}
-                    split={filterShared}
-                    category={filterCategory}
-                    search={search}
-                    onBankChange={setFilterInstitution}
-                    onMonthChange={setFilterMonth}
-                    onSplitChange={setFilterShared}
-                    onCategoryChange={setFilterCategory}
-                    onSearchChange={setSearch}
-                    visibleCount={visible.length}
-                    totalCount={transactions.length}
-                  />
-
-                  {!loading && transactions.length > 0 && unreviewedVisible.length === 0 ? (
-                    <div className="tx-empty-state">
-                      <div className="tx-empty-state-icon" aria-hidden="true">🎉</div>
-                      <div className="tx-empty-state-title">All caught up!</div>
-                      <div className="tx-empty-state-sub">
-                        Every transaction here has been reviewed.
-                        Add more via sync or CSV upload, or switch to History
-                        to revisit past transactions.
+                    {error && (
+                      <div className="tx-error-banner">
+                        <span>⚠️ {error}</span>
+                        <button
+                          type="button"
+                          className="tx-error-close"
+                          aria-label="Dismiss error"
+                          onClick={() => setError(null)}
+                        >✕</button>
                       </div>
-                    </div>
-                  ) : (
-                    <TransactionTable
-                      txns={unreviewedVisible}
-                      loading={loading}
-                      selected={selected}
-                      allVisibleSelected={allVisibleSelected}
-                      otherPersonName={personNames.person_2}
-                      activeExpand={activeExpand}
-                      onToggle={toggleSelect}
-                      onToggleAll={toggleAll}
-                      onSplitChange={handleSplitChange}
-                      onToggleType={handleToggleType}
-                      onOpenNote={openNote}
-                      onOpenAdj={openAdj}
-                      onOpenTransfer={openTransfer}
-                      onSaveNote={saveNote}
-                      onSaveAdj={saveAdj}
-                      onSaveTransfer={saveTransfer}
-                      onCloseExpand={closeExpand}
-                      onToggleReviewed={handleToggleReviewed}
-                      onDelete={handleDeleteTransaction}
-                      manualAccountsById={manualAccountsById}
-                      editableCategory
-                      categories={categories}
-                      onCategoryChange={handleCategoryChange}
-                      onRemoveCategory={handleRemoveCategory}
+                    )}
+
+                    <ControlBar
+                      totalCount={stats.total}
+                      sharedCount={stats.shared}
+                      sharedAmt={stats.sharedAmt}
+                      unreviewedCount={stats.unreviewed}
+                      uploading={sync.uploading}
+                      dedupingNow={dedupingNow}
+                      onPickCsv={sync.handleCsvPicked}
+                      onFindDuplicates={handleFindDuplicates}
                     />
-                  )}
-                </main>
+
+                    {selected.size > 0 && (
+                      <BulkBar
+                        selectedCount={selected.size}
+                        sharedSelectedAmt={sharedSelectedAmt}
+                        onMarkPersonal={() => bulkMark(false)}
+                        onMark5050={() => bulkMark(true)}
+                        onMarkReviewed={bulkMarkReviewed}
+                        onSuggest={bulkSuggest}
+                        onClear={clearSelection}
+                        suggesting={suggestingBulk}
+                      />
+                    )}
+
+                    <FilterBar
+                      banks={availableInstitutions}
+                      months={availableMonths}
+                      categories={categories}
+                      bank={filterInstitution}
+                      month={filterMonth}
+                      split={filterShared}
+                      category={filterCategory}
+                      search={search}
+                      onBankChange={setFilterInstitution}
+                      onMonthChange={setFilterMonth}
+                      onSplitChange={setFilterShared}
+                      onCategoryChange={setFilterCategory}
+                      onSearchChange={setSearch}
+                      visibleCount={visible.length}
+                      totalCount={transactions.length}
+                    />
+
+                    {!loading && transactions.length > 0 && unreviewedVisible.length === 0 ? (
+                      <div className="tx-empty-state">
+                        <div className="tx-empty-state-icon" aria-hidden="true">🎉</div>
+                        <div className="tx-empty-state-title">All caught up!</div>
+                        <div className="tx-empty-state-sub">
+                          Every transaction here has been reviewed.
+                          Add more via sync or CSV upload, or switch to History
+                          to revisit past transactions.
+                        </div>
+                      </div>
+                    ) : (
+                      <TransactionTable
+                        txns={unreviewedVisible}
+                        loading={loading}
+                        selected={selected}
+                        allVisibleSelected={allVisibleSelected}
+                        otherPersonName={personNames.person_2}
+                        activeExpand={activeExpand}
+                        onToggle={toggleSelect}
+                        onToggleAll={toggleAll}
+                        onSplitChange={handleSplitChange}
+                        onToggleType={handleToggleType}
+                        onOpenNote={openNote}
+                        onOpenAdj={openAdj}
+                        onOpenTransfer={openTransfer}
+                        onSaveNote={saveNote}
+                        onSaveAdj={saveAdj}
+                        onSaveTransfer={saveTransfer}
+                        onCloseExpand={closeExpand}
+                        onToggleReviewed={handleToggleReviewed}
+                        onDelete={handleDeleteTransaction}
+                        manualAccountsById={manualAccountsById}
+                        editableCategory
+                        categories={categories}
+                        onCategoryChange={handleCategoryChange}
+                        onRemoveCategory={handleRemoveCategory}
+                        onOpenDetail={openDetail}
+                        detailId={detailId}
+                        personNames={personNames}
+                        onSaveDetail={saveDetail}
+                        onCloseDetail={closeDetail}
+                        onDetailDraftChange={setDetailDraft}
+                      />
+                    )}
+                  </main>
+
+                  <TransactionsRail
+                    txns={visible}
+                    progress={{
+                      reviewed: visible.length - unreviewedVisible.length,
+                      total: visible.length,
+                    }}
+                    openTxn={detailTxn}
+                    draft={detailDraft}
+                    personName={personNames.person_2}
+                    onOpenDetail={openDetail}
+                    onApplyToSimilar={applyToSimilar}
+                    onSendToSheet={sync.sendToSheet}
+                    sendingSheet={sync.sendingSheet}
+                  />
+                </div>
               ) : (
                 <HistoryPage />
               )}

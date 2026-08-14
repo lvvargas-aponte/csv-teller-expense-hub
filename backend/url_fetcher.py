@@ -135,8 +135,8 @@ class FetchError(Exception):
     message; never leaks raw exception detail."""
 
 
-def _check_url(url: str) -> Tuple[str, str]:
-    """Validate scheme + host allowlist.  Returns ``(host, scheme)``.
+def _check_url(url: str, enforce_allowlist: bool = True) -> Tuple[str, str]:
+    """Validate scheme + (optionally) host allowlist.  Returns ``(host, scheme)``.
 
     Raises ``FetchError`` with a human-readable message for any breach.
     """
@@ -148,12 +148,13 @@ def _check_url(url: str) -> Tuple[str, str]:
         raise FetchError(f"Only https:// URLs are allowed (got {scheme!r})")
     if not host:
         raise FetchError("URL has no hostname")
-    allowed = get_allowed_hosts()
-    if host not in allowed:
-        raise FetchError(
-            f"Host {host!r} is not on the import allowlist.  "
-            f"Add a custom seed for this host or extend BASE_ALLOWED_HOSTS."
-        )
+    if enforce_allowlist:
+        allowed = get_allowed_hosts()
+        if host not in allowed:
+            raise FetchError(
+                f"Host {host!r} is not on the import allowlist.  "
+                f"Add a custom seed for this host or extend BASE_ALLOWED_HOSTS."
+            )
     return host, scheme
 
 
@@ -191,26 +192,36 @@ def _check_resolves_public(host: str) -> None:
             )
 
 
-def fetch(url: str) -> Tuple[bytes, str, str]:
+def fetch(
+    url: str,
+    *,
+    enforce_allowlist: bool = True,
+    max_bytes: int = MAX_FETCH_BYTES,
+    total_timeout: float = TOTAL_TIMEOUT,
+) -> Tuple[bytes, str, str]:
     """Fetch a URL with SSRF + size + redirect protection.
 
     Returns ``(body_bytes, content_type, final_url)``.  The final URL is
     the last hop after manual redirect resolution — store this so future
     re-fetches and dedupe checks see the canonical address.
 
+    ``enforce_allowlist=False`` (advisor web tools) skips only the host
+    allowlist; the scheme, DNS/private-IP, and redirect re-validation
+    guards always run.
+
     Raises ``FetchError`` for any policy violation or network failure.
     """
     current = url
     visited = []
 
-    timeout = httpx.Timeout(TOTAL_TIMEOUT, connect=CONNECT_TIMEOUT)
+    timeout = httpx.Timeout(total_timeout, connect=CONNECT_TIMEOUT)
 
     # Redirects are followed manually so each hop re-passes the allowlist
     # and private-IP guard.  follow_redirects=False on httpx means we get
     # 30x responses back as-is.
     with httpx.Client(timeout=timeout, follow_redirects=False, headers=_BROWSER_HEADERS) as client:
         for _ in range(MAX_REDIRECTS + 1):
-            host, _scheme = _check_url(current)
+            host, _scheme = _check_url(current, enforce_allowlist)
             _check_resolves_public(host)
             visited.append(current)
 
@@ -236,19 +247,19 @@ def fetch(url: str) -> Tuple[bytes, str, str]:
                         )
 
                     content_length = resp.headers.get("Content-Length")
-                    if content_length and int(content_length) > MAX_FETCH_BYTES:
+                    if content_length and int(content_length) > max_bytes:
                         raise FetchError(
                             f"Resource too large: {content_length} bytes "
-                            f"(max {MAX_FETCH_BYTES})"
+                            f"(max {max_bytes})"
                         )
 
                     chunks: list[bytes] = []
                     total = 0
                     for chunk in resp.iter_bytes():
                         total += len(chunk)
-                        if total > MAX_FETCH_BYTES:
+                        if total > max_bytes:
                             raise FetchError(
-                                f"Resource exceeded {MAX_FETCH_BYTES}-byte cap mid-stream"
+                                f"Resource exceeded {max_bytes}-byte cap mid-stream"
                             )
                         chunks.append(chunk)
 

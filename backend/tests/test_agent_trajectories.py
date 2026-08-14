@@ -4,9 +4,6 @@ Scripts ``chat_ollama`` to emit specific tool-call sequences against a
 seeded ``expense_hub_test`` DB and asserts on the trajectory shape — which
 tools were called, with what arguments, in what order — not just the final
 string. Real DB, real tool handlers; only the LLM is mocked.
-
-Skips silently when ``config.ADVISOR_AGENT_MODE`` cannot be toggled at
-runtime (we monkeypatch the imported attribute on the router module).
 """
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, patch
@@ -43,9 +40,8 @@ def _read_trajectory(turn_id: int) -> List[Dict[str, Any]]:
 
 
 @pytest.fixture
-def agent_mode_on(monkeypatch):
-    import routers.advisor as advisor_router
-    monkeypatch.setattr(advisor_router.config, "ADVISOR_AGENT_MODE", True)
+def agent_mode_on():
+    # Agent mode is always on now; fixture kept so tests keep their signature.
     yield
 
 
@@ -139,32 +135,6 @@ class TestAgentTrajectories:
         trajectory = _read_trajectory(body["turn_id"])
         tools_called = [e["tool_name"] for e in trajectory if e.get("kind") == "tool_call"]
         assert tools_called == ["get_budget_status"]
-
-    def test_auto_rag_injection_skipped_in_agent_mode(self, client, agent_mode_on):
-        """Regression: in agent mode the router must NOT auto-call the
-        three RAG retrievals — that's now the model's job via tools.
-        We patch them to record_mock; an agent-mode chat must leave them
-        un-called."""
-        rag_calls = AsyncMock(return_value=[])
-        txn_calls = AsyncMock(return_value=[])
-        doc_embed_calls = AsyncMock(return_value=None)
-
-        llm = AsyncMock(side_effect=[
-            _resp(text="quick reply, no tools needed"),
-        ])
-        with patch("routers.advisor.retrieve_similar", new=rag_calls), \
-             patch("routers.advisor.retrieve_similar_transactions", new=txn_calls), \
-             patch("routers.advisor.embed_text", new=doc_embed_calls), \
-             patch("agent.harness.chat_ollama", new=llm):
-            r = client.post(
-                "/api/advisor/chat",
-                json={"message": "hi there"},
-            )
-
-        assert r.status_code == 200
-        rag_calls.assert_not_awaited()
-        txn_calls.assert_not_awaited()
-        doc_embed_calls.assert_not_awaited()
 
     def test_cashflow_question_invokes_project_cashflow(self, client, agent_mode_on):
         llm = AsyncMock(side_effect=[

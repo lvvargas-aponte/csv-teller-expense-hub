@@ -3,6 +3,7 @@ import TxnRow from './TxnRow';
 import NoteExpandRow from './NoteExpandRow';
 import SplitAdjustRow from './SplitAdjustRow';
 import TransferExpandRow from './TransferExpandRow';
+import TransactionDetailRow from './TransactionDetailRow';
 import IconLegend from './IconLegend';
 
 const BASE_COL_COUNT = 7;
@@ -32,6 +33,12 @@ export default function TransactionTable({
   onToggleReviewed,
   onDelete,
   manualAccountsById = null,
+  onOpenDetail,
+  detailId = null,
+  personNames = {},
+  onSaveDetail,
+  onCloseDetail,
+  onDetailDraftChange,
 }) {
   const colCount = BASE_COL_COUNT + (editableCategory ? 1 : 0);
 
@@ -156,6 +163,8 @@ export default function TransactionTable({
                     onRemoveCategory={onRemoveCategory}
                     onToggleReviewed={onToggleReviewed}
                     onDelete={onDelete}
+                    onOpenDetail={onOpenDetail}
+                    isDetailOpen={txn.id === detailId}
                   />
                   {expandNote && (
                     <NoteExpandRow
@@ -180,6 +189,19 @@ export default function TransactionTable({
                       colSpan={colCount}
                       onSave={(accountId) => onSaveTransfer(txn, accountId)}
                       onClose={onCloseExpand}
+                    />
+                  )}
+                  {txn.id === detailId && (
+                    <TransactionDetailRow
+                      txn={txn}
+                      colSpan={colCount}
+                      personNames={personNames}
+                      categories={categories}
+                      onSave={onSaveDetail}
+                      onRemoveCategory={onRemoveCategory}
+                      onDelete={onDelete}
+                      onClose={onCloseDetail}
+                      onDraftChange={onDetailDraftChange}
                     />
                   )}
                 </React.Fragment>

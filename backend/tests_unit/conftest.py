@@ -20,7 +20,11 @@ sys.path.insert(0, str(_BACKEND_DIR))
 # A placeholder URL so ``config.DATABASE_URL`` resolves and the SQLAlchemy
 # engines can be constructed. We never connect — every store and every repo
 # call is intercepted before reaching the engine.
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://placeholder/none")
+# FORCE-OVERRIDE (not setdefault) — docker-compose sets DATABASE_URL to the
+# dev DB in the backend service env; with setdefault, unit tests silently
+# wrote conversation_turns fixtures into the real database, polluting the
+# advisor's style/fact/RAG corpora.
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://placeholder-no-db:5432/none"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

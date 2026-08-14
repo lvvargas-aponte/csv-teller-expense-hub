@@ -8,8 +8,9 @@ call the local Ollama server.  Callers receive a uniform response:
 `ai_available=False` means the server was unreachable or returned an error —
 callers should degrade gracefully (show raw data without AI commentary).
 """
+import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
 
@@ -41,6 +42,7 @@ async def ask_ollama(
         "model": model or state.OLLAMA_MODEL,
         "prompt": prompt,
         "stream": False,
+        "options": {"num_ctx": state.OLLAMA_NUM_CTX},
     }
     if system:
         body["system"] = system
@@ -87,6 +89,7 @@ async def chat_ollama(
         "model": model or state.OLLAMA_CHAT_MODEL,
         "messages": payload_messages,
         "stream": False,
+        "options": {"num_ctx": state.OLLAMA_NUM_CTX},
     }
     if tools:
         body["tools"] = tools
@@ -109,6 +112,66 @@ async def chat_ollama(
     except Exception as e:
         logger.warning(f"[llm_client] Unexpected error calling Ollama chat: {e}")
         return {"ai_available": False, "text": None, "tool_calls": [], "raw": None}
+
+
+async def chat_ollama_stream(
+    messages: List[Dict[str, Any]],
+    system: Optional[str] = None,
+    model: Optional[str] = None,
+    timeout: Optional[float] = None,
+    tools: Optional[List[Dict[str, Any]]] = None,
+) -> AsyncIterator[Dict[str, Any]]:
+    """Streaming variant of ``chat_ollama`` (NDJSON over /api/chat).
+
+    Yields event dicts:
+        {"type": "token", "text": str}          — content delta
+        {"type": "tool_calls", "tool_calls": []} — tool calls (may arrive once)
+        {"type": "done", "ai_available": bool}   — always the final event
+
+    Mirrors ``chat_ollama``'s degrade-gracefully contract: any failure ends
+    the stream with ``done`` + ``ai_available=False`` instead of raising.
+    """
+    payload_messages: List[Dict[str, Any]] = []
+    if system:
+        payload_messages.append({"role": "system", "content": system})
+    payload_messages.extend(messages)
+
+    body: Dict[str, Any] = {
+        "model": model or state.OLLAMA_CHAT_MODEL,
+        "messages": payload_messages,
+        "stream": True,
+        "options": {"num_ctx": state.OLLAMA_NUM_CTX},
+    }
+    if tools:
+        body["tools"] = tools
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout or state.OLLAMA_TIMEOUT_SEC) as client:
+            async with client.stream(
+                "POST", f"{state.OLLAMA_BASE_URL}/api/chat", json=body
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    msg = chunk.get("message") or {}
+                    if msg.get("content"):
+                        yield {"type": "token", "text": msg["content"]}
+                    if msg.get("tool_calls"):
+                        yield {"type": "tool_calls", "tool_calls": msg["tool_calls"]}
+                    if chunk.get("done"):
+                        break
+        yield {"type": "done", "ai_available": True}
+    except (httpx.ConnectError, httpx.ConnectTimeout, OSError) as e:
+        logger.info(f"[llm_client] Ollama chat stream not reachable: {e}")
+        yield {"type": "done", "ai_available": False}
+    except Exception as e:
+        logger.warning(f"[llm_client] Unexpected error streaming Ollama chat: {e}")
+        yield {"type": "done", "ai_available": False}
 
 
 async def embed_ollama(

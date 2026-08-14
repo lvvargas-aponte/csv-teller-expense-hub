@@ -12,6 +12,7 @@ import GoalsSection from './GoalsSection';
 import ProfileSection from './ProfileSection';
 import AdvisorChat from './AdvisorChat';
 import KnowledgeSection from './KnowledgeSection';
+import SubscriptionsSection from './SubscriptionsSection';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
 import { getDashboard, getCreditHealth } from '../../api/dashboard';
@@ -137,6 +138,10 @@ export default function FinancesPage() {
               <RecurringChargesCard variant="detail" />
             </div>
           </SimplePage>
+        )}
+
+        {activeId === 'subscriptions' && (
+          <SimplePage title="Subscriptions"><SubscriptionsSection /></SimplePage>
         )}
 
         {activeId === 'knowledge' && (

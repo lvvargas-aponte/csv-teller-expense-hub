@@ -45,11 +45,12 @@ OLLAMA_EMBED_MODEL   = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 # host.docker.internal resolves to the Docker host on Docker Desktop (Windows/Mac).
 # Override with OLLAMA_HOST env var if running Ollama on a different machine.
 OLLAMA_BASE_URL      = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
+# Context window requested per call. Ollama's DEFAULT is 4096, which silently
+# truncates Fin's system prompt + tool schemas + history. 16k fits alongside a
+# 14B Q4 model in 16 GB VRAM; adjust via env for smaller/bigger setups.
+OLLAMA_NUM_CTX       = int(os.getenv("OLLAMA_NUM_CTX", "16384"))
 CSV_UPLOAD_MAX_BYTES = 10 * 1024 * 1024   # 10 MB — reject absurdly large uploads early
 ADVISOR_MAX_HISTORY  = 20           # Max chat turns sent to LLM (older turns trimmed from context)
-
-# Forecast weights for a simple 3-month weighted average (most-recent month = highest weight)
-_FORECAST_WEIGHTS = (0.5, 0.3, 0.2)
 
 # ---------------------------------------------------------------------------
 # mTLS certificate setup

@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query
 
 import state
+from helpers import txn_direction
 from models import (
     AccountBalance,
     BalancesSummary,
@@ -40,14 +41,14 @@ def _manual_account_txn_delta(account_id: str) -> float:
     for txn in state.stored_transactions.values():
         amt = float(txn.get("amount") or 0.0)
         if txn.get("account_id") == account_id:
-            if txn.get("transaction_type") == "credit":
+            if txn_direction(txn) == "inflow":
                 credits += amt
             else:
                 debits += amt
             continue
         if txn.get("transfer_to_account_id") == account_id:
-            # Source-side debit = destination-side credit, and vice-versa.
-            if txn.get("transaction_type") == "credit":
+            # Source-side outflow = destination-side inflow, and vice-versa.
+            if txn_direction(txn) == "inflow":
                 debits += amt
             else:
                 credits += amt

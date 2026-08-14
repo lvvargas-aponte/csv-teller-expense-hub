@@ -8,10 +8,8 @@ export default function ControlBar({
   sharedAmt,
   unreviewedCount,
   uploading,
-  sendingSheet,
   dedupingNow,
   onPickCsv,
-  onSendToSheet,
   onFindDuplicates,
 }) {
   return (
@@ -58,14 +56,6 @@ export default function ControlBar({
             {dedupingNow ? <><Spin /> Checking…</> : <>⎘ Find duplicates</>}
           </button>
         )}
-        <button
-          type="button"
-          className="tx-btn tx-btn-sheet"
-          onClick={onSendToSheet}
-          disabled={sharedCount === 0 || sendingSheet}
-        >
-          {sendingSheet ? <Spin /> : '↗'} Send to Sheet ({sharedCount})
-        </button>
       </div>
     </div>
   );

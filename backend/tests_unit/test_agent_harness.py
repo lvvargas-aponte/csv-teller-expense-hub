@@ -83,7 +83,8 @@ class TestHarness:
     def test_max_iterations_guard(self):
         log: List[Dict[str, Any]] = []
         reg = _make_registry(log)
-        # Always call a tool; never produce final reply.
+        # Always call a tool; never produce final reply. The forced-final
+        # fallback also returns tool_calls with no text, so reply stays None.
         llm = AsyncMock(return_value=_resp(tool_calls=[_tc("echo", {"value": "x"})]))
         out = self._run(llm, reg, max_iters=3)
         # The fingerprint guard fires first (same args repeated), which is
@@ -121,11 +122,27 @@ class TestHarness:
         llm = _llm(
             _resp(tool_calls=[_tc("echo", {"value": "same"})]),
             _resp(tool_calls=[_tc("echo", {"value": "same"})]),
+            # Forced tool-free final call after the guard trips.
+            _resp(text="here's what I found"),
         )
         out = self._run(llm, reg)
         assert out.terminated_reason == "repeated_tool_call"
         # The tool ran exactly once before the loop detected the repeat.
         assert log == [{"tool": "echo", "value": "same"}]
+        # The forced final call salvages a reply from the gathered results.
+        assert out.reply == "here's what I found"
+
+    def test_forced_final_reply_absent_when_ollama_down(self):
+        log: List[Dict[str, Any]] = []
+        reg = _make_registry(log)
+        llm = _llm(
+            _resp(tool_calls=[_tc("echo", {"value": "same"})]),
+            _resp(tool_calls=[_tc("echo", {"value": "same"})]),
+            {"ai_available": False, "text": None, "tool_calls": [], "raw": None},
+        )
+        out = self._run(llm, reg)
+        assert out.terminated_reason == "repeated_tool_call"
+        assert out.reply is None
 
     def test_tool_exception_is_caught_and_fed_back(self):
         log: List[Dict[str, Any]] = []
@@ -165,3 +182,120 @@ class TestHarness:
         out = self._run(llm, reg)
         assert out.terminated_reason == "ok"
         assert log == [{"tool": "echo", "value": "json-string"}]
+
+    def test_multiple_tool_calls_run_concurrently(self):
+        # Handler A blocks until handler B starts — deadlocks (and times
+        # out) under sequential execution, completes under gather().
+        b_started = asyncio.Event()
+
+        async def wait_for_b(args: _EchoArgs) -> Dict[str, Any]:
+            await asyncio.wait_for(b_started.wait(), timeout=2.0)
+            return {"who": "a"}
+
+        async def signal_b(args: _EchoArgs) -> Dict[str, Any]:
+            b_started.set()
+            return {"who": "b"}
+
+        reg = ToolRegistry([
+            Tool(name="tool_a", description="a", args_model=_EchoArgs, handler=wait_for_b),
+            Tool(name="tool_b", description="b", args_model=_EchoArgs, handler=signal_b),
+        ])
+        llm = _llm(
+            _resp(tool_calls=[
+                _tc("tool_a", {"value": "x"}),
+                _tc("tool_b", {"value": "y"}),
+            ]),
+            _resp(text="both done"),
+        )
+        out = self._run(llm, reg)
+        assert out.terminated_reason == "ok"
+        assert out.reply == "both done"
+        results = [e.tool_name for e in out.trajectory if e.kind == "tool_result"]
+        # Results appended in call order regardless of completion order.
+        assert results == ["tool_a", "tool_b"]
+
+    def test_transient_error_allows_one_retry(self):
+        from agent.tools import TransientToolError
+
+        attempts: List[int] = []
+
+        async def flaky(args: _EchoArgs) -> Dict[str, Any]:
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise TransientToolError("rate limited")
+            return {"ok": True}
+
+        reg = ToolRegistry([
+            Tool(name="flaky", description="f", args_model=_EchoArgs, handler=flaky),
+        ])
+        llm = _llm(
+            _resp(tool_calls=[_tc("flaky", {"value": "same"})]),
+            # Identical retry — allowed once because the error was transient.
+            _resp(tool_calls=[_tc("flaky", {"value": "same"})]),
+            _resp(text="got it on the retry"),
+        )
+        out = self._run(llm, reg)
+        assert out.terminated_reason == "ok"
+        assert out.reply == "got it on the retry"
+        assert len(attempts) == 2
+
+    def test_transient_error_second_failure_is_final(self):
+        from agent.tools import TransientToolError
+
+        async def always_down(args: _EchoArgs) -> Dict[str, Any]:
+            raise TransientToolError("still rate limited")
+
+        reg = ToolRegistry([
+            Tool(name="flaky", description="f", args_model=_EchoArgs, handler=always_down),
+        ])
+        llm = _llm(
+            _resp(tool_calls=[_tc("flaky", {"value": "same"})]),
+            _resp(tool_calls=[_tc("flaky", {"value": "same"})]),
+            # Third identical call trips the repeated-call guard.
+            _resp(tool_calls=[_tc("flaky", {"value": "same"})]),
+            _resp(text="search is flaky right now"),
+        )
+        out = self._run(llm, reg)
+        assert out.terminated_reason == "repeated_tool_call"
+        # Forced-final salvage still produces a reply.
+        assert out.reply == "search is flaky right now"
+
+    def test_on_event_streams_tokens_and_tool_activity(self):
+        log: List[Dict[str, Any]] = []
+        reg = _make_registry(log)
+        events: List[Dict[str, Any]] = []
+
+        async def collect(ev):
+            events.append(ev)
+
+        scripts = [
+            # Iteration 1: tool call, no content.
+            [{"type": "tool_calls", "tool_calls": [_tc("echo", {"value": "hi"})]},
+             {"type": "done", "ai_available": True}],
+            # Iteration 2: streamed final reply.
+            [{"type": "token", "text": "hel"},
+             {"type": "token", "text": "lo"},
+             {"type": "done", "ai_available": True}],
+        ]
+
+        def fake_stream(**_kw):
+            script = scripts.pop(0)
+
+            async def gen():
+                for chunk in script:
+                    yield chunk
+            return gen()
+
+        with patch("agent.harness.chat_ollama_stream", new=fake_stream):
+            out = asyncio.run(run_agent(
+                messages=[{"role": "user", "content": "hi"}],
+                registry=reg,
+                on_event=collect,
+            ))
+
+        assert out.terminated_reason == "ok"
+        assert out.reply == "hello"
+        kinds = [e["type"] for e in events]
+        assert "tool_call" in kinds and "tool_result" in kinds
+        tokens = "".join(e["text"] for e in events if e["type"] == "token")
+        assert tokens == "hello"

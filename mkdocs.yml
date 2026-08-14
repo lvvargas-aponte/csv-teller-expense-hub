@@ -93,6 +93,7 @@ nav:
       - Bank sync: concepts/bank-sync.md
       - Splits & shared expenses: concepts/splits.md
       - AI advisor: concepts/advisor.md
+      - Advisor evals & best practices: concepts/advisor-evals.md
       - Embeddings & RAG: concepts/embeddings.md
       - Budgets & goals: concepts/budgets-and-goals.md
       - Data model: concepts/data-model.md

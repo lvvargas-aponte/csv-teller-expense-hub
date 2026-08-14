@@ -262,21 +262,16 @@ Access tokens are saved automatically to `TELLER_API_KEY` in your `.env` and tak
 - Requires Ollama running locally (`ollama serve`); a nudge card is shown if it isn't available
 
 #### Virtual Advisor (chat) — "Fin"
-- Switch to the **🤖 Advisor** tab on the Finances page to chat with a household-finance advisor
-- The advisor is grounded in your real data: cached balances, last 6 months of spending, credit-card debt, and the recent shared-expense split
+- Switch to the **🤖 Advisor** tab on the Finances page to chat with a household-finance advisor and friend
+- Fin runs a bounded tool-use loop over a **local** Ollama LLM: it sees a lean facts header plus a typed tool registry (balances, transactions, budgets, goals, holdings, documents, past chats, personal memory) and decides what to look up. Every turn's reasoning chain is persisted as JSONB on `conversation_turns.trajectory` for inspection and offline eval.
+- With `ADVISOR_WEB_TOOLS_ENABLED=true` (default), Fin can also reach live market data (`get_stock_quote` / `get_stock_history` / `get_stock_fundamentals` via yfinance) and the open web (`web_search` via DuckDuckGo, `fetch_webpage` with SSRF guards) — so it can give direct, opinionated answers on strategy questions
+- Fin learns about you over time: a background job proposes durable personal facts from your chats into the Memory panel (confirm/reject), and a style profile adapts its voice every ~10 turns
 - Conversations persist to Postgres (`json_stores` + `conversation_turns` tables) — re-open past chats from the sidebar, delete any you don't need
 - Ask things like:
   - *"How did our dining spending change this month?"*
-  - *"Are our shared splits fair between the two of us?"*
-  - *"Can I afford $300 extra toward my credit card debt?"*
-- Requires Ollama running locally. The chat endpoint uses `OLLAMA_CHAT_MODEL` (defaults to `OLLAMA_MODEL`).
-
-**Two execution modes** (controlled by `ADVISOR_AGENT_MODE`):
-
-- **RAG mode (default, `false`)** — single-shot: a full financial snapshot + similar past turns / transactions / documents are stuffed into one system prompt, then one call to Ollama.
-- **Agent mode (opt-in, `true`)** — bounded tool-use loop: Fin sees a lean facts header plus a typed tool registry and decides what to look up. Tools include `search_transactions`, `get_balance`, `get_debt`, `get_budget_status`, `get_goal_status`, and `project_cashflow`. Every turn's reasoning chain is persisted as JSONB on `conversation_turns.trajectory` for inspection and offline eval.
-
-  Requires Qwen 2.5 14B+ (or comparable) for reliable local tool-calling. See [docs/concepts/advisor.md → Agent harness mode](docs/concepts/advisor.md#agent-harness-mode-opt-in) for the tool catalog, guards (max iterations, hallucinated tool, repeated call, invalid args), and CI coverage.
+  - *"Should I keep the stocks I have?"*
+  - *"I have some extra money this month — which stocks should I invest in?"*
+- Requires Ollama running locally. The chat endpoint uses `OLLAMA_CHAT_MODEL` (defaults to `OLLAMA_MODEL`); Qwen 2.5 14B+ (or comparable) recommended for reliable local tool-calling. See [docs/concepts/advisor.md](docs/concepts/advisor.md) for the tool catalog, guards, and CI coverage.
 
 ---
 

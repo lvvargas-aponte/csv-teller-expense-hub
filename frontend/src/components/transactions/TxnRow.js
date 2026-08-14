@@ -55,6 +55,8 @@ export default function TxnRow({
   onRemoveCategory,
   onToggleReviewed,
   onDelete,
+  onOpenDetail,
+  isDetailOpen = false,
 }) {
   const [splitting, setSplitting] = useState(false);
   const [flippingType, setFlippingType] = useState(false);
@@ -82,9 +84,14 @@ export default function TxnRow({
 
   const rowClass = [
     'tx-row',
-    isSelected ? 'tx-row--selected' : '',
-    isShared   ? 'tx-row--shared'   : '',
+    isSelected   ? 'tx-row--selected' : '',
+    isShared     ? 'tx-row--shared'   : '',
+    isDetailOpen ? 'tx-row--detail'   : '',
   ].filter(Boolean).join(' ');
+
+  const openDetail = () => onOpenDetail && onOpenDetail(txn.id);
+  // Interactive cells keep their own behavior — the row click must not fire behind them.
+  const stop = (e) => e.stopPropagation();
 
   const catIcon  = catIconFor(txn.category);
   const catLabel = txn.category ? formatCategory(txn.category) : '';
@@ -92,8 +99,8 @@ export default function TxnRow({
   const owedDisplay = isShared ? Number(txn.person_2_owes ?? 0) : 0;
 
   return (
-    <tr className={rowClass}>
-      <td className="tx-td-cb">
+    <tr className={rowClass} onClick={openDetail}>
+      <td className="tx-td-cb" onClick={stop}>
         <input
           type="checkbox"
           aria-label={`Select ${txn.description}`}
@@ -104,7 +111,12 @@ export default function TxnRow({
       <td className="tx-td-date">{fmtShortDate(txn.date)}</td>
       <td className="tx-td-desc">
         <div className="tx-desc-main" title={txn.description}>
-          {txn.description}
+          <button
+            type="button"
+            className="tx-desc-open"
+            aria-label={`Open details for ${txn.description}`}
+            onClick={(e) => { stop(e); openDetail(); }}
+          >{txn.description}</button>
           {txn.transfer_to_account_id && (
             <span
               className="tx-transfer-chip"
@@ -123,7 +135,7 @@ export default function TxnRow({
       </td>
       {editableCategory && (
         <td className="tx-td-category">
-          <div className="tx-cat-cell">
+          <div className="tx-cat-cell" onClick={stop}>
             {catIcon && <span className="tx-cat-cell-icon" aria-hidden="true">{catIcon}</span>}
             <CategoryCombobox
               value={txn.category || ''}
@@ -140,7 +152,7 @@ export default function TxnRow({
         </span>
         <button
           type="button"
-          onClick={handleToggleType}
+          onClick={(e) => { stop(e); handleToggleType(); }}
           disabled={flippingType || !onToggleType}
           className={`tx-amt-badge ${isCredit ? 'tx-amt-badge--cr' : 'tx-amt-badge--dr'}`}
           aria-label={`Transaction type: ${isCredit ? 'credit' : 'debit'}. Click to flip.`}
@@ -157,7 +169,7 @@ export default function TxnRow({
         )}
         <div className={`tx-src-badge ${sourceClass}`}>{sourceLabel}</div>
       </td>
-      <td className="tx-td-split">
+      <td className="tx-td-split" onClick={stop}>
         <SplitPill
           value={isShared ? 'shared' : 'personal'}
           onChange={handleSplit}
@@ -169,7 +181,7 @@ export default function TxnRow({
           </div>
         )}
       </td>
-      <td className="tx-td-actions">
+      <td className="tx-td-actions" onClick={stop}>
         <div className="tx-row-actions">
           {onToggleReviewed && (
             <button

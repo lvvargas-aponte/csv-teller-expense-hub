@@ -14,22 +14,24 @@ The loop never raises on LLM/tool failures — it terminates with a
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from pydantic import ValidationError
 
 import config
-from llm_client import chat_ollama
+from llm_client import chat_ollama, chat_ollama_stream
 
 from agent.schemas import AgentResult, TrajectoryEvent
-from agent.tools import ToolRegistry
+from agent.tools import Tool, ToolRegistry, TransientToolError
 
 logger = logging.getLogger(__name__)
 
+EventCallback = Callable[[Dict[str, Any]], Awaitable[None]]
+
 _RESULT_PREVIEW_CHARS = 240
-_TOOL_RESULT_MAX_CHARS = 4000  # cap what we feed back to the model per call
 
 
 def _summarize(value: Any) -> str:
@@ -42,13 +44,13 @@ def _summarize(value: Any) -> str:
     return s
 
 
-def _truncate_for_model(value: Any) -> str:
+def _truncate_for_model(value: Any, max_chars: int) -> str:
     try:
         s = json.dumps(value, default=str)
     except Exception:
         s = str(value)
-    if len(s) > _TOOL_RESULT_MAX_CHARS:
-        return s[:_TOOL_RESULT_MAX_CHARS] + '... [truncated]"'
+    if len(s) > max_chars:
+        return s[:max_chars] + '... [truncated]"'
     return s
 
 
@@ -59,12 +61,72 @@ def _tool_call_fingerprint(name: str, args: Any) -> str:
         return name + "::" + str(args)
 
 
+async def _emit(on_event: Optional[EventCallback], event: Dict[str, Any]) -> None:
+    if on_event is None:
+        return
+    try:
+        await on_event(event)
+    except Exception as e:
+        logger.warning(f"[agent] event callback failed: {e}")
+
+
+async def _chat(
+    convo: List[Dict[str, Any]],
+    system: Optional[str],
+    tools_payload: Optional[List[Dict[str, Any]]],
+    model: Optional[str],
+    on_event: Optional[EventCallback],
+) -> Dict[str, Any]:
+    """One LLM call. With an event callback, stream and forward content
+    tokens as they arrive; otherwise use the blocking call."""
+    if on_event is None:
+        return await chat_ollama(
+            messages=convo, system=system, tools=tools_payload, model=model,
+        )
+
+    text_parts: List[str] = []
+    tool_calls: List[Dict[str, Any]] = []
+    ai_available = False
+    async for chunk in chat_ollama_stream(
+        messages=convo, system=system, tools=tools_payload, model=model,
+    ):
+        if chunk["type"] == "token":
+            text_parts.append(chunk["text"])
+            await _emit(on_event, {"type": "token", "text": chunk["text"]})
+        elif chunk["type"] == "tool_calls":
+            tool_calls.extend(chunk["tool_calls"])
+        elif chunk["type"] == "done":
+            ai_available = chunk["ai_available"]
+    return {
+        "ai_available": ai_available,
+        "text": "".join(text_parts),
+        "tool_calls": tool_calls,
+        "raw": None,
+    }
+
+
+def _parse_call(call: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
+    fn = (call.get("function") or {})
+    name = fn.get("name") or ""
+    raw_args = fn.get("arguments")
+    # Ollama sometimes returns arguments as JSON string, sometimes dict.
+    if isinstance(raw_args, str):
+        try:
+            args: Dict[str, Any] = json.loads(raw_args) if raw_args else {}
+        except json.JSONDecodeError:
+            args = {}
+    else:
+        args = dict(raw_args or {})
+    return name, args
+
+
 async def run_agent(
     messages: List[Dict[str, Any]],
     registry: ToolRegistry,
     system: Optional[str] = None,
     max_iters: Optional[int] = None,
     model: Optional[str] = None,
+    on_event: Optional[EventCallback] = None,
 ) -> AgentResult:
     """Run the tool-use loop until the model returns a final reply.
 
@@ -76,6 +138,9 @@ async def run_agent(
         system: System prompt prepended on every Ollama call.
         max_iters: Override the configured max-iterations guard.
         model: Override the chat model (else state.OLLAMA_CHAT_MODEL).
+        on_event: Optional async callback receiving live progress events
+            ({"type": "token"|"tool_call"|"tool_result"|"tool_error", ...}).
+            When set, LLM calls stream and content tokens are forwarded.
     """
     limit = max_iters or config.ADVISOR_AGENT_MAX_ITERS
     convo: List[Dict[str, Any]] = list(messages)
@@ -83,16 +148,12 @@ async def run_agent(
     tools_payload = registry.openai_tools()
 
     seen_fingerprints: set[str] = set()
+    transient_retried: set[str] = set()
     last_reply: Optional[str] = None
     terminated = "ok"
 
     for iteration in range(1, limit + 1):
-        result = await chat_ollama(
-            messages=convo,
-            system=system,
-            tools=tools_payload,
-            model=model,
-        )
+        result = await _chat(convo, system, tools_payload, model, on_event)
 
         if not result["ai_available"]:
             terminated = "ollama_unavailable"
@@ -121,18 +182,12 @@ async def run_agent(
             "tool_calls": tool_calls,
         })
 
+        # Phase 1 — parse, guard, and validate every call in the batch.
+        # ``batch`` collects the executable ones so independent calls can
+        # run concurrently in phase 2.
+        batch: List[tuple[str, str, Tool, Any]] = []  # (name, fp, tool, validated)
         for call in tool_calls:
-            fn = (call.get("function") or {})
-            name = fn.get("name") or ""
-            raw_args = fn.get("arguments")
-            # Ollama sometimes returns arguments as JSON string, sometimes dict.
-            if isinstance(raw_args, str):
-                try:
-                    args: Dict[str, Any] = json.loads(raw_args) if raw_args else {}
-                except json.JSONDecodeError:
-                    args = {}
-            else:
-                args = dict(raw_args or {})
+            name, args = _parse_call(call)
 
             trajectory.append(
                 TrajectoryEvent(
@@ -142,6 +197,7 @@ async def run_agent(
                     arguments=args,
                 )
             )
+            await _emit(on_event, {"type": "tool_call", "name": name, "arguments": args})
 
             fingerprint = _tool_call_fingerprint(name, args)
             if fingerprint in seen_fingerprints:
@@ -174,6 +230,7 @@ async def run_agent(
                 trajectory.append(
                     TrajectoryEvent(iteration=iteration, kind="tool_error", tool_name=name, error="unknown_tool")
                 )
+                await _emit(on_event, {"type": "tool_error", "name": name, "error": "unknown_tool"})
                 convo.append({"role": "tool", "name": name, "content": msg})
                 continue
 
@@ -192,38 +249,74 @@ async def run_agent(
                         error=str(ve.errors()),
                     )
                 )
+                await _emit(on_event, {"type": "tool_error", "name": name, "error": "invalid_arguments"})
                 convo.append({"role": "tool", "name": name, "content": err_msg})
                 continue
 
-            try:
-                result_value = await tool.handler(validated)
-            except Exception as e:
-                logger.warning(f"[agent] tool {name} raised: {e}")
-                trajectory.append(
-                    TrajectoryEvent(
-                        iteration=iteration,
-                        kind="tool_error",
-                        tool_name=name,
-                        error=str(e),
-                    )
-                )
-                convo.append({
-                    "role": "tool",
-                    "name": name,
-                    "content": f"Error executing tool '{name}': {e}",
-                })
-                continue
+            batch.append((name, fingerprint, tool, validated))
 
-            payload = _truncate_for_model(result_value)
-            trajectory.append(
-                TrajectoryEvent(
-                    iteration=iteration,
-                    kind="tool_result",
-                    tool_name=name,
-                    result_summary=_summarize(result_value),
-                )
+        # Phase 2 — execute the validated calls concurrently. Results are
+        # appended to the transcript in call order regardless of which
+        # handler finished first.
+        if batch:
+            results = await asyncio.gather(
+                *(tool.handler(validated) for (_, _, tool, validated) in batch),
+                return_exceptions=True,
             )
-            convo.append({"role": "tool", "name": name, "content": payload})
+            for (name, fingerprint, tool, _validated), result_value in zip(batch, results):
+                if isinstance(result_value, TransientToolError):
+                    if fingerprint not in transient_retried:
+                        transient_retried.add(fingerprint)
+                        seen_fingerprints.discard(fingerprint)
+                        hint = "This looks temporary — you may retry this exact call once."
+                    else:
+                        hint = "Still failing — answer without this tool and say the lookup is flaky right now."
+                    logger.warning(f"[agent] tool {name} transient error: {result_value}")
+                    trajectory.append(
+                        TrajectoryEvent(
+                            iteration=iteration,
+                            kind="tool_error",
+                            tool_name=name,
+                            error=str(result_value),
+                        )
+                    )
+                    await _emit(on_event, {"type": "tool_error", "name": name, "error": str(result_value)})
+                    convo.append({
+                        "role": "tool",
+                        "name": name,
+                        "content": f"Error executing tool '{name}': {result_value}. {hint}",
+                    })
+                elif isinstance(result_value, BaseException):
+                    logger.warning(f"[agent] tool {name} raised: {result_value}")
+                    trajectory.append(
+                        TrajectoryEvent(
+                            iteration=iteration,
+                            kind="tool_error",
+                            tool_name=name,
+                            error=str(result_value),
+                        )
+                    )
+                    await _emit(on_event, {"type": "tool_error", "name": name, "error": str(result_value)})
+                    convo.append({
+                        "role": "tool",
+                        "name": name,
+                        "content": f"Error executing tool '{name}': {result_value}",
+                    })
+                else:
+                    payload = _truncate_for_model(result_value, tool.result_max_chars)
+                    trajectory.append(
+                        TrajectoryEvent(
+                            iteration=iteration,
+                            kind="tool_result",
+                            tool_name=name,
+                            result_summary=_summarize(result_value),
+                        )
+                    )
+                    await _emit(
+                        on_event,
+                        {"type": "tool_result", "name": name, "summary": _summarize(result_value)},
+                    )
+                    convo.append({"role": "tool", "name": name, "content": payload})
 
         if terminated == "repeated_tool_call":
             break
@@ -236,6 +329,27 @@ async def run_agent(
                 terminated_reason="max_iterations",
             )
         )
+
+    # Guard trips (repeated call, max iterations) can leave the user with no
+    # reply even though tool results are sitting in the transcript. One final
+    # tool-free call forces the model to answer from what it already gathered.
+    if last_reply is None and terminated in ("repeated_tool_call", "max_iterations"):
+        convo.append({
+            "role": "tool",
+            "name": "system",
+            "content": "Answer the user now using the tool results above. "
+                       "Do not request any more tools.",
+        })
+        final = await _chat(convo, system, None, model, on_event)
+        if final["ai_available"] and (final.get("text") or "").strip():
+            last_reply = final["text"].strip()
+            trajectory.append(
+                TrajectoryEvent(
+                    iteration=limit,
+                    kind="final",
+                    result_summary=_summarize(last_reply),
+                )
+            )
 
     return AgentResult(
         reply=last_reply,

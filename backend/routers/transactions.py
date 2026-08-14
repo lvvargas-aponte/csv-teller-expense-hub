@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, HTTPException, UploadFile, File
 
 import state
 from csv_parser import CSVProcessorService, dedupe_key
-from helpers import _decode_csv_bytes
+from helpers import _decode_csv_bytes, derive_direction
 from models import (
     TransactionUpdate,
     BulkTransactionUpdate,
@@ -75,6 +75,26 @@ def _resolve_upload_account(
     return None
 
 
+def _resolve_barclays_credit_account() -> Optional[str]:
+    """Find the user's existing Barclays credit account in the manual store.
+
+    Unattended CSV drops (the csv_watcher) post no account metadata, so a
+    Barclays statement's embedded closing balance would otherwise be parsed
+    and discarded. This binds it to the Barclays card automatically.
+
+    Returns None when there is no match, or more than one (ambiguous — e.g.
+    two Barclays cards), so the caller can log and skip rather than guess.
+    ``.items()`` returns a PgStore snapshot, which is safe to read here.
+    """
+    matches = [
+        acc_id
+        for acc_id, acc in state._manual_accounts.items()
+        if acc.get("type") == "credit"
+        and "barclays" in str(acc.get("institution", "")).lower()
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 @router.post("/upload-csv")
 async def upload_csv(
     file: UploadFile = File(...),
@@ -124,6 +144,18 @@ async def upload_csv(
             name=name,
             type_=account_type,
         )
+
+        # Unattended drops post no account metadata, so a Barclays statement's
+        # parsed closing balance would be lost. Bind it to the Barclays credit
+        # account when one exists; otherwise import txns and skip the balance.
+        if resolved_account_id is None and processor.last_statement_balance is not None:
+            resolved_account_id = _resolve_barclays_credit_account()
+            if resolved_account_id is None:
+                logger.warning(
+                    "Statement balance %.2f parsed from %s but no Barclays "
+                    "credit account to attach it to; skipping balance update.",
+                    processor.last_statement_balance, file.filename,
+                )
 
         # Final fallback: if neither the form nor the CSV preamble supplied a
         # statement_balance, derive one by summing the parsed transactions.
@@ -579,6 +611,7 @@ async def update_transaction(transaction_id: str, update: TransactionUpdate):
 
     if update.transaction_type is not None:
         transaction["transaction_type"] = update.transaction_type
+        transaction["direction"] = derive_direction(update.transaction_type)
 
     if update.transfer_to_account_id is not None:
         target = update.transfer_to_account_id.strip()

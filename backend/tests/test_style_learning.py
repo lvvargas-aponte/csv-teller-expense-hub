@@ -24,14 +24,20 @@ def _block_auto_refresh():
 
 
 def _mock_chat(ai_available=True, text="advisor reply"):
-    return patch(
-        "routers.advisor.chat_ollama",
-        new=AsyncMock(return_value={
-            "ai_available": ai_available,
-            "text": text,
-            "raw": None,
-        }),
-    )
+    from agent.schemas import AgentResult, TrajectoryEvent
+
+    if ai_available:
+        result = AgentResult(
+            reply=text,
+            trajectory=[TrajectoryEvent(iteration=1, kind="final", result_summary=text)],
+            terminated_reason="ok",
+            iterations=1,
+        )
+    else:
+        result = AgentResult(
+            reply=None, trajectory=[], terminated_reason="ollama_unavailable", iterations=0,
+        )
+    return patch("routers.advisor.run_agent", new=AsyncMock(return_value=result))
 
 
 def _mock_ask(text="- bullet 1\n- bullet 2\n- bullet 3"):
@@ -145,14 +151,21 @@ class TestStyleProfileInjection:
         with _mock_ask(text="- be warm\n- lead with the number"):
             client.post("/api/advisor/style-profile/refresh")
 
-        # Now send another message and capture the system prompt passed to Ollama.
+        # Now send another message and capture the system prompt handed to the agent.
+        from agent.schemas import AgentResult, TrajectoryEvent
+
         captured = {}
 
-        async def _capture(messages, system=None, **_kw):
+        async def _capture(messages, registry=None, system=None, **_kw):
             captured["system"] = system
-            return {"ai_available": True, "text": "ok", "raw": None}
+            return AgentResult(
+                reply="ok",
+                trajectory=[TrajectoryEvent(iteration=1, kind="final", result_summary="ok")],
+                terminated_reason="ok",
+                iterations=1,
+            )
 
-        with patch("routers.advisor.chat_ollama", new=_capture):
+        with patch("routers.advisor.run_agent", new=_capture):
             client.post("/api/advisor/chat", json={"message": "again"})
 
         assert "USER_STYLE_NOTES" in captured["system"]

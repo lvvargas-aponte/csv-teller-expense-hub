@@ -50,11 +50,16 @@ DATABASE_URL: str = os.getenv(
     "postgresql+asyncpg://expense:expense_dev@db:5432/expense_hub",
 )
 
-# Fin agent harness — when enabled, the advisor router runs a tool-use loop
-# instead of stuffing the full snapshot into a single chat call. Default off
-# until eval coverage proves the agent path matches or beats the baseline.
-ADVISOR_AGENT_MODE: bool = os.getenv("ADVISOR_AGENT_MODE", "false").lower() == "true"
-ADVISOR_AGENT_MAX_ITERS: int = int(os.getenv("ADVISOR_AGENT_MAX_ITERS", "6"))
+# Fin agent harness — the advisor always runs the tool-use loop.
+ADVISOR_AGENT_MAX_ITERS: int = int(os.getenv("ADVISOR_AGENT_MAX_ITERS", "10"))
+
+# Web + market tools for Fin (web_search / fetch_webpage / stock quotes).
+# Kill-switch for offline or air-gapped installs — Fin degrades to
+# DB-grounded answers when disabled.
+ADVISOR_WEB_TOOLS_ENABLED: bool = os.getenv("ADVISOR_WEB_TOOLS_ENABLED", "true").lower() == "true"
+WEB_SEARCH_MAX_RESULTS: int = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "5"))
+ADVISOR_FETCH_TIMEOUT_SEC: float = float(os.getenv("ADVISOR_FETCH_TIMEOUT_SEC", "20"))
+ADVISOR_FETCH_MAX_BYTES: int = int(os.getenv("ADVISOR_FETCH_MAX_BYTES", str(2 * 1024 * 1024)))
 
 # Caps the number of confirmed user facts injected into the agent's
 # system prompt each turn. Higher = Fin remembers more without needing

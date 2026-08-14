@@ -1,30 +1,27 @@
 """Virtual finance advisor — multi-turn chat grounded in the household snapshot."""
+import asyncio
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text as sql_text
 
 import config
 import state
 from agent import default_tool_registry, run_agent
-from analytics import _balances_snapshot, build_financial_snapshot
-from db import documents_repo, feedback_repo, style_profile_repo, user_facts_repo
+from analytics import _balances_snapshot
+from db import feedback_repo, style_profile_repo, user_facts_repo
 from db.base import sync_engine
 from embeddings import (
     embed_pending_transactions,
     embed_pending_turns,
-    embed_text,
-    format_rag_context,
-    format_txn_rag_context,
-    retrieve_similar,
-    retrieve_similar_transactions,
     sync_conversation_turns,
 )
-from llm_client import chat_ollama
 from models import (
     ChatRequest,
     ChatResponse,
@@ -33,6 +30,8 @@ from models import (
     FeedbackRequest,
     StyleProfileOut,
 )
+from conversation_compaction import maybe_compact, render_summary_block
+from fact_reflection import extract_user_facts, should_extract_facts
 from style_reflection import refresh_style_profile, should_auto_refresh
 
 logger = logging.getLogger(__name__)
@@ -42,9 +41,10 @@ router = APIRouter()
 SYSTEM_PROMPT = """You are Fin — the user's money-smart friend who happens to be a financial expert.
 Think "trusted friend at brunch who actually gets spreadsheets," not "advisor in a
 suit behind a desk." The individual shares expenses and consolidates shared
-spending in a monthly Google Sheet with other household members. You have
-structured access to their real financial data in the `FINANCIAL_SNAPSHOT`
-JSON below.
+spending in a monthly Google Sheet with other household members. You have a
+high-level FINANCIAL_FACTS header below and tools to pull their real data —
+balances, transactions, holdings, live market quotes, and the open web — on
+demand.
 
 Voice & vibe:
 - Talk like a real person. Contractions, warmth, the occasional "okay so —" or
@@ -62,10 +62,23 @@ Voice & vibe:
 - Plain language over jargon. If you must use a term (APR, expense ratio),
   drop a 4-word translation in parens.
 
+Friend first — get to know them:
+- Weave in what you remember about them naturally (see WHAT FIN REMEMBERS
+  when present). If they mentioned a trip, a job change, a kid — follow up
+  like a friend would.
+- When the user reveals something durable and personal — a life event, a goal,
+  how they feel about risk or debt, a constraint ("I won't touch my 401k") —
+  call `remember_about_user` in the same turn and tell them you'll keep it in
+  mind (they confirm it in the Memory panel). Don't save trivia.
+- NEVER say "I'll remember that" or "I'll keep that in mind" without actually
+  calling `remember_about_user` in the same turn — a promise without the tool
+  call saves nothing.
+- Never contradict a fact in WHAT FIN REMEMBERS; ask if something seems to
+  have changed.
 
 Structure of a good reply:
 1. One warm, human opener that reacts to their message (one sentence).
-2. The actual answer with concrete numbers from the snapshot.
+2. The actual answer with concrete numbers from your tool results.
 3. One follow-up question OR one gentle next step. Not both.
 
 Example of the voice:
@@ -77,134 +90,74 @@ Example of the voice:
         the card and paying it off, or pulling from cash?"
 
 Hard rules (these always win over vibe — ground every answer in specific
-dollar amounts and category names from the snapshot):
-- Use concrete numbers.  Never invent figures that aren't in the snapshot.
+dollar amounts from the FINANCIAL_FACTS header or tool results):
+- Use concrete numbers.  Never invent figures — if you don't have a number,
+  call the tool that returns it.
+- You DO have live market data (`get_stock_quote`, `get_stock_history`,
+  `get_stock_fundamentals`) and the open web (`web_search`, `fetch_webpage`).
+  Never guess or recall a price from memory — look it up.  When you use
+  numbers or claims from a web page, mention the source (title or domain).
 - When the user asks "can I afford X", compare X to cash, monthly spending, and
   any open credit-card balances.  State assumptions explicitly.
 - Treat `total_investments` as long-term wealth distinct from spendable
   `total_cash`.  Don't propose tapping it for everyday expenses; do reference
   it for retirement-readiness, diversification, and net-worth questions.
-- When `investments` is present, it holds the user's actual stock / ETF /
-  crypto positions (per-holding quantity, cost basis, market value, unrealized
-  gain).  Use it for portfolio questions: comment on the `allocation` mix,
-  flag over-concentration when `concentrated` is true (name the symbol and its
-  `largest_position_pct`), and surface positions with large `gain_pct` swings
-  as rebalancing or tax-loss-harvesting candidates.  Tie advice to
-  `user_profile.risk_tolerance` / `time_horizon_years` when present.  You do
-  NOT have live market prices or news — never advise market timing, predict
-  price moves, or call a specific security over- or under-valued.  Stay on
-  structure: concentration, allocation, cost basis, and fit with their risk
-  profile and horizon.
-- When `balance_trend.available` is true, frame answers about cash, savings, or
-  net worth with the direction (`label`) and the most recent delta
-  (`delta_30d`).  If `available` is false, do not invent a trend.
-- When `income.monthly_estimate > 0`, treat that figure as the household's
-  monthly take-home and use it for affordability / debt-ratio reasoning.
-  Only ask the user to confirm income when `income.confidence` is `"low"` or
-  `"none"`.  Reference `income.sources[0].sample_description` when the user
-  asks where the number came from.
-- When asked about fairness of shared expenses, look at
-  `shared_split_recent.per_person` and point out imbalances.  Cross-reference
-  `recurring_inbound_transfers`: if a person owes more than they've actually
-  Venmo'd / Zelled back (their entries' `total_received`), flag the gap with
-  the merchant key and last-seen date.
-- When `budgets` is present, compare current_month_spent to monthly_limit and
-  call out categories that are over_budget or above 80% used.
-- When `goals` is present, reference progress_pct and monthly_required so the
-  user knows whether they're on pace.  Treat emergency_fund as the top priority.
-  When a goal has `pace_status='stalled'` or `'behind'`, raise it proactively
-  in any response touching saving, budgeting, or affordability — say what
-  `actual_monthly_contribution` is vs `monthly_required` so the gap is
-  concrete.  When `pace_status='ahead'`, acknowledge the surplus and ask
-  whether it should be redirected (e.g. faster debt payoff).
-- When `recurring_charges` is present, sum estimated_monthly_cost and surface
-  the largest items if the user asks about subscriptions or "where is my money
-  going".
-- When `Related past transactions` is present, treat it as a memory of specific
-  charges the user may be referring to.  Reference them by date and merchant
-  when answering "what was that..." or "find me..." style questions.
-- When `Reference material` is present, treat each excerpt as authoritative for
-  rules, limits, formulas, or definitions (tax brackets, contribution caps,
-  payoff strategy, credit utilization).  Cite the document title when you rely
-  on it (e.g. "Per IRS Pub 17, …").  Do NOT invent rules or numbers that aren't
-  in the snapshot or in the reference excerpts — if a relevant excerpt is
-  missing, say so and ask whether the user wants to upload the source.
-- If the data you need isn't in the snapshot (e.g. APRs on credit cards, income),
-  say what's missing and ask the user to supply it.
-- When `user_profile` is present, tailor recommendations to it: more aggressive
-  growth advice for `risk_tolerance='aggressive'` and longer `time_horizon_years`,
-  more conservative emergency-fund / cash-buffer advice for higher `dependents`
-  or `risk_tolerance='conservative'`, and order debt-payoff suggestions by
-  `debt_strategy` (`avalanche` = highest APR first, `snowball` = smallest balance
-  first, `minimum` = only minimums).  When `user_profile` is missing and the
-  user asks an investment, retirement, or debt-strategy question, ask once for
-  the relevant fields and offer to save them.
+- For portfolio questions, `get_investments` returns actual positions
+  (quantity, cost basis, market value, unrealized gain), allocation, and
+  concentration.  Flag over-concentration when `concentrated` is true (name
+  the symbol and its `largest_position_pct`), and surface positions with
+  large `gain_pct` swings as rebalancing or tax-loss-harvesting candidates.
+- If tools surface budgets over limit, goals with `pace_status='stalled'` or
+  `'behind'`, or meaningful cash sitting idle, raise it proactively when the
+  conversation touches saving, budgeting, or affordability.
+- Treat document excerpts from `search_documents` as authoritative for rules,
+  limits, and formulas; cite the document title (e.g. "Per IRS Pub 17, …").
+  If a rule isn't in your documents, verify with `web_search` rather than
+  inventing it.
+- If the data you need isn't available from any tool (e.g. an APR the user
+  never entered), say what's missing and ask them to supply it.
+- Tailor recommendations to `user_profile` when present: more aggressive
+  growth for `risk_tolerance='aggressive'` and longer `time_horizon_years`,
+  more conservative cash buffers for higher `dependents` or
+  `risk_tolerance='conservative'`, and debt-payoff ordering by
+  `debt_strategy` (avalanche = highest APR first, snowball = smallest balance
+  first, minimum = only minimums).  If it's missing when they ask an
+  investment, retirement, or debt-strategy question, ask once and offer to
+  save it.
 - Keep replies short and actionable.  Prefer bullet points for recommendations.
 - Never ask the user to run commands or edit files — you are talking to them in
   their finance app.
-"""
 
-
-WEALTH_ARCHITECT_PROMPT = """\
-PERSONA MODULE — Senior Wealth Architect:
-When the user asks about investing, saving, retirement, or portfolio
-allocation, layer the following expertise on top of the rules above. Stay
-grounded in the FINANCIAL_SNAPSHOT — never invent balances or holdings.
-
-Risk Framework (drive every recommendation from `user_profile.risk_tolerance`):
-- conservative → capital preservation: HYSA, money-market, short-duration bonds.
-- moderate → balanced 60/40 or 70/30 with total-market index funds.
-- aggressive → equity-heavy growth, sector tilts acceptable; flag volatility.
-If `user_profile` is missing or risk_tolerance is unset, ask once before
-giving a specific allocation.
-
-Investment Hierarchy (recommend funding in this tax-efficiency order):
-1. 401(k) up to employer match
-2. HSA (if eligible)
-3. Roth IRA (or Traditional, depending on bracket)
-4. Back to 401(k) up to annual limit
-5. Taxable brokerage / 529 for education goals
-
-Location-Aware Savings:
-- Use `user_profile.location` (or ask) to factor in state tax (e.g. NC 529
-  deduction) and regional cost-of-living when sizing the emergency fund.
-
-Yield-Max Rule:
-- Inspect `total_cash` and checking balances in the snapshot. If meaningful
-  cash sits in low-yield accounts, flag the drag and suggest current HYSA /
-  money-market benchmarks (cite as "current benchmarks, verify before moving").
-
-Bucket Method (use to explain *why* an allocation looks the way it does):
-- Bucket 1 — Liquid cash: emergency fund + <12-month goals.
-- Bucket 2 — Core growth: diversified index funds sized to risk profile.
-- Bucket 3 — Explorer: speculative / single-stock / crypto, capped at a
+Opinionated advice (this is what makes you useful):
+- When asked "should I keep/sell/buy X" or "where should this extra money
+  go", give a direct take — keep, trim, sell, buy, with rough sizing — not a
+  menu of options.  Build it from: their actual holdings (`get_investments`),
+  live prices and fundamentals, their risk tolerance and horizon,
+  concentration, and anything relevant you found on the web.
+- Show your reasoning in 2-3 tight bullets so they can push back.  Hedge only
+  where you're genuinely uncertain, and say why.
+- Recommend funding in tax-efficiency order when placing new money:
+  401(k) to employer match → HSA → Roth/Traditional IRA → 401(k) to limit →
+  taxable brokerage / 529.
+- Risk framework: conservative → capital preservation (HYSA, money market,
+  short-duration bonds); moderate → 60/40-70/30 total-market index core;
+  aggressive → equity-heavy growth, sector tilts acceptable, flag volatility.
+- Bucket method for explaining allocations: (1) liquid cash — emergency fund
+  + <12-month goals; (2) core growth — diversified index funds sized to risk
+  profile; (3) explorer — speculative / single-stock / crypto, capped at a
   small % appropriate to the risk profile.
-
-Output structure for investment-strategy answers:
-1. Portfolio Diagnostics — strengths/weaknesses of the current setup using
-   snapshot numbers (cash drag, concentration, missing tax-advantaged space).
-2. Allocation Blueprint — where the next $1,000 should go, in % and $.
-3. Risk Stress Test — one-paragraph "what happens in a 20–30% drawdown"
-   tailored to their risk profile, so they can pressure-test their tolerance.
-
-Tone: still warm and conversational, but with sharper numbers underneath.
-Use %s and projections, but frame them like you're sketching on a napkin for
-a friend, not presenting to a board. Be proactive about identifying portfolio
-drag (high expense ratios, uninvested cash, missed match) — call it out the
-way a friend would ("hey, you've got $X just sitting there earning nothing").
-
-Always close investment-strategy answers with: "Educational only — not
-professional financial advice."
+- For full strategy answers, structure as: Portfolio Diagnostics (strengths /
+  weaknesses with real numbers — cash drag, concentration, missed
+  tax-advantaged space) → Allocation Blueprint (where the next $1,000 goes,
+  in % and $) → Risk Stress Test (one paragraph on a 20-30% drawdown,
+  tailored to their profile).
+- End investment-opinion answers with one short line: "Not licensed financial
+  advice — my honest read as your money friend."
 """
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-
-
-def _render_snapshot(snapshot: Dict[str, Any]) -> str:
-    """Format the financial snapshot for inclusion in the system prompt."""
-    return "FINANCIAL_SNAPSHOT:\n" + json.dumps(snapshot, indent=2, default=str)
 
 
 def _render_user_memory_block() -> str:
@@ -213,9 +166,13 @@ def _render_user_memory_block() -> str:
     Skipped entirely (empty string) when nothing is confirmed yet, so
     new users don't see a header for an empty list.
     """
-    facts = user_facts_repo.list_facts(
-        status="confirmed", limit=config.ADVISOR_MEMORY_INJECT_LIMIT,
-    )
+    try:
+        facts = user_facts_repo.list_facts(
+            status="confirmed", limit=config.ADVISOR_MEMORY_INJECT_LIMIT,
+        )
+    except Exception as e:
+        logger.warning(f"[advisor] memory block unavailable: {e}")
+        return ""
     if not facts:
         return ""
     lines = [
@@ -249,8 +206,14 @@ def _render_facts_header() -> str:
 
 AGENT_TOOL_GUIDE = """\
 You have tools to fetch specifics on demand. Prefer calling a tool over
-guessing — never invent dollar amounts or balances. Call at most one or
-two tools per turn; don't chain unrelated lookups.
+guessing — never invent dollar amounts, balances, or prices. For simple
+questions, one or two tool calls is plenty — don't chain unrelated lookups.
+For strategy questions ("should I keep X", "where should extra money go"),
+call `think` FIRST with a short numbered plan (which tools, in what order,
+what you'll compare), then execute it: typically get_investments →
+get_stock_quote (their tickers) → get_stock_fundamentals or web_search for
+context → then synthesize one grounded answer. You may emit several
+independent tool calls in one turn — they run in parallel.
 
 Conversation continuity (read this FIRST every turn):
 - The user's current message often refers to what YOU just said. Read the
@@ -284,7 +247,10 @@ When to use which tool:
 - search_transactions: user references ONE specific charge ("that $300
   hit", "the Amazon thing", "what was that"). Similarity-based, returns
   the top few hits — not suitable for sums or averages.
-- get_balance / get_debt: user asks "how much do I have / owe".
+- get_balance / get_debt: user asks "how much do I have / owe" (totals).
+- list_accounts: ANY question about individual accounts — names, "what
+  accounts do I have", "details on my checking accounts", per-account
+  balances. get_balance has no account names; never invent them.
 - get_investments: user asks about stocks, ETFs, crypto, portfolio,
   allocation, holdings, specific tickers ("how is VTI doing", "what's
   my biggest position", "am I over-concentrated"). Returns per-holding
@@ -303,6 +269,34 @@ When to use which tool:
   with you before in a different chat ("like we talked about last
   time", "what did you say about my budget?"). Pulls from past
   conversations only — not the current one.
+- recall_about_user: check what you know about the user personally before
+  advice that hinges on their preferences or constraints.
+- remember_about_user: save a durable personal fact the user just revealed
+  (goal, life event, constraint, preference). MANDATORY whenever your reply
+  will say "I'll keep that in mind" / "noted" / "I'll remember" — call this
+  tool FIRST, then reply. A promise without the call saves nothing.
+- get_stock_quote: ANY question involving a specific ticker's price or
+  current value — always call before opining on a ticker. Batches up to 10.
+- get_stock_history: trend / performance questions ("how has VTI done this
+  year"). Periods: 1mo/3mo/6mo/1y/5y.
+- get_stock_fundamentals: weighing keep/trim/sell or comparing candidates —
+  PE, dividend yield, beta, sector, analyst targets.
+- sync_transactions: pull the LATEST transactions from the bank before
+  answering about today / this week / very recent activity. Slow (10-30s)
+  — only when freshness matters, then answer with the query tools.
+- refresh_balances: live balance refresh when the user asks what they
+  have "right now" or just made a payment/purchase.
+- sync_investments: re-pull brokerage holdings before portfolio advice if
+  they may be stale, or when asked to refresh.
+- schedule_sync / list_scheduled_tasks / cancel_scheduled_task: recurring
+  background syncs ("sync my transactions every week"). Check the list
+  before creating; tell the user what got scheduled.
+- web_search: current outside information — market news, "what's going on
+  with X", rate benchmarks (HYSA/CD/mortgage), candidate tickers or funds,
+  recent tax-law changes. If search fails or rate-limits, say it's flaky
+  right now — never fabricate results.
+- fetch_webpage: read ONE promising web_search result when the snippet
+  isn't enough. Mention the source (title or domain) for anything you use.
 
 Date hints when calling get_category_spending or search_transactions:
 - "this year" → start_date = January 1 of the current year, omit end_date.
@@ -317,7 +311,11 @@ If the answer is fully in the facts header, just answer — no tool call.
 def _render_style_profile() -> str:
     """Return the user-style block to inject into the system prompt, or ""
     if the profile hasn't been built yet."""
-    profile = style_profile_repo.get_profile()
+    try:
+        profile = style_profile_repo.get_profile()
+    except Exception as e:
+        logger.warning(f"[advisor] style block unavailable: {e}")
+        return ""
     if not profile or not profile.get("style_notes"):
         return ""
     return (
@@ -369,6 +367,54 @@ async def _maybe_refresh_style_profile() -> None:
         logger.warning(f"[advisor] auto style-profile refresh failed: {e}")
 
 
+async def _maybe_extract_user_facts() -> None:
+    """Background task wrapper — checks the trigger and extracts facts."""
+    try:
+        if should_extract_facts():
+            await extract_user_facts()
+    except Exception as e:
+        logger.warning(f"[advisor] auto fact extraction failed: {e}")
+
+
+async def _maybe_compact_conversation(conv_id: str) -> None:
+    """Background task wrapper — rolls aged-out turns into the summary."""
+    try:
+        await maybe_compact(conv_id)
+    except Exception as e:
+        logger.warning(f"[advisor] conversation compaction failed: {e}")
+
+
+_MEMORY_PROMISE_RE = re.compile(
+    r"(keep (that|this|it|your .{0,40}) in mind|i.ll remember|noted|"
+    r"i.ll keep track|added to (my|your) memory)",
+    re.IGNORECASE,
+)
+
+
+def _promised_without_saving(
+    reply_text: Optional[str], trajectory: Optional[List[Dict[str, Any]]]
+) -> bool:
+    """True when Fin told the user it will remember something but never
+    called remember_about_user — local models do this under-eagerly, so
+    the router closes the say-do gap by forcing a fact-extraction pass."""
+    if not reply_text or not _MEMORY_PROMISE_RE.search(reply_text):
+        return False
+    called = {
+        e.get("tool_name")
+        for e in (trajectory or [])
+        if e.get("kind") == "tool_call"
+    }
+    return "remember_about_user" not in called
+
+
+async def _extract_facts_now() -> None:
+    """Background task wrapper — unconditional extraction (promise fallback)."""
+    try:
+        await extract_user_facts()
+    except Exception as e:
+        logger.warning(f"[advisor] promise-fallback fact extraction failed: {e}")
+
+
 def _trim_history(messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     """Keep only the last N turns (role+content), dropping timestamps."""
     tail = messages[-state.ADVISOR_MAX_HISTORY:]
@@ -387,6 +433,83 @@ def _conversation_preview(messages: List[Dict[str, Any]]) -> str:
                 return content[:_PREVIEW_MAX_LEN] + "…"
             return content
     return ""
+
+
+def _build_system_prompt(conv: Dict[str, Any]) -> str:
+    """Assemble the per-turn system prompt. Built freshly each turn so the
+    advisor always sees current balances, memory, and the rolling summary."""
+    style_block = _render_style_profile()
+    memory_block = _render_user_memory_block()
+    summary_block = render_summary_block(conv)
+    return (
+        SYSTEM_PROMPT
+        + ("\n\n" + style_block if style_block else "")
+        + "\n\n"
+        + AGENT_TOOL_GUIDE
+        + ("\n\n" + memory_block if memory_block else "")
+        + ("\n\n" + summary_block if summary_block else "")
+        + "\n\n"
+        + _render_facts_header()
+    )
+
+
+def _finalize_turn(
+    conv_id: str,
+    conv: Dict[str, Any],
+    reply_text: Optional[str],
+    ai_available: bool,
+    trajectory_payload: Optional[List[Dict[str, Any]]],
+    background_tasks: BackgroundTasks,
+) -> Optional[int]:
+    """Persist the assistant reply + trajectory and schedule background work.
+
+    Shared by the blocking and streaming chat endpoints. Returns the
+    assistant turn's DB id (feedback target), or None.
+    """
+    if ai_available and reply_text:
+        conv["messages"].append({
+            "role": "assistant",
+            "content": reply_text,
+            "ts": _now_iso(),
+        })
+
+    conv["updated"] = _now_iso()
+    # PgStore returns a fresh dict snapshot; write back to persist the
+    # appended messages and updated timestamp.
+    state.conversations[conv_id] = conv
+
+    assistant_turn_id: Optional[int] = None
+    try:
+        sync_conversation_turns(conv)
+        if ai_available and reply_text:
+            # Assistant turn was just appended at index len(messages)-1.
+            assistant_turn_id = _lookup_turn_id(conv_id, len(conv["messages"]) - 1)
+            if assistant_turn_id is not None and trajectory_payload is not None:
+                _save_trajectory(assistant_turn_id, trajectory_payload)
+        background_tasks.add_task(embed_pending_turns, conv_id)
+        # Catch up on any newly-uploaded / edited transactions so the next
+        # chat turn can semantically find them. Idempotent and short-circuits
+        # when nothing has drifted.
+        background_tasks.add_task(embed_pending_transactions)
+        # Every REFLECTION_TURN_INTERVAL user turns, regenerate the style
+        # profile so the advisor's voice keeps adapting to how the user
+        # actually talks (and what they thumbs-up). Cheap to schedule —
+        # the task itself short-circuits when the threshold isn't crossed.
+        background_tasks.add_task(_maybe_refresh_style_profile)
+        # Same cadence pattern for personal-fact extraction — Fin learns
+        # about the user even when the model never calls remember_about_user.
+        if _promised_without_saving(reply_text, trajectory_payload):
+            # Fin SAID it will remember but never called the tool — extract
+            # now instead of waiting for the interval, so the promise holds.
+            background_tasks.add_task(_extract_facts_now)
+        else:
+            background_tasks.add_task(_maybe_extract_user_facts)
+        # Roll messages that aged out of the context window into the
+        # conversation's summary so long chats keep continuity.
+        background_tasks.add_task(_maybe_compact_conversation, conv_id)
+    except Exception as e:
+        logger.warning(f"[advisor] Turn persistence / embed scheduling failed: {e}")
+    return assistant_turn_id
 
 
 @router.post("/advisor/chat", response_model=ChatResponse)
@@ -415,146 +538,116 @@ async def advisor_chat(req: ChatRequest, background_tasks: BackgroundTasks) -> C
     user_msg = {"role": "user", "content": req.message.strip(), "ts": _now_iso()}
     conv["messages"].append(user_msg)
 
-    # Build grounded system prompt freshly each turn so the advisor always
-    # sees the current snapshot (txns/balances may have changed mid-chat).
-    style_block = _render_style_profile()
-    if config.ADVISOR_AGENT_MODE:
-        # Agent mode: lean facts header + tool guide; details come via tools.
-        memory_block = _render_user_memory_block()
-        system_prompt = (
-            SYSTEM_PROMPT
-            + ("\n\n" + style_block if style_block else "")
-            + "\n\n"
-            + WEALTH_ARCHITECT_PROMPT
-            + "\n\n"
-            + AGENT_TOOL_GUIDE
-            + ("\n\n" + memory_block if memory_block else "")
-            + "\n\n"
-            + _render_facts_header()
-        )
-    else:
-        snapshot = build_financial_snapshot()
-        system_prompt = (
-            SYSTEM_PROMPT
-            + ("\n\n" + style_block if style_block else "")
-            + "\n\n"
-            + WEALTH_ARCHITECT_PROMPT
-            + "\n\n"
-            + _render_snapshot(snapshot)
-        )
-
-    # Auto-injected RAG blocks (similar past turns, similar transactions,
-    # similar documents) are SKIPPED in agent mode because the model fetches
-    # them on demand via `recall_past_conversation`, `search_transactions`,
-    # and `search_documents` tools. Auto-injection in agent mode duplicates
-    # work and inflates the prompt — let the model decide what it needs.
-    if not config.ADVISOR_AGENT_MODE:
-        # Phase 6: retrieve semantically similar past turns (excluding this conv)
-        # and append as a context block. Silent no-op if Ollama embeddings are
-        # unavailable or nothing crosses the cosine threshold.
-        try:
-            rag_hits = await retrieve_similar(req.message, exclude_conv_id=conv_id)
-            rag_block = format_rag_context(rag_hits)
-            if rag_block:
-                system_prompt += "\n\n" + rag_block
-                logger.info(f"[advisor] RAG retrieved {len(rag_hits)} similar turns")
-        except Exception as e:
-            logger.warning(f"[advisor] RAG retrieval failed: {e}")
-
-        # Transaction-level RAG: surface specific historical charges that look
-        # related to the user's question (e.g. "what was that $300 charge?").
-        try:
-            txn_hits = await retrieve_similar_transactions(req.message)
-            txn_block = format_txn_rag_context(txn_hits)
-            if txn_block:
-                system_prompt += "\n\n" + txn_block
-                logger.info(f"[advisor] RAG retrieved {len(txn_hits)} similar transactions")
-        except Exception as e:
-            logger.warning(f"[advisor] Transaction RAG retrieval failed: {e}")
-
-        # Document-level RAG: surface excerpts from uploaded knowledge-base docs
-        # (IRS guidance, tax returns, statements, etc.).  Distance threshold of
-        # 0.4 is intentionally tighter than turn/txn retrieval — for financial
-        # advice, "no excerpt" is preferable to a weakly-related one.
-        try:
-            query_vec = await embed_text(req.message)
-            if query_vec is not None:
-                doc_hits = documents_repo.retrieve_similar_docs(
-                    query_vec, k=4, max_distance=0.4
-                )
-                doc_block = documents_repo.format_doc_rag_context(doc_hits)
-                if doc_block:
-                    system_prompt += "\n\n" + doc_block
-                    logger.info(
-                        f"[advisor] RAG retrieved {len(doc_hits)} reference excerpts"
-                    )
-        except Exception as e:
-            logger.warning(f"[advisor] Document RAG retrieval failed: {e}")
-
+    system_prompt = _build_system_prompt(conv)
     history = _trim_history(conv["messages"])
 
-    trajectory_payload: Optional[List[Dict[str, Any]]] = None
-    if config.ADVISOR_AGENT_MODE:
-        agent_result = await run_agent(
-            messages=history,
-            registry=default_tool_registry(current_conversation_id=conv_id),
-            system=system_prompt,
-        )
-        reply_text = agent_result.reply
-        ai_available = agent_result.terminated_reason != "ollama_unavailable"
-        trajectory_payload = [e.model_dump() for e in agent_result.trajectory]
-        result = {"ai_available": ai_available, "text": reply_text, "raw": None}
-        logger.info(
-            f"[advisor] agent run conv={conv_id} "
-            f"terminated={agent_result.terminated_reason} "
-            f"iters={agent_result.iterations} "
-            f"events={len(agent_result.trajectory)}"
-        )
-    else:
-        result = await chat_ollama(messages=history, system=system_prompt)
-        reply_text = result["text"] if result["ai_available"] else None
+    agent_result = await run_agent(
+        messages=history,
+        registry=default_tool_registry(current_conversation_id=conv_id),
+        system=system_prompt,
+    )
+    reply_text = agent_result.reply
+    ai_available = agent_result.terminated_reason != "ollama_unavailable"
+    trajectory_payload = [e.model_dump() for e in agent_result.trajectory]
+    logger.info(
+        f"[advisor] agent run conv={conv_id} "
+        f"terminated={agent_result.terminated_reason} "
+        f"iters={agent_result.iterations} "
+        f"events={len(agent_result.trajectory)}"
+    )
 
-    if result["ai_available"] and reply_text:
-        conv["messages"].append({
-            "role": "assistant",
-            "content": reply_text,
-            "ts": _now_iso(),
-        })
-
-    conv["updated"] = _now_iso()
-    # PgStore returns a fresh dict snapshot; write back to persist the
-    # appended messages and updated timestamp.
-    state.conversations[conv_id] = conv
-
-    # Phase 6: mirror the updated conversation into the structured tables
-    # and schedule background embedding of any newly-added turns. The
-    # response returns immediately; embeddings populate asynchronously.
-    assistant_turn_id: Optional[int] = None
-    try:
-        sync_conversation_turns(conv)
-        if result["ai_available"] and reply_text:
-            # Assistant turn was just appended at index len(messages)-1.
-            assistant_turn_id = _lookup_turn_id(conv_id, len(conv["messages"]) - 1)
-            if assistant_turn_id is not None and trajectory_payload is not None:
-                _save_trajectory(assistant_turn_id, trajectory_payload)
-        background_tasks.add_task(embed_pending_turns, conv_id)
-        # Catch up on any newly-uploaded / edited transactions so the next
-        # chat turn can semantically find them. Idempotent and short-circuits
-        # when nothing has drifted.
-        background_tasks.add_task(embed_pending_transactions)
-        # Every REFLECTION_TURN_INTERVAL user turns, regenerate the style
-        # profile so the advisor's voice keeps adapting to how the user
-        # actually talks (and what they thumbs-up). Cheap to schedule —
-        # the task itself short-circuits when the threshold isn't crossed.
-        background_tasks.add_task(_maybe_refresh_style_profile)
-    except Exception as e:
-        logger.warning(f"[advisor] Turn persistence / embed scheduling failed: {e}")
+    assistant_turn_id = _finalize_turn(
+        conv_id, conv, reply_text, ai_available, trajectory_payload, background_tasks,
+    )
 
     return ChatResponse(
         conversation_id=conv_id,
         reply=reply_text,
-        ai_available=result["ai_available"],
+        ai_available=ai_available,
         turn_id=assistant_turn_id,
+    )
+
+
+@router.post("/advisor/chat/stream")
+async def advisor_chat_stream(
+    req: ChatRequest, background_tasks: BackgroundTasks
+) -> StreamingResponse:
+    """Streaming variant of /advisor/chat — Server-Sent Events.
+
+    Emits ``data: {json}`` lines: ``token`` (reply text delta),
+    ``tool_call`` / ``tool_result`` / ``tool_error`` (live tool activity),
+    and a final ``done`` event carrying the same fields as ChatResponse.
+    """
+    if not req.message or not req.message.strip():
+        raise HTTPException(status_code=400, detail="Message must not be empty")
+
+    conv_id = req.conversation_id
+    if not conv_id or conv_id not in state.conversations:
+        conv_id = f"conv_{uuid.uuid4().hex[:12]}"
+        state.conversations[conv_id] = {
+            "conversation_id": conv_id,
+            "created": _now_iso(),
+            "updated": _now_iso(),
+            "messages": [],
+        }
+
+    conv = state.conversations[conv_id]
+    conv["messages"].append(
+        {"role": "user", "content": req.message.strip(), "ts": _now_iso()}
+    )
+    system_prompt = _build_system_prompt(conv)
+    history = _trim_history(conv["messages"])
+
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def on_event(ev: Dict[str, Any]) -> None:
+        await queue.put(ev)
+
+    async def agent_task() -> Any:
+        try:
+            return await run_agent(
+                messages=history,
+                registry=default_tool_registry(current_conversation_id=conv_id),
+                system=system_prompt,
+                on_event=on_event,
+            )
+        finally:
+            await queue.put(None)  # end-of-events sentinel
+
+    async def event_stream():
+        task = asyncio.create_task(agent_task())
+        while True:
+            ev = await queue.get()
+            if ev is None:
+                break
+            yield f"data: {json.dumps(ev, default=str)}\n\n"
+
+        try:
+            agent_result = await task
+            reply_text = agent_result.reply
+            ai_available = agent_result.terminated_reason != "ollama_unavailable"
+            trajectory_payload = [e.model_dump() for e in agent_result.trajectory]
+        except Exception as e:  # run_agent shouldn't raise, but never hang the client
+            logger.warning(f"[advisor] streaming agent run failed: {e}")
+            reply_text, ai_available, trajectory_payload = None, False, None
+
+        turn_id = _finalize_turn(
+            conv_id, conv, reply_text, ai_available, trajectory_payload, background_tasks,
+        )
+        done = {
+            "type": "done",
+            "conversation_id": conv_id,
+            "reply": reply_text,
+            "ai_available": ai_available,
+            "turn_id": turn_id,
+        }
+        yield f"data: {json.dumps(done, default=str)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        background=background_tasks,
     )
 
 

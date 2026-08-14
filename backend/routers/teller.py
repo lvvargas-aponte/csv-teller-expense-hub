@@ -12,6 +12,7 @@ from helpers import (
     _env_remove_token,
     _log_token_event,
     _previous_month_range,
+    derive_direction,
     infer_txn_type,
 )
 from models import RegisterTokenRequest, ReplaceTokenRequest, TellerSyncRequest
@@ -246,6 +247,7 @@ async def sync_teller_transactions(req: Optional[TellerSyncRequest] = None):
                         for field in ("transaction_type", "account_type", "category",
                                       "institution", "description", "amount", "date"):
                             existing[field] = getattr(txn, field)
+                        existing["direction"] = derive_direction(txn.transaction_type)
                         # PgStore returns a fresh dict snapshot; write back to persist.
                         state.stored_transactions[txn.transaction_id] = existing
 

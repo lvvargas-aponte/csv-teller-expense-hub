@@ -18,7 +18,7 @@ const ICON_RULES = [
   { test: /phone|wireless|verizon|att|t.?mobile/i, icon: '📱', color: '#dbeafe' },
 ];
 
-function pickIcon(description = '', category = '') {
+export function pickIcon(description = '', category = '') {
   const haystack = `${description} ${category}`;
   for (const rule of ICON_RULES) {
     if (rule.test.test(haystack)) return { icon: rule.icon, color: rule.color };
@@ -29,7 +29,7 @@ function pickIcon(description = '', category = '') {
 // Try to extract a friendly name + institution detail from the description.
 // Backend gives us things like "AMEX EPAYMENT 8005" or "MORTGAGE TRUIST" —
 // we strip trailing digits/codes and title-case the rest.
-function prettifyName(description = '') {
+export function prettifyName(description = '') {
   return description
     .replace(/\b\d{4,}\b/g, '')           // long digit codes
     .replace(/\b(EPAYMENT|ACH|XFER|PYMT)\b/gi, '')

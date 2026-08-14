@@ -165,9 +165,9 @@ def _tools_called(trajectory: List[Dict[str, Any]]) -> List[str]:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def agent_mode_on(monkeypatch):
-    import routers.advisor as advisor_router
-    monkeypatch.setattr(advisor_router.config, "ADVISOR_AGENT_MODE", True)
+def agent_mode_on():
+    # Agent mode is always on now; fixture kept so parametrized tests keep
+    # their signature.
     yield
 
 

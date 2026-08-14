@@ -4,6 +4,7 @@ import Spin from '../ui/Spin';
 import AdvisorMemory from './AdvisorMemory';
 import {
   sendMessage,
+  sendMessageStream,
   listConversations,
   getConversation,
   deleteConversation,
@@ -11,6 +12,29 @@ import {
   getStyleProfile,
   refreshStyleProfile,
 } from '../../api/advisor';
+
+const TOOL_STATUS = {
+  think: 'Planning…',
+  web_search: 'Searching the web…',
+  fetch_webpage: 'Reading a page…',
+  get_stock_quote: 'Checking live prices…',
+  get_stock_history: 'Pulling price history…',
+  get_stock_fundamentals: 'Checking fundamentals…',
+  get_investments: 'Looking at your portfolio…',
+  list_accounts: 'Looking up your accounts…',
+  search_transactions: 'Searching your transactions…',
+  get_category_spending: 'Adding up your spending…',
+  search_documents: 'Checking your documents…',
+  recall_past_conversation: 'Recalling past chats…',
+  recall_about_user: 'Checking what I remember…',
+  remember_about_user: 'Noting that down…',
+  sync_transactions: 'Syncing your bank transactions…',
+  refresh_balances: 'Refreshing your balances…',
+  sync_investments: 'Syncing your brokerage holdings…',
+  schedule_sync: 'Setting up the schedule…',
+  list_scheduled_tasks: 'Checking your schedules…',
+  cancel_scheduled_task: 'Cancelling the schedule…',
+};
 
 const EXAMPLES = [
   'How did our dining spending change this month?',
@@ -30,6 +54,8 @@ export default function AdvisorChat() {
   const [aiUnavailable, setAiUnavailable] = useState(false);
   // Per-message thumbs state, keyed by turn_id. -1 / +1 once rated.
   const [ratings, setRatings] = useState({});
+  const [draft, setDraft] = useState('');           // streamed reply so far
+  const [toolStatus, setToolStatus] = useState(null); // live "Searching…" line
   const [styleProfile, setStyleProfile] = useState(null);
   const [styleOpen, setStyleOpen] = useState(false);
   const [styleRefreshing, setStyleRefreshing] = useState(false);
@@ -49,7 +75,7 @@ export default function AdvisorChat() {
   // Auto-scroll to the newest message
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, draft, toolStatus]);
 
   const openConversation = useCallback(async (id) => {
     setLoadingConv(true);
@@ -83,31 +109,49 @@ export default function AdvisorChat() {
     setSending(true);
     setError(null);
     setAiUnavailable(false);
+    setDraft('');
+    setToolStatus(null);
 
-    try {
-      const r = await sendMessage(activeId, text);
-      const { conversation_id, reply, ai_available } = r.data;
+    const applyDone = ({ conversation_id, reply, ai_available, turn_id }) => {
       if (!activeId) setActiveId(conversation_id);
-
       if (ai_available && reply) {
-        const { turn_id } = r.data;
         setMessages((prev) => [
           ...prev,
-          {
-            role: 'assistant',
-            content: reply,
-            ts: new Date().toISOString(),
-            turn_id,
-          },
+          { role: 'assistant', content: reply, ts: new Date().toISOString(), turn_id },
         ]);
       } else {
         setAiUnavailable(true);
       }
       loadList();
-    } catch (e) {
-      setError('Could not reach the advisor — is the backend running?');
+    };
+
+    try {
+      const done = await sendMessageStream(activeId, text, {
+        onToken: (t) => {
+          setToolStatus(null);
+          setDraft((prev) => prev + t);
+        },
+        onTool: (ev) => {
+          if (ev.type === 'tool_call') {
+            // Any pre-tool text was deliberation, not the answer — clear it.
+            setDraft('');
+            setToolStatus(TOOL_STATUS[ev.name] || 'Working…');
+          }
+        },
+      });
+      applyDone(done);
+    } catch {
+      // Streaming unavailable (proxy, older backend) — fall back to blocking.
+      try {
+        const r = await sendMessage(activeId, text);
+        applyDone(r.data);
+      } catch {
+        setError('Could not reach the advisor — is the backend running?');
+      }
     } finally {
       setSending(false);
+      setDraft('');
+      setToolStatus(null);
     }
   }, [input, sending, activeId, loadList]);
 
@@ -272,8 +316,12 @@ export default function AdvisorChat() {
           })}
           {sending && (
             <div className="advisor-msg advisor-msg--assistant">
-              <div className="advisor-msg-role">Advisor</div>
-              <div className="advisor-msg-content"><Spin /> Thinking…</div>
+              <div className="advisor-msg-role">Fin</div>
+              <div className="advisor-msg-content">
+                {draft
+                  ? <ReactMarkdown>{draft}</ReactMarkdown>
+                  : <><Spin /> {toolStatus || 'Thinking…'}</>}
+              </div>
             </div>
           )}
           {aiUnavailable && (

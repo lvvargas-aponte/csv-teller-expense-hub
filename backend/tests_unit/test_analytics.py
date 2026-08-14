@@ -87,6 +87,47 @@ class TestRecurringDetection:
             assert "Entertainment" not in month or month["Entertainment"] == 0
 
 
+class TestCadenceAwareDetection:
+    def test_monthly_cadence_classified(self, client):
+        _add_txn("a", 15.49, days_ago=5)
+        _add_txn("b", 15.49, days_ago=35)
+        _add_txn("c", 15.49, days_ago=65)
+        out = detect_recurring_charges()
+        assert out[0]["cadence"] == "monthly"
+        assert out[0]["interval_days"] == 30
+        assert out[0]["estimated_monthly_cost"] == 15.49
+
+    def test_annual_renewal_costs_one_twelfth(self, client):
+        _add_txn("a", 139.00, days_ago=10, description="AMAZON PRIME RENEWAL")
+        _add_txn("b", 139.00, days_ago=375, description="AMAZON PRIME RENEWAL")
+        out = detect_recurring_charges()
+        assert len(out) == 1
+        assert out[0]["cadence"] == "annual"
+        assert out[0]["estimated_monthly_cost"] == round(139.00 / 12, 2)
+
+    def test_weekly_charge_costs_four_point_three_x(self, client):
+        for i in range(8):
+            _add_txn(f"t{i}", 12.00, days_ago=3 + 7 * i, description="WEEKLY CLEANER")
+        out = detect_recurring_charges()
+        assert len(out) == 1
+        assert out[0]["cadence"] == "weekly"
+        assert out[0]["estimated_monthly_cost"] == round(12.00 * 52 / 12, 2)
+
+    def test_price_increase_reported_on_latest_charge(self, client):
+        _add_txn("a", 15.49, days_ago=65)
+        _add_txn("b", 15.49, days_ago=35)
+        _add_txn("c", 17.99, days_ago=5)
+        rec = detect_recurring_charges()[0]
+        assert rec["latest_amount"] == 17.99
+        assert rec["price_change_pct"] == round((17.99 - 15.49) / 15.49 * 100, 1)
+
+    def test_category_comes_from_latest_charge(self, client):
+        _add_txn("a", 15.49, days_ago=65, category="Entertainment")
+        _add_txn("b", 15.49, days_ago=5, category="Subscriptions")
+        _add_txn("c", 15.49, days_ago=35, category="Entertainment")
+        assert detect_recurring_charges()[0]["category"] == "Subscriptions"
+
+
 class TestNormalizeMerchant:
     def test_strips_web_id_tail(self):
         assert _normalize_merchant(

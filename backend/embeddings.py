@@ -565,7 +565,7 @@ async def embed_pending_user_facts(limit: int = DEFAULT_BACKFILL_LIMIT) -> int:
 
 async def retrieve_similar_facts(
     query: str,
-    status: str = "confirmed",
+    status: Optional[str] = "confirmed",
     category: Optional[str] = None,
     k: int = DEFAULT_K,
     threshold: float = 0.5,
@@ -573,19 +573,23 @@ async def retrieve_similar_facts(
     """Return up to ``k`` user facts most similar to ``query``.
 
     ``status`` defaults to 'confirmed' — proposed facts stay quiet until
-    the user approves them in the memory panel. ``threshold`` is looser
-    than the conversation-turn default because fact text tends to be
-    shorter / less syntactically rich than full chat turns.
+    the user approves them in the memory panel. Pass ``status=None`` to
+    match any status (fact-reflection dedup uses this so rejected facts
+    are never re-proposed). ``threshold`` is looser than the
+    conversation-turn default because fact text tends to be shorter /
+    less syntactically rich than full chat turns.
     """
     vec = await embed_text(query)
     if vec is None:
         return []
 
-    where = ["f.status = :status"]
+    where = [f"(e.embedding <=> CAST(:vec AS vector({EMBED_DIM}))) < :thresh"]
     params: dict[str, Any] = {
-        "vec": _vec_literal(vec), "thresh": threshold,
-        "k": k, "status": status,
+        "vec": _vec_literal(vec), "thresh": threshold, "k": k,
     }
+    if status is not None:
+        where.append("f.status = :status")
+        params["status"] = status
     if category is not None:
         where.append("f.category = :category")
         params["category"] = category
@@ -599,7 +603,6 @@ async def retrieve_similar_facts(
                 f"FROM user_facts f "
                 f"JOIN user_fact_embeddings e ON e.fact_id = f.id "
                 f"WHERE {' AND '.join(where)} "
-                f"  AND (e.embedding <=> CAST(:vec AS vector({EMBED_DIM}))) < :thresh "
                 f"ORDER BY distance ASC LIMIT :k"
             ),
             params,

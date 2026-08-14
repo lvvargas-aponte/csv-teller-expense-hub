@@ -17,6 +17,7 @@ import BudgetsCard from './cards/BudgetsCard';
 import CreditUtilizationCard from './cards/CreditUtilizationCard';
 import AlertsCard from './cards/AlertsCard';
 import IncomeVsExpensesCard from './cards/IncomeVsExpensesCard';
+import WeeklyDigestCard from './cards/WeeklyDigestCard';
 import { BlurContext } from './Num';
 
 const RANGE_OPTIONS = [
@@ -218,6 +219,9 @@ export default function DashboardTab({ healthScore }) {
             number; some span both columns for editorial rhythm. */}
         <BlurContext.Provider value={blurSensitive}>
           <section className={`eh-cards-grid${blurSensitive ? ' eh-blur-numbers' : ''}`}>
+            <div className="eh-card-full">
+              <WeeklyDigestCard />
+            </div>
             <div className="eh-card-full">
               <NetWorthCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
             </div>

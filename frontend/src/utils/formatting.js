@@ -76,6 +76,12 @@ export const formatAccountType = (type) => ({
 export const formatCategory = (cat) =>
   (cat || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
+// Coarse merchant grouping key: first two alphabetic words of the
+// description, uppercased. Heuristic from the detail-row design handoff —
+// there is no normalized merchant field in the txn shape.
+export const merchantKey = (desc = '') =>
+  desc.replace(/[^A-Za-z ]/g, ' ').trim().split(/\s+/).slice(0, 2).join(' ').toUpperCase();
+
 export function txnMonthKey(dateStr) {
   if (!dateStr) return null;
   // ISO format (YYYY-MM-DD from Teller): append T00:00:00 so it's treated as local time, not UTC.

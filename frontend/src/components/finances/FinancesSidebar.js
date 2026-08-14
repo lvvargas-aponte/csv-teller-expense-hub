@@ -14,9 +14,10 @@ const NAV_SECTIONS = [
   {
     label: 'Plan',
     items: [
-      { id: 'budgets', icon: '🎯', label: 'Budgets' },
-      { id: 'goals',   icon: '⭐', label: 'Goals' },
-      { id: 'bills',   icon: '📅', label: 'Bills' },
+      { id: 'budgets',       icon: '🎯', label: 'Budgets' },
+      { id: 'goals',         icon: '⭐', label: 'Goals' },
+      { id: 'bills',         icon: '📅', label: 'Bills' },
+      { id: 'subscriptions', icon: '🔁', label: 'Subscriptions' },
     ],
   },
   {

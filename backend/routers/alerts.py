@@ -5,7 +5,6 @@ utilization, and recurring-charge anomalies into a single feed.  Severity
 levels are advisory: ``info`` = nice to know, ``warn`` = attention soon,
 ``error`` = act now.
 """
-import statistics
 from typing import Any, Dict, List
 
 from fastapi import APIRouter
@@ -96,67 +95,32 @@ def _credit_utilization_alerts() -> List[Dict[str, Any]]:
 
 
 def _recurring_anomaly_alerts() -> List[Dict[str, Any]]:
-    """Flag recurring charges where the latest amount diverges from the median.
-
-    ``detect_recurring_charges`` returns the average and last_seen but not
-    the per-charge series, so we re-derive medians inline using the same
-    grouping key.
-    """
-    from analytics import _normalize_merchant, _parse_month_key  # noqa: WPS450
-
-    by_key: Dict[str, List[Dict[str, Any]]] = {}
-    for txn in state.stored_transactions.values():
-        try:
-            amount = float(txn.get("amount") or 0)
-        except (TypeError, ValueError):
-            continue
-        if amount <= 0:
-            continue
-        if txn.get("transaction_type") != "debit" and not (
-            txn.get("source") == "discover"
-            and txn.get("transaction_type") == "credit"
-        ):
-            continue
-        key = _normalize_merchant(txn.get("description", ""))
-        if not key:
-            continue
-        date_str = txn.get("date", "")
-        by_key.setdefault(key, []).append({
-            "amount": amount,
-            "date": date_str,
-            "month": _parse_month_key(date_str) if date_str else "",
-        })
-
+    """Flag recurring charges where the latest amount diverges from the median."""
     out: List[Dict[str, Any]] = []
     for entry in detect_recurring_charges():
-        key = entry["merchant_key"]
-        items = by_key.get(key, [])
-        amounts = [i["amount"] for i in items]
-        if len(amounts) < 2:
+        if entry["occurrences"] < 2:
             continue
-        # Latest by date.
-        latest = max(items, key=lambda i: i["date"])
-        median = statistics.median(amounts)
-        if median <= 0:
-            continue
-        diff_pct = abs(latest["amount"] - median) / median * 100.0
+        diff_pct = abs(entry["price_change_pct"])
         if diff_pct < 20.0:
             continue
-        direction = "up" if latest["amount"] > median else "down"
+        latest = entry["latest_amount"]
+        usual = latest / (1 + entry["price_change_pct"] / 100.0)
+        direction = "up" if entry["price_change_pct"] > 0 else "down"
         out.append({
             "severity": "info",
             "category": "recurring",
             "message": (
-                f"{entry['sample_description'][:40]} charged ${latest['amount']:.2f} "
-                f"({diff_pct:.0f}% {direction} vs. usual ${median:.2f})"
+                f"{entry['sample_description'][:40]} charged ${latest:.2f} "
+                f"({diff_pct:.0f}% {direction} vs. usual ${usual:.2f})"
             ),
             "link": None,
         })
     return out
 
 
-@router.get("/alerts")
-async def list_alerts() -> Dict[str, Any]:
+def collect_alerts() -> Dict[str, Any]:
+    """Compose every alert source, sorted by severity. Shared with the
+    weekly digest builder so both surfaces show the same feed."""
     alerts: List[Dict[str, Any]] = []
     alerts.extend(_budget_alerts())
     alerts.extend(_goal_alerts())
@@ -171,3 +135,8 @@ async def list_alerts() -> Dict[str, Any]:
         counts[a["severity"]] = counts.get(a["severity"], 0) + 1
 
     return {"alerts": alerts, "counts": counts}
+
+
+@router.get("/alerts")
+async def list_alerts() -> Dict[str, Any]:
+    return collect_alerts()

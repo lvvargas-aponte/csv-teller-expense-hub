@@ -12,9 +12,11 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Type
 
 from pydantic import BaseModel
 
+import config
 import state
 from analytics import (
     _balances_snapshot,
+    _classify_account_bucket,
     _debts_from_accounts,
     _investments_snapshot,
     category_spending_summary,
@@ -32,6 +34,8 @@ from embeddings import (
 )
 
 from agent.schemas import (
+    ListAccountsArgs,
+    ThinkArgs,
     GetBalanceArgs,
     GetBudgetStatusArgs,
     GetCategorySpendingArgs,
@@ -50,12 +54,20 @@ from agent.schemas import (
 Handler = Callable[[BaseModel], Awaitable[Any]]
 
 
+class TransientToolError(Exception):
+    """A tool failure that is likely temporary (rate limit, flaky upstream).
+
+    The harness exempts one retry of the same call from the repeated-call
+    guard and tells the model it may try again."""
+
+
 @dataclass
 class Tool:
     name: str
     description: str
     args_model: Type[BaseModel]
     handler: Handler
+    result_max_chars: int = 4000
 
 
 class ToolRegistry:
@@ -92,6 +104,10 @@ class ToolRegistry:
 # Handlers
 # ---------------------------------------------------------------------------
 
+async def _think(args: ThinkArgs) -> Dict[str, Any]:
+    return {"ok": True, "note": "Plan recorded. Execute it with the other tools now."}
+
+
 async def _search_transactions(args: SearchTransactionsArgs) -> Dict[str, Any]:
     hits = await retrieve_similar_transactions(args.query, k=args.limit)
     results: List[Dict[str, Any]] = []
@@ -125,6 +141,38 @@ async def _get_balance(args: GetBalanceArgs) -> Dict[str, Any]:
         "total_cash": snap["total_cash"],
         "total_credit_debt": snap["total_credit_debt"],
         "total_investments": snap["total_investments"],
+    }
+
+
+async def _list_accounts(args: ListAccountsArgs) -> Dict[str, Any]:
+    snap = _balances_snapshot()
+    rows: List[Dict[str, Any]] = []
+    for source, accounts in (
+        ("teller", snap["teller_accounts"]),
+        ("snaptrade", snap["snaptrade_accounts"]),
+        ("manual", snap["manual_accounts"]),
+    ):
+        for acct in accounts:
+            bucket = _classify_account_bucket(
+                acct.get("type", ""), acct.get("subtype", "")
+            )
+            if args.account_type != "all" and bucket != args.account_type:
+                continue
+            balance = float(acct.get("available", 0.0) or 0.0)
+            if bucket == "credit" or balance == 0.0:
+                balance = float(acct.get("ledger", 0.0) or 0.0)
+            rows.append({
+                "name": acct.get("name", ""),
+                "institution": acct.get("institution", ""),
+                "bucket": bucket,
+                "subtype": acct.get("subtype", "") or acct.get("type", ""),
+                "balance": round(balance, 2),
+                "source": source,
+            })
+    return {
+        "count": len(rows),
+        "accounts": rows,
+        "as_of": snap.get("cache_fetched_at"),
     }
 
 
@@ -332,7 +380,18 @@ def default_tool_registry(
             ],
         }
 
-    return ToolRegistry([
+    tools = [
+        Tool(
+            name="think",
+            description=(
+                "Scratchpad for planning. For multi-step questions, call this "
+                "FIRST with a short numbered plan (which tools, in what order, "
+                "what you'll compare). The user never sees it; it just keeps "
+                "your next steps on track. Not for simple lookups."
+            ),
+            args_model=ThinkArgs,
+            handler=_think,
+        ),
         Tool(
             name="search_transactions",
             description=(
@@ -354,6 +413,19 @@ def default_tool_registry(
             ),
             args_model=GetBalanceArgs,
             handler=_get_balance,
+        ),
+        Tool(
+            name="list_accounts",
+            description=(
+                "List the user's individual accounts with NAME, institution, "
+                "bucket (cash/credit/investment), subtype, and balance. THE "
+                "tool for 'what accounts do I have', 'details about my "
+                "checking accounts', or any question naming a specific "
+                "account. Never invent account names or per-account balances "
+                "— call this. get_balance only returns totals."
+            ),
+            args_model=ListAccountsArgs,
+            handler=_list_accounts,
         ),
         Tool(
             name="get_debt",
@@ -483,4 +555,16 @@ def default_tool_registry(
             args_model=RecallAboutUserArgs,
             handler=_recall_about_user,
         ),
-    ])
+    ]
+
+    from agent.action_tools import build_action_tools
+
+    tools += build_action_tools()
+
+    if config.ADVISOR_WEB_TOOLS_ENABLED:
+        from agent.market_tools import build_market_tools
+        from agent.web_tools import build_web_tools
+
+        tools += build_web_tools() + build_market_tools()
+
+    return ToolRegistry(tools)

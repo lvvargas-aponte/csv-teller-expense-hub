@@ -117,6 +117,87 @@ class TestRedirectHandling:
                 url_fetcher.fetch("https://www.irs.gov/redirect")
 
 
+class TestAllowlistOff:
+    """``enforce_allowlist=False`` (advisor web tools) must skip ONLY the
+    host allowlist — every other guard stays active."""
+
+    def test_fetches_non_allowlisted_https_host(self):
+        with _patch_resolves_public_ok(), patch("httpx.Client") as mock_client:
+            mock_resp = httpx.Response(
+                200,
+                content=b"<html>hi</html>",
+                headers={"Content-Type": "text/html"},
+            )
+            mock_client.return_value.__enter__.return_value.stream.return_value.__enter__.return_value = mock_resp
+            mock_resp.iter_bytes = lambda: iter([b"<html>hi</html>"])
+
+            body, ct, final = url_fetcher.fetch(
+                "https://finance.example.com/article", enforce_allowlist=False
+            )
+            assert body == b"<html>hi</html>"
+            assert ct == "text/html"
+
+    def test_still_rejects_http(self):
+        with pytest.raises(url_fetcher.FetchError, match="https"):
+            url_fetcher.fetch("http://finance.example.com/x", enforce_allowlist=False)
+
+    def test_still_rejects_private_resolution(self):
+        fake_addrinfo = [(2, 1, 6, "", ("127.0.0.1", 0))]
+        with patch("socket.getaddrinfo", return_value=fake_addrinfo):
+            with pytest.raises(url_fetcher.FetchError, match="loopback|private|reserved"):
+                url_fetcher.fetch("https://rebound.example.com/x", enforce_allowlist=False)
+
+    def test_redirect_to_private_host_rejected(self):
+        # First hop is public, redirect target resolves private.
+        def fake_resolve(host):
+            if host == "rebound.example.com":
+                raise url_fetcher.FetchError(
+                    f"Refusing to fetch {host}: resolves to 127.0.0.1 "
+                    f"(private/loopback/reserved address)"
+                )
+
+        with patch.object(url_fetcher, "_check_resolves_public", fake_resolve), patch(
+            "httpx.Client"
+        ) as mock_client:
+            redirect_resp = httpx.Response(
+                302, headers={"Location": "https://rebound.example.com/x"}
+            )
+            redirect_resp.iter_bytes = lambda: iter([])
+            mock_client.return_value.__enter__.return_value.stream.return_value.__enter__.return_value = redirect_resp
+
+            with pytest.raises(url_fetcher.FetchError, match="loopback|private|reserved"):
+                url_fetcher.fetch("https://public.example.com/redirect", enforce_allowlist=False)
+
+    def test_max_bytes_cap_enforced_mid_stream(self):
+        with _patch_resolves_public_ok(), patch("httpx.Client") as mock_client:
+            mock_resp = httpx.Response(200, headers={"Content-Type": "text/html"})
+            mock_resp.iter_bytes = lambda: iter([b"x" * 1024] * 10)
+            mock_client.return_value.__enter__.return_value.stream.return_value.__enter__.return_value = mock_resp
+
+            with pytest.raises(url_fetcher.FetchError, match="cap mid-stream"):
+                url_fetcher.fetch(
+                    "https://finance.example.com/big",
+                    enforce_allowlist=False,
+                    max_bytes=2048,
+                )
+
+    def test_oversize_content_length_rejected(self):
+        with _patch_resolves_public_ok(), patch("httpx.Client") as mock_client:
+            mock_resp = httpx.Response(
+                200,
+                headers={"Content-Type": "text/html", "Content-Length": "999999"},
+            )
+            mock_resp.iter_bytes = lambda: iter([])
+            mock_client.return_value.__enter__.return_value.stream.return_value.__enter__.return_value = mock_resp
+
+            with pytest.raises(url_fetcher.FetchError, match="too large"):
+                url_fetcher.fetch(
+                    "https://finance.example.com/big",
+                    enforce_allowlist=False,
+                    max_bytes=2048,
+                )
+
+
 # ---------------------------------------------------------------------------
 # Endpoint integration — TestClient round-trip.  The fetch itself is
 # patched so we don't hit the network.

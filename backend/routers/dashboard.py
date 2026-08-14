@@ -10,6 +10,7 @@ from fastapi import APIRouter
 
 import analytics
 import state
+from helpers import txn_direction
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -40,11 +41,11 @@ async def dashboard(months: int = 6) -> Dict[str, Any]:
 
 @router.get("/dashboard/income-vs-expenses")
 async def income_vs_expenses(months: int = 6) -> Dict[str, Any]:
-    """Per-month income (credits) vs. expenses (debits) with surplus/deficit.
+    """Per-month income (inflows) vs. expenses (outflows) with surplus/deficit.
 
-    Income is an inverse of the expense filter in ``analytics.group_debit_spending``:
-    Discover credit-purchases stay classified as expenses; everything else
-    that's a positive credit on a non-credit account counts as income.
+    Income is the inverse of the expense filter in
+    ``analytics.group_debit_spending``: positive inflows on a non-credit
+    account, excluding tagged internal transfers.
     """
     months = max(3, min(24, int(months)))
 
@@ -63,18 +64,16 @@ async def income_vs_expenses(months: int = 6) -> Dict[str, Any]:
             amount = float(txn.get("amount", 0))
         except (TypeError, ValueError):
             continue
-        txn_type = txn.get("transaction_type")
-        source = txn.get("source", "")
 
         if analytics._is_expense(txn):
             expense_by_month[month_key] = expense_by_month.get(month_key, 0.0) + amount
             continue
 
-        # Income side: positive credits on a non-credit account, excluding
-        # tagged internal transfers and Discover's inverted-sign credits.
+        # Income side: positive inflows on a non-credit account, excluding
+        # tagged internal transfers.
         if txn.get("transfer_to_account_id"):
             continue
-        if txn_type == "credit" and source != "discover" and amount > 0:
+        if txn_direction(txn) == "inflow" and amount > 0:
             acct_type = (txn.get("account_type") or "").lower()
             if "credit" in acct_type:
                 # Credit-card payments / refunds aren't household income.
