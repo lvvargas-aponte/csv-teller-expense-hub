@@ -175,6 +175,11 @@ export default function CategoryCombobox({
           {showCreateOption && (
             <div
               role="option"
+              // Never the current value — this row creates a new category
+              // rather than selecting an existing one. Still required: every
+              // role="option" must expose aria-selected or screen readers
+              // can't convey the listbox state.
+              aria-selected={false}
               className="cat-combo-option cat-combo-option--create"
               onMouseDown={(e) => { e.preventDefault(); handleSelect(draftTrim); }}
             >

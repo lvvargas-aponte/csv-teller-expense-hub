@@ -20,7 +20,12 @@ const mockTransactions = [
     id: 't2', transaction_id: 't2',
     date: '2024-01-16', description: 'AMAZON PRIME', amount: -29.99,
     source: 'discover', institution: 'Discover',
-    is_shared: true, reviewed: true,
+    // Shared but NOT reviewed — the Current queue renders only unreviewed
+    // rows (App.js `unreviewedVisible`), so a reviewed row would never
+    // appear and the assertions below could not pass. This also matches the
+    // real flow: marking a transaction shared deliberately leaves it
+    // unreviewed until it is sent to Google Sheets.
+    is_shared: true, reviewed: false,
     person_1_owes: 15.00, person_2_owes: 15.00, notes: '', transaction_type: 'debit',
   },
 ];
