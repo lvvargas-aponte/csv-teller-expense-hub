@@ -6,9 +6,16 @@ any app module is imported — it creates the test database if missing and
 applies all Alembic migrations so the schema matches the dev DB.
 
 To run the suite:
-    docker compose run --rm backend pytest
+    docker compose run --rm backend pytest tests
     # or, from the host when port 15432 is exposed:
-    DATABASE_URL=postgresql+asyncpg://expense:expense_dev@localhost:15432/expense_hub_test pytest
+    DATABASE_URL=postgresql+asyncpg://expense:expense_dev@localhost:15432/expense_hub_test pytest tests
+
+Name the directory explicitly. This suite and ``tests_unit`` cannot share
+a pytest process: both conftests force-override DATABASE_URL at import
+time (this one to ``expense_hub_test``, the other to a placeholder no-DB
+URL) and ``db.base`` binds its engine to whichever loaded last. A bare
+``pytest`` collects both, and the TRUNCATE guard below then aborts every
+test in this suite.
 """
 # ---------------------------------------------------------------------------
 # IMPORTANT: point every subsequent import at the test DB BEFORE any app code

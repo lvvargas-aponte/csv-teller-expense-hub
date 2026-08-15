@@ -1,10 +1,26 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import axios from 'axios';
 import PortfolioCard from '../PortfolioCard';
 
 jest.mock('axios');
 jest.mock('../../../ui/Spin', () => () => <span data-testid="spin" />);
+
+// recharts' ResponsiveContainer measures its parent via ResizeObserver,
+// which reports 0x0 in jsdom — so the chart (and the symbol labels this
+// test asserts on) renders nothing. Hand the chart explicit dimensions.
+jest.mock('recharts', () => {
+  const Original = jest.requireActual('recharts');
+  const ReactLib = jest.requireActual('react');
+  return {
+    ...Original,
+    ResponsiveContainer: ({ children }) =>
+      ReactLib.cloneElement(ReactLib.Children.only(children), {
+        width: 400,
+        height: 300,
+      }),
+  };
+});
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -19,9 +35,12 @@ test('renders portfolio totals and top holdings', async () => {
       concentration: [{ symbol: 'BTC', value: 20000, pct: 91 }],
     },
   });
-  render(<PortfolioCard />);
+  const { container } = render(<PortfolioCard />);
   expect(await screen.findByText('Investment Portfolio')).toBeInTheDocument();
-  expect(await screen.findByText('BTC')).toBeInTheDocument();
+  // Scope to the render container: recharts also writes the label into an
+  // off-screen #recharts_measurement_span for text sizing, and that span is
+  // appended to document.body — so a bare screen query matches twice.
+  expect(await within(container).findByText('BTC')).toBeInTheDocument();
 });
 
 test('shows the empty state with no holdings', async () => {

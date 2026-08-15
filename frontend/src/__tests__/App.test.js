@@ -20,7 +20,12 @@ const mockTransactions = [
     id: 't2', transaction_id: 't2',
     date: '2024-01-16', description: 'AMAZON PRIME', amount: -29.99,
     source: 'discover', institution: 'Discover',
-    is_shared: true, reviewed: true,
+    // reviewed MUST stay false: Current is a review queue and filters
+    // reviewed rows out (App.js), so a reviewed fixture would be invisible
+    // here and every filter assertion below would silently pass for the
+    // wrong reason. Reviewed rows are History's job. Marking a txn shared
+    // doesn't auto-review it, so shared+unreviewed is the natural state.
+    is_shared: true, reviewed: false,
     person_1_owes: 15.00, person_2_owes: 15.00, notes: '', transaction_type: 'debit',
   },
 ];
@@ -45,6 +50,27 @@ test('renders transaction descriptions after load', async () => {
   renderApp();
   await screen.findByText('STARBUCKS');
   expect(screen.getByText('AMAZON PRIME')).toBeInTheDocument();
+});
+
+test('Current hides reviewed transactions — they live on History', async () => {
+  axios.get.mockImplementation((url) => {
+    if (url.includes('transactions/all')) return Promise.resolve({ data: [
+      ...mockTransactions,
+      { id: 't3', transaction_id: 't3', date: '2024-01-17', description: 'ALREADY_REVIEWED',
+        amount: -9.99, source: 'discover', institution: 'Discover',
+        is_shared: false, reviewed: true,
+        person_1_owes: 0, person_2_owes: 0, notes: '', transaction_type: 'debit' },
+    ] });
+    if (url.includes('person-names')) return Promise.resolve({ data: mockPersonNames });
+    if (url.includes('/api/accounts')) return Promise.resolve({ data: [] });
+    if (url.includes('/api/balances/summary')) return Promise.resolve({ data: { accounts: [] } });
+    if (url.includes('/api/categories')) return Promise.resolve({ data: { categories: [] } });
+    return Promise.reject(new Error(`Unexpected GET: ${url}`));
+  });
+
+  renderApp();
+  await screen.findByText('STARBUCKS');
+  expect(screen.queryByText('ALREADY_REVIEWED')).not.toBeInTheDocument();
 });
 
 test('shows total transaction count in stat pill', async () => {
