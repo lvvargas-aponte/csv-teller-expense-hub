@@ -81,7 +81,7 @@ export default function SyncModal({ onSync, onClose }) {
         <div className="modal-header">
           <div className="modal-header-text">
             <div className="modal-title">🏦 Sync Bank Transactions</div>
-            <div className="modal-sub">Choose a date range and accounts to pull from Teller</div>
+            <div className="modal-sub">Choose a date range and accounts to pull from your connected banks</div>
           </div>
           <button type="button" className="close-btn" aria-label="Close" onClick={onClose}>✕</button>
         </div>
@@ -169,7 +169,7 @@ export default function SyncModal({ onSync, onClose }) {
 
         <div className="modal-footer">
           <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-teller"
+          <button type="button" className="btn btn-primary"
                   onClick={handleSync}
                   disabled={!fromDate || !toDate || fromDate > toDate || noneSelected}
           >

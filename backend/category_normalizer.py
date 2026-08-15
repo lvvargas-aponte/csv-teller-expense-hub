@@ -2,7 +2,7 @@
 
 Both the one-shot backfill script (``scripts/normalize_categories.py``)
 and the live ingest paths (``csv_parser.py`` Discover rows,
-``routers/teller.py`` detail reads) call ``normalize()`` so the canonical
+``routers/simplefin.py`` detail reads) call ``normalize()`` so the canonical
 label set stays consistent regardless of which bank reported the row.
 
 Mapping rules:

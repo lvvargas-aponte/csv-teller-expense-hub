@@ -1,7 +1,7 @@
 """Analytics helpers — shared aggregations used by insights and advisor routers.
 
 Keeps the advisor lightweight: reads from in-memory stores and the balances
-cache (never triggers a live Teller fetch) so chat turns stay fast.
+cache (never triggers a live SimpleFIN fetch) so chat turns stay fast.
 """
 from __future__ import annotations
 
@@ -13,13 +13,8 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import state
-from helpers import txn_direction
 
 logger = logging.getLogger(__name__)
-
-# Forecast weights for a simple 3-month weighted average
-# (most-recent month = highest weight).
-FORECAST_WEIGHTS = (0.5, 0.3, 0.2)
 
 # 30 days / typical paycheck cadence:
 #   weekly   → 7d   → ×4.286
@@ -40,7 +35,7 @@ def _parse_month_key(date_str: str) -> str:
 def _parse_date_obj(date_str: str) -> Optional[date]:
     """Parse a transaction date string into a ``date`` object.
 
-    Accepts YYYY-MM-DD or MM/DD/YYYY (the two formats CSV imports + Teller
+    Accepts YYYY-MM-DD or MM/DD/YYYY (the two formats CSV imports + SimpleFIN
     sync produce). Returns ``None`` on anything we don't recognize so
     callers can simply skip the row instead of catching exceptions.
     """
@@ -55,7 +50,12 @@ def _parse_date_obj(date_str: str) -> Optional[date]:
 
 
 def group_debit_spending() -> Dict[str, Dict[str, float]]:
-    """Aggregate expense transactions into {month_key: {category: total}}."""
+    """Aggregate expense transactions into {month_key: {category: total}}.
+
+    Discover CSVs store purchases as transaction_type="credit" with a positive
+    amount (raw CSV amounts are negative for charges); other sources use
+    transaction_type="debit".  Both are counted as spending here.
+    """
     spending: Dict[str, Dict[str, float]] = {}
     for txn in state.stored_transactions.values():
         if not _is_expense(txn):
@@ -105,9 +105,10 @@ def _shared_split_totals(recent_months: int = 2) -> Dict[str, Any]:
 
 
 # Subtypes that should be classified as investments rather than spendable cash.
-# Teller surfaces ``type='investment'`` reliably, but subtype labels vary
-# across institutions — match case-insensitively against the user's free-text
-# input from the Accounts modal too.
+# SimpleFIN's account-type inference doesn't reliably surface
+# ``type='investment'``, and subtype labels vary across institutions — match
+# case-insensitively against the user's free-text input from the Accounts
+# modal too.
 _INVESTMENT_SUBTYPES = frozenset({
     "401k", "401(k)", "403b", "403(b)", "ira", "roth_ira", "roth ira",
     "brokerage", "hsa", "investment", "retirement", "rollover_ira",
@@ -210,17 +211,18 @@ def summarize_holdings(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _balances_snapshot() -> Dict[str, Any]:
-    """Read cached Teller balances + live manual accounts without calling Teller.
+    """Read cached SimpleFIN balances + live manual accounts without calling SimpleFIN.
 
     Walks the raw account list and reclassifies each one through
     ``_classify_account_bucket`` so investment / retirement accounts surface
-    as their own bucket — the pre-summed ``teller_cash`` / ``teller_credit_debt``
-    scalars in the cache only cover depository + credit and would otherwise
-    silently drop investment value from net worth. SnapTrade-synced investment
-    accounts live under their own ``snaptrade_accounts`` cache key.
+    as their own bucket — the pre-summed ``simplefin_cash`` /
+    ``simplefin_credit_debt`` scalars in the cache only cover depository +
+    credit and would otherwise silently drop investment value from net worth.
+    SnapTrade-synced investment accounts live under their own
+    ``snaptrade_accounts`` cache key.
     """
     cache = state._balances_cache or {}
-    teller_accounts = cache.get("teller_accounts", []) or []
+    linked_accounts = list(cache.get("simplefin_accounts", []) or [])
     snaptrade_accounts = cache.get("snaptrade_accounts", []) or []
 
     manual_accounts: List[Dict[str, Any]] = []
@@ -239,15 +241,15 @@ def _balances_snapshot() -> Dict[str, Any]:
     total_cash = 0.0
     total_credit = 0.0
     total_investments = 0.0
-    for acct in list(teller_accounts) + list(snaptrade_accounts) + manual_accounts:
+    for acct in list(linked_accounts) + list(snaptrade_accounts) + manual_accounts:
         bucket = _classify_account_bucket(acct.get("type", ""), acct.get("subtype", ""))
         if bucket == "cash":
             total_cash += float(acct.get("available", 0.0) or 0.0)
         elif bucket == "credit":
             total_credit += float(acct.get("ledger", 0.0) or 0.0)
         elif bucket == "investment":
-            # Investments report value via ``available`` (Teller's convention
-            # for non-depository accounts is to put the position value there);
+            # Investments report value via ``available`` (the convention for
+            # non-depository accounts is to put the position value there);
             # fall back to ``ledger`` if available is empty.
             value = float(acct.get("available", 0.0) or 0.0)
             if value == 0.0:
@@ -259,10 +261,10 @@ def _balances_snapshot() -> Dict[str, Any]:
         "total_cash": round(total_cash, 2),
         "total_credit_debt": round(total_credit, 2),
         "total_investments": round(total_investments, 2),
-        "teller_accounts": teller_accounts,
+        "linked_accounts": linked_accounts,
         "snaptrade_accounts": snaptrade_accounts,
         "manual_accounts": manual_accounts,
-        "cache_fetched_at": cache.get("fetched_at"),
+        "cache_fetched_at": cache.get("simplefin_fetched_at"),
     }
 
 
@@ -272,7 +274,7 @@ def _debts_from_accounts(snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
     are attached here so the advisor can reason over them without asking.
     """
     debts: List[Dict[str, Any]] = []
-    for acct in snapshot.get("teller_accounts", []) + snapshot.get("manual_accounts", []):
+    for acct in snapshot.get("linked_accounts", []) + snapshot.get("manual_accounts", []):
         if acct.get("type") != "credit":
             continue
         entry: Dict[str, Any] = {
@@ -333,7 +335,7 @@ def _account_balance_by_id(account_id: str) -> Optional[float]:
     """Look up an account's `available` balance across cache + manual accounts."""
     if not account_id:
         return None
-    for acct in state._balances_cache.get("teller_accounts", []) or []:
+    for acct in state._balances_cache.get("simplefin_accounts", []) or []:
         if acct.get("id") == account_id:
             return float(acct.get("available", 0.0))
     acct = state._manual_accounts.get(account_id)
@@ -367,7 +369,7 @@ def _compute_account_velocity(
     last ``days`` days.
 
     Uses the earliest and most recent snapshots within the window — this
-    is robust to irregular snapshot cadence (Teller sync may not run
+    is robust to irregular snapshot cadence (SimpleFIN sync may not run
     every day) but smooths out daily fluctuations.
 
     Returns ``None`` when fewer than two snapshots are available within
@@ -567,60 +569,37 @@ def _is_expense(txn: Dict[str, Any]) -> bool:
     spending. Filters:
       * tagged transfers to a manual account drop out (see ``transfer_to_account_id``)
       * known non-spending categories drop out (CC payments, Zelle out, etc.)
-      * everything else counts when its money-flow ``direction`` is outflow
+      * Discover credits with positive amount stay in (their sign convention is inverted)
+      * other debits / null-typed positive amounts stay in
     """
     if txn.get("transfer_to_account_id"):
         return False
     category = (txn.get("category") or "").strip().lower()
     if category in _NON_SPENDING_CATEGORIES:
         return False
+
+    txn_type = txn.get("transaction_type")
     try:
-        float(txn.get("amount", 0))
+        amount = float(txn.get("amount", 0))
     except (TypeError, ValueError):
         return False
-    return txn_direction(txn) == "outflow"
+    source = txn.get("source", "")
 
-
-# Cadence bands: (name, min_median_gap_days, max_median_gap_days,
-# charges_per_month). The bands are deliberately loose — real billing dates
-# drift around weekends and month lengths.
-_CADENCE_BANDS = (
-    ("weekly",     5,  10,  52.0 / 12.0),
-    ("biweekly",  11,  18,  26.0 / 12.0),
-    ("monthly",   24,  38,  1.0),
-    ("bimonthly", 50,  75,  0.5),
-    ("quarterly", 76, 115,  1.0 / 3.0),
-    ("semiannual", 150, 220, 1.0 / 6.0),
-    ("annual",   300, 430,  1.0 / 12.0),
-)
-
-
-def _classify_cadence(gap_days: List[int]) -> tuple:
-    """Return ``(cadence_name, charges_per_month, median_gap)`` from the gaps
-    between consecutive charges. ``("irregular", None, median_gap)`` when the
-    median gap doesn't fit a known billing band.
-    """
-    if not gap_days:
-        return "irregular", None, None
-    median_gap = statistics.median(gap_days)
-    for name, lo, hi, per_month in _CADENCE_BANDS:
-        if lo <= median_gap <= hi:
-            return name, per_month, median_gap
-    return "irregular", None, median_gap
+    return (
+        txn_type == "debit"
+        or (source == "discover" and txn_type == "credit" and amount > 0)
+        or (txn_type is None and amount > 0)
+    )
 
 
 def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
     """Find merchants charging the household on a regular cadence.
 
-    Heuristic: group expense transactions by normalized merchant; keep groups
-    seen in at least ``min_occurrences`` distinct months with amounts within
-    ``_RECURRING_AMOUNT_SPREAD`` of each other. The gaps between consecutive
-    charges classify the billing ``cadence`` (weekly … annual), which makes
-    ``estimated_monthly_cost`` cadence-aware — an annual renewal contributes
-    1/12 of its price, a weekly charge ~4.3x.
-
-    ``price_change_pct`` compares the latest charge to the median so callers
-    (alerts, the subscriptions review page) can flag price creep.
+    Heuristic: group debit transactions by normalized merchant; keep groups
+    that appear in at least ``min_occurrences`` distinct months with amounts
+    within ``_RECURRING_AMOUNT_SPREAD`` of each other.  Returns one entry per
+    detected subscription with ``estimated_monthly_cost`` so the advisor can
+    flag total spend.
     """
     groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for txn in state.stored_transactions.values():
@@ -631,8 +610,7 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
             continue
 
         date_str = txn.get("date", "")
-        parsed = _parse_date_obj(date_str)
-        if parsed is None:
+        if not date_str:
             continue
         key = _normalize_merchant(txn.get("description", ""))
         if not key:
@@ -642,7 +620,6 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
             "description": txn.get("description", ""),
             "amount": amount,
             "date": date_str,
-            "date_obj": parsed,
             "month": _parse_month_key(date_str),
             "category": txn.get("category") or "Uncategorized",
         })
@@ -656,50 +633,30 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
         avg = sum(amounts) / len(amounts)
         if avg <= 0:
             continue
-        items.sort(key=lambda i: i["date_obj"])
-        latest = items[-1]
-
         spread = (max(amounts) - min(amounts)) / avg
         # Skip the spread gate for always-recurring categories — utilities and
         # insurance routinely swing wider than 60% but are still bills.
-        item_cat = (latest["category"] or "").strip().lower()
+        item_cat = (items[-1]["category"] or "").strip().lower()
         if item_cat not in _ALWAYS_RECURRING_CATEGORIES and spread > _RECURRING_AMOUNT_SPREAD:
             continue
 
-        gaps = [
-            (items[i]["date_obj"] - items[i - 1]["date_obj"]).days
-            for i in range(1, len(items))
-        ]
-        cadence, per_month, median_gap = _classify_cadence(gaps)
-        # Irregular groups that survived the month/spread gates behave like
-        # the old detector: assume one charge a month.
-        monthly_cost = avg * per_month if per_month else avg
-
-        median_amount = statistics.median(amounts)
-        price_change_pct = (
-            round((latest["amount"] - median_amount) / median_amount * 100.0, 1)
-            if median_amount > 0 else 0.0
-        )
-
+        last_seen = max(i["date"] for i in items)
         # Typical day-of-month — median across past charges, used by the Bills
         # page to project the next due date. Resilient to one stray reissue.
-        days_of_month = sorted(i["date_obj"].day for i in items)
+        days_of_month = sorted(
+            int(i["date"][8:10]) for i in items if len(i["date"]) >= 10
+        )
         typical_day = days_of_month[len(days_of_month) // 2] if days_of_month else None
         out.append({
             "merchant_key": key,
-            "sample_description": latest["description"],
-            "category": latest["category"],
+            "sample_description": items[-1]["description"],
+            "category": items[-1]["category"],
             "average_amount": round(avg, 2),
-            "latest_amount": round(latest["amount"], 2),
-            "price_change_pct": price_change_pct,
             "occurrences": len(items),
             "months_seen": len(months_seen),
-            "first_seen": items[0]["date_obj"].isoformat(),
-            "last_seen": latest["date_obj"].isoformat(),
+            "last_seen": last_seen,
             "typical_day": typical_day,
-            "cadence": cadence,
-            "interval_days": int(median_gap) if median_gap is not None else None,
-            "estimated_monthly_cost": round(monthly_cost, 2),
+            "estimated_monthly_cost": round(avg, 2),
         })
 
     out.sort(key=lambda r: r["estimated_monthly_cost"], reverse=True)
@@ -709,7 +666,7 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Balance trajectory — surface the slope of net worth over recent windows so
 # the advisor can frame answers around direction, not just current totals.
-# Reads ``balance_snapshots`` via the repo abstraction; never calls Teller.
+# Reads ``balance_snapshots`` via the repo abstraction; never calls SimpleFIN.
 # ---------------------------------------------------------------------------
 
 _TREND_LOOKBACK_DAYS = (30, 60, 90)
@@ -907,23 +864,27 @@ def _is_income_candidate(txn: Dict[str, Any]) -> bool:
     """Return True if ``txn`` could plausibly be income.
 
     Filters:
-    * Must be an inflow (money coming in).
-    * Amount must be positive — Teller occasionally returns signed amounts;
+    * Must be a credit (money coming in).
+    * Amount must be positive — sources occasionally return signed amounts;
       we standardize to positive elsewhere but keep the guard.
+    * Discover CSVs use ``transaction_type='credit'`` for *purchases* (their
+      sign convention is inverted), so we exclude them outright.
     * Exclude credit-card account credits (statement payments / refunds).
-      ``account_type`` from Teller is e.g. ``credit_card``; CSV uploads to
+      ``account_type`` from SimpleFIN is e.g. ``credit_card``; CSV uploads to
       a credit-typed account also tag the row.
     * Exclude P2P-platform credits (Venmo/Zelle/Cash App/PayPal). Those flow
       through ``detect_recurring_inbound_transfers`` instead so a roommate's
       rent split doesn't get treated as a household paycheck.
     """
-    if txn_direction(txn) != "inflow":
+    if txn.get("transaction_type") != "credit":
         return False
     try:
         amount = float(txn.get("amount") or 0)
     except (TypeError, ValueError):
         return False
     if amount <= 0:
+        return False
+    if txn.get("source") == "discover":
         return False
     acct_type = (txn.get("account_type") or "").lower()
     if "credit" in acct_type:
@@ -936,17 +897,19 @@ def _is_income_candidate(txn: Dict[str, Any]) -> bool:
 def _is_inbound_transfer_candidate(txn: Dict[str, Any]) -> bool:
     """Return True if ``txn`` looks like a P2P / reimbursement credit.
 
-    Same baseline filters as ``_is_income_candidate`` (inflow, positive,
-    depository) but *requires* the description to match
+    Same baseline filters as ``_is_income_candidate`` (credit, positive,
+    depository, not Discover) but *requires* the description to match
     ``_INBOUND_TRANSFER_RE`` and does *not* exclude P2P keywords.
     """
-    if txn_direction(txn) != "inflow":
+    if txn.get("transaction_type") != "credit":
         return False
     try:
         amount = float(txn.get("amount") or 0)
     except (TypeError, ValueError):
         return False
     if amount <= 0:
+        return False
+    if txn.get("source") == "discover":
         return False
     acct_type = (txn.get("account_type") or "").lower()
     if "credit" in acct_type:
@@ -1147,8 +1110,9 @@ def category_spending_summary(
     Direction split matters for **transfer-tagged categories** (e.g. the
     user's ``Savings`` category contains positive-amount debit rows for
     money going INTO savings and credit rows for money coming back).
-    ``outflow`` and ``inflow`` follow the canonical money-flow
-    ``direction`` field. ``net_outflow`` is outflow minus inflow — the
+    ``outflow`` is debits (Discover credits with positive amount also
+    count here — Discover's sign convention is inverted). ``inflow`` is
+    non-Discover credits. ``net_outflow`` is outflow minus inflow — the
     right number for "how much did I actually put into Savings".
 
     For pure spending categories (Dining, Drinks, Groceries…), ``inflow``
@@ -1192,7 +1156,15 @@ def category_spending_summary(
         if amount <= 0:
             continue
 
-        is_outflow = txn_direction(txn) == "outflow"
+        txn_type = txn.get("transaction_type")
+        source = (txn.get("source") or "")
+        # Discover stores charges as ``credit`` with positive amount — count
+        # those as outflow. Everything else: debit = outflow, credit = inflow.
+        is_outflow = (
+            txn_type == "debit"
+            or (source == "discover" and txn_type == "credit")
+            or (txn_type is None)
+        )
         if is_outflow:
             outflow += amount
         else:
@@ -1391,8 +1363,8 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
     """Return a compact dict describing the household's financial state.
 
     Used as the advisor's grounding context.  Everything is read from the DB
-    / in-memory stores (no Teller / SnapTrade / GSheet calls) so this is safe
-    to call on every chat turn.
+    / in-memory stores (no SimpleFIN / SnapTrade / GSheet calls) so this is
+    safe to call on every chat turn.
     """
     spending_by_month = group_debit_spending()
     recent = sorted(spending_by_month.keys())[-months:]
@@ -1421,7 +1393,7 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
         "balance_trend": balance_trend,
         "income": income,
         "accounts": {
-            "teller": balances["teller_accounts"],
+            "simplefin": balances["linked_accounts"],
             "snaptrade": balances["snaptrade_accounts"],
             "manual": balances["manual_accounts"],
         },

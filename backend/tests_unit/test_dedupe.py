@@ -47,7 +47,7 @@ class TestDedupeEndpoint:
         # Same purchase, same date/amount/direction, descriptions that differ
         # only in casing + punctuation → should collide on the dedupe key.
         _seed("csv_abc", source="barclays", description="STARBUCKS #1234")
-        _seed("teller_xyz", source="teller", description="starbucks  1234")
+        _seed("simplefin_xyz", source="simplefin", description="starbucks  1234")
         _seed("solo", description="UNRELATED")
 
         r = client.post("/api/transactions/dedupe", json={"mode": "preview"})
@@ -58,7 +58,7 @@ class TestDedupeEndpoint:
         assert body["duplicate_count"] == 1
         # Original txns are untouched in preview.
         assert "csv_abc" in state.stored_transactions
-        assert "teller_xyz" in state.stored_transactions
+        assert "simplefin_xyz" in state.stored_transactions
 
     def test_apply_keeps_reviewed_winner(self, client):
         _seed("loser_id", reviewed=False)
@@ -110,12 +110,12 @@ class TestIngestSkipsCrossSourceDuplicate:
         # a different transaction_id and a different source — exactly the case
         # transaction_id-based dedupe missed before.
         _seed(
-            "teller_preexisting",
+            "simplefin_preexisting",
             date="01/15/2024",
             amount=4.50,
             description="STARBUCKS",
             transaction_type="debit",
-            source="teller",
+            source="simplefin",
         )
 
         import io

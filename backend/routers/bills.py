@@ -36,7 +36,8 @@ def _next_due_date(today: date, due_day: int) -> date:
 
 def _account_lookup(account_id: str) -> Dict[str, Any]:
     """Find account metadata (name, institution) across cache + manual."""
-    for acct in state._balances_cache.get("teller_accounts", []) or []:
+    _cached = state._balances_cache.get("simplefin_accounts", []) or []
+    for acct in _cached:
         if acct.get("id") == account_id:
             inst = acct.get("institution")
             inst_name = inst if isinstance(inst, str) else (inst or {}).get("name", "")

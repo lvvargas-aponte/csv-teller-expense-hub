@@ -40,7 +40,7 @@ def _insert_snapshot(
             text(
                 "INSERT INTO balance_snapshots "
                 "  (account_id, captured_at, available, ledger, source) "
-                "VALUES (:aid, :ts, :avail, :ledger, 'teller')"
+                "VALUES (:aid, :ts, :avail, :ledger, 'simplefin')"
             ),
             {
                 "aid": account_id,

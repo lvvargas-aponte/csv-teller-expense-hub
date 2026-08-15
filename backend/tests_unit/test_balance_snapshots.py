@@ -3,21 +3,7 @@
 Same assertions, sourced from ``accounts_repo_memory`` instead of SQL so the
 suite runs without Postgres.
 """
-from unittest.mock import AsyncMock, patch
-
-import state
 from db import accounts_repo_memory
-
-
-def _fake_teller_account(acct_id="acc_s1"):
-    return {
-        "id": acct_id,
-        "name": "Primary Checking",
-        "type": "depository",
-        "subtype": "checking",
-        "institution": {"name": "Test Bank"},
-        "balance": {"available": "250.00", "ledger": "250.00"},
-    }
 
 
 def _snapshots_for(account_id):
@@ -26,43 +12,6 @@ def _snapshots_for(account_id):
 
 def _count_snapshots(account_id):
     return len(_snapshots_for(account_id))
-
-
-class TestTellerSyncWritesSnapshots:
-    def _invoke_sync(self, client):
-        account = _fake_teller_account()
-        list_mock = AsyncMock(return_value=([("tok1", [account])], []))
-        txns_mock = AsyncMock(return_value=[])
-        bal_mock = AsyncMock(return_value=account["balance"])
-        with patch.object(state.teller, "list_accounts_by_token", list_mock), \
-             patch.object(state.teller, "fetch_account_transactions", txns_mock), \
-             patch.object(state.teller, "fetch_balance_safe", bal_mock), \
-             patch.object(state, "TELLER_ACCESS_TOKENS", ["tok1"]):
-            return client.post(
-                "/api/teller/sync",
-                json={"from_date": "2026-03-01", "to_date": "2026-03-31"},
-            )
-
-    def test_first_sync_writes_one_snapshot_per_account(self, client):
-        response = self._invoke_sync(client)
-        assert response.status_code == 200, response.text
-        assert _count_snapshots("acc_s1") == 1
-
-    def test_snapshot_captures_available_ledger_source_raw(self, client):
-        self._invoke_sync(client)
-        snap = _snapshots_for("acc_s1")[0]
-        assert snap["source"] == "teller"
-        assert float(snap["available"]) == 250.0
-        assert float(snap["ledger"]) == 250.0
-        assert isinstance(snap["raw"], dict)
-        assert snap["raw"].get("available") == "250.00"
-
-    def test_each_sync_appends_a_new_snapshot(self, client):
-        """History table: re-running sync does NOT upsert, it appends."""
-        self._invoke_sync(client)
-        self._invoke_sync(client)
-        self._invoke_sync(client)
-        assert _count_snapshots("acc_s1") == 3
 
 
 class TestManualAccountSnapshots:

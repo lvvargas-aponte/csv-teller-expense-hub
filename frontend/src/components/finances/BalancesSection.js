@@ -25,7 +25,7 @@ function iconForAccount(acct, isInvestment) {
   return { icon: '🏦', bg: '#dbeafe' };
 }
 
-// Subtype labels Teller / users may attach to an investment account.
+// Subtype labels SimpleFIN / users may attach to an investment account.
 // Kept in sync with backend ``analytics._INVESTMENT_SUBTYPES``; if those
 // expand, mirror the new entries here.
 const INVESTMENT_SUBTYPES = new Set([
@@ -232,7 +232,7 @@ export default function BalancesSection({ summary, loading, error, onRefresh, on
             )}
             {depository.length === 0 && credit.length === 0 && investments.length === 0 && (
               <div style={{ color: '#6b7280', fontSize: 14, padding: '20px 0' }}>
-                No account data found. Connect a bank via Teller or add one manually above.
+                No account data found. Connect a bank via SimpleFIN or add one manually above.
               </div>
             )}
           </>

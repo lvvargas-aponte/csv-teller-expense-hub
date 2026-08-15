@@ -36,24 +36,27 @@ def _seed_txn(txn_id, date, amount, category, txn_type="debit"):
     }
 
 
-def _make_teller_account(
-    acct_id, name, acct_type, subtype="checking",
-    institution="Chase", available="0.00", ledger="0.00"
-):
-    """Return a dict shaped like a Teller /accounts list entry."""
+def _make_simplefin_account(acct_id, name, balance, institution="Chase"):
+    """Return a dict shaped like a SimpleFIN /accounts list entry.
+
+    SimpleFIN carries no explicit account-type field — ``persist_simplefin_
+    balances`` infers cash vs. credit from the account/institution name via
+    ``infer_account_bucket``, so the ``name`` chosen here ("Checking" vs.
+    "Visa") is what actually selects the bucket. Credit-card balances are
+    reported negative (money owed) per SimpleFIN's own sign convention.
+    """
     return {
         "id": acct_id,
         "name": name,
-        "type": acct_type,
-        "subtype": subtype,
-        "institution": {"name": institution},
-        "balance": {"available": available, "ledger": ledger},
+        "org": {"name": institution},
+        "balance": balance,
+        "transactions": [],
     }
 
 
-def _mock_list_accounts_by_token(accounts_list, token="tok1"):
-    """Return an AsyncMock for teller.list_accounts_by_token with one successful token batch."""
-    return AsyncMock(return_value=([(token, accounts_list)], []))
+def _mock_list_accounts_by_url(accounts_list, url="https://user:pass@bridge.example/access"):
+    """Return an AsyncMock for simplefin.list_accounts_by_url with one successful url batch."""
+    return AsyncMock(return_value=([(url, accounts_list)], []))
 
 
 # ---------------------------------------------------------------------------
@@ -61,8 +64,8 @@ def _mock_list_accounts_by_token(accounts_list, token="tok1"):
 # ---------------------------------------------------------------------------
 
 class TestGetBalancesSummary:
-    def test_no_tokens_returns_empty_summary(self, client, monkeypatch):
-        monkeypatch.setattr("state.TELLER_ACCESS_TOKENS", [])
+    def test_no_urls_returns_empty_summary(self, client, monkeypatch):
+        monkeypatch.setattr("state.SIMPLEFIN_ACCESS_URLS", [])
         response = client.get("/api/balances/summary")
         assert response.status_code == 200
         data = response.json()
@@ -73,14 +76,11 @@ class TestGetBalancesSummary:
 
     def test_depository_only(self, client):
         accounts = [
-            _make_teller_account(
-                "acc1", "Checking", "depository",
-                available="1000.00", ledger="1000.00"
-            )
+            _make_simplefin_account("acc1", "Checking", balance="1000.00")
         ]
-        with patch.object(state.teller, "list_accounts_by_token",
-                          _mock_list_accounts_by_token(accounts)):
-            with patch.object(state, "TELLER_ACCESS_TOKENS", ["tok1"]):
+        with patch.object(state.simplefin, "list_accounts_by_url",
+                          _mock_list_accounts_by_url(accounts)):
+            with patch.object(state, "SIMPLEFIN_ACCESS_URLS", ["https://u:p@bridge.example/access"]):
                 response = client.get("/api/balances/summary?force=true")
 
         assert response.status_code == 200
@@ -92,14 +92,11 @@ class TestGetBalancesSummary:
 
     def test_credit_only(self, client):
         accounts = [
-            _make_teller_account(
-                "acc2", "Visa", "credit",
-                subtype="credit_card", available="0.00", ledger="500.00"
-            )
+            _make_simplefin_account("acc2", "Visa", balance="-500.00")
         ]
-        with patch.object(state.teller, "list_accounts_by_token",
-                          _mock_list_accounts_by_token(accounts)):
-            with patch.object(state, "TELLER_ACCESS_TOKENS", ["tok1"]):
+        with patch.object(state.simplefin, "list_accounts_by_url",
+                          _mock_list_accounts_by_url(accounts)):
+            with patch.object(state, "SIMPLEFIN_ACCESS_URLS", ["https://u:p@bridge.example/access"]):
                 response = client.get("/api/balances/summary?force=true")
 
         assert response.status_code == 200
@@ -110,18 +107,12 @@ class TestGetBalancesSummary:
 
     def test_mixed_accounts(self, client):
         accounts = [
-            _make_teller_account(
-                "acc1", "Checking", "depository",
-                available="2000.00", ledger="2000.00"
-            ),
-            _make_teller_account(
-                "acc2", "Visa", "credit",
-                subtype="credit_card", available="0.00", ledger="800.00"
-            ),
+            _make_simplefin_account("acc1", "Checking", balance="2000.00"),
+            _make_simplefin_account("acc2", "Visa", balance="-800.00"),
         ]
-        with patch.object(state.teller, "list_accounts_by_token",
-                          _mock_list_accounts_by_token(accounts)):
-            with patch.object(state, "TELLER_ACCESS_TOKENS", ["tok1"]):
+        with patch.object(state.simplefin, "list_accounts_by_url",
+                          _mock_list_accounts_by_url(accounts)):
+            with patch.object(state, "SIMPLEFIN_ACCESS_URLS", ["https://u:p@bridge.example/access"]):
                 response = client.get("/api/balances/summary?force=true")
 
         assert response.status_code == 200
@@ -131,22 +122,20 @@ class TestGetBalancesSummary:
         assert data["net_worth"] == pytest.approx(1200.0)
         assert len(data["accounts"]) == 2
 
-    def test_failed_token_skipped(self, client):
-        """First token errors; second returns a valid account. Both modelled as return value."""
+    def test_failed_url_skipped(self, client):
+        """First access URL errors; second returns a valid account. Both modelled as return value."""
         good_accounts = [
-            _make_teller_account(
-                "acc_good", "Savings", "depository",
-                available="500.00", ledger="500.00"
-            )
+            _make_simplefin_account("acc_good", "Savings", balance="500.00")
         ]
-        # list_accounts_by_token returns one success and one error entry
+        # list_accounts_by_url returns one success and one error entry
         mock_return = (
-            [("good_tok", good_accounts)],
-            [{"token": "bad_tok...", "error": "Auth failed (401): Unauthorized"}],
+            [("https://u:p@good.example/access", good_accounts)],
+            [{"url": "https://***@bad.example/access", "error": "Auth failed (401)"}],
         )
-        with patch.object(state.teller, "list_accounts_by_token",
+        with patch.object(state.simplefin, "list_accounts_by_url",
                           AsyncMock(return_value=mock_return)):
-            with patch.object(state, "TELLER_ACCESS_TOKENS", ["bad_tok", "good_tok"]):
+            with patch.object(state, "SIMPLEFIN_ACCESS_URLS",
+                              ["https://u:p@bad.example/access", "https://u:p@good.example/access"]):
                 response = client.get("/api/balances/summary?force=true")
 
         assert response.status_code == 200
@@ -155,11 +144,11 @@ class TestGetBalancesSummary:
         assert data["accounts"][0]["id"] == "acc_good"
         assert data["total_cash"] == pytest.approx(500.0)
 
-    def test_default_get_never_hits_teller(self, client):
-        """GET without force=true must NOT call Teller, even when tokens exist."""
+    def test_default_get_never_hits_simplefin(self, client):
+        """GET without force=true must NOT call SimpleFIN, even when access URLs exist."""
         list_mock = AsyncMock(return_value=([], []))
-        with patch.object(state.teller, "list_accounts_by_token", list_mock):
-            with patch.object(state, "TELLER_ACCESS_TOKENS", ["tok1"]):
+        with patch.object(state.simplefin, "list_accounts_by_url", list_mock):
+            with patch.object(state, "SIMPLEFIN_ACCESS_URLS", ["https://u:p@bridge.example/access"]):
                 response = client.get("/api/balances/summary")
 
         assert response.status_code == 200

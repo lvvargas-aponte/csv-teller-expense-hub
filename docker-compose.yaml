@@ -26,15 +26,12 @@ services:
     env_file:
       - .env
     environment:
-      - TELLER_CERT_PATH=/app/certs/certificate.pem
-      - TELLER_KEY_PATH=/app/certs/private_key.pem
       # host.docker.internal resolves to the Docker host on Docker Desktop (Windows/Mac).
       # Override if Ollama runs on a different host/port.
       - OLLAMA_HOST=http://host.docker.internal:11434
       - DATABASE_URL=postgresql+asyncpg://expense:${POSTGRES_PASSWORD:-expense_dev}@db:5432/expense_hub
     volumes:
       - ./backend:/app
-      - ./certs:/app/certs:ro
       # Built mkdocs site for the in-app Help button (served at /help).
       # Run `mkdocs build` from the project root to populate; otherwise the
       # mount is empty and the backend logs a warning at startup.

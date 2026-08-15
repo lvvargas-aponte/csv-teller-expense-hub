@@ -53,13 +53,8 @@ export function thisMonthRange() {
 }
 
 export function channelLabel(source) {
-  return source === 'teller' ? 'Teller' : 'CSV';
+  return source === 'simplefin' ? 'SimpleFIN' : 'CSV';
 }
-
-export const CHANNEL_COLOR = {
-  Teller: '#10b981',  // green
-  CSV:    '#6366f1',  // indigo
-};
 
 export const calculateHalf = (amount) =>
   parseFloat((Math.abs(parseFloat(amount)) / 2).toFixed(2));
@@ -84,7 +79,7 @@ export const merchantKey = (desc = '') =>
 
 export function txnMonthKey(dateStr) {
   if (!dateStr) return null;
-  // ISO format (YYYY-MM-DD from Teller): append T00:00:00 so it's treated as local time, not UTC.
+  // ISO format (YYYY-MM-DD from SimpleFIN): append T00:00:00 so it's treated as local time, not UTC.
   // US format (MM/DD/YYYY from Discover/Barclays): pass directly — V8 parses it as local time already.
   const d = /^\d{4}-\d{2}-\d{2}/.test(dateStr)
     ? new Date(dateStr.slice(0, 10) + 'T00:00:00')

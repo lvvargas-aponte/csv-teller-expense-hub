@@ -9,26 +9,26 @@ import AccountsModal from '../../accounts/AccountsModal';
 // also surfaces manual-only and disconnected (error) institutions.
 //
 // `summaryAccounts` is the merged list from /api/balances/summary (manual +
-// Teller-cached). We additionally fetch /api/accounts so we can detect
+// SimpleFIN-cached). We additionally fetch /api/accounts so we can detect
 // `_connection_error` rows that the cached summary doesn't carry.
 export default function ConnectionsHeader({ summaryAccounts = [], onRefresh }) {
-  const [tellerAccounts, setTellerAccounts] = useState([]);
+  const [bankAccounts, setBankAccounts] = useState([]);
   const [showManage, setShowManage] = useState(false);
 
   useEffect(() => {
     axios.get(`${API_BASE}/api/accounts`)
-      .then((r) => setTellerAccounts(Array.isArray(r.data) ? r.data : []))
+      .then((r) => setBankAccounts(Array.isArray(r.data) ? r.data : []))
       .catch(() => { /* non-critical header */ });
   }, []);
 
   // Build one entry per institution with a connection status:
-  //   'connected'    → at least one healthy Teller account
-  //   'disconnected' → has Teller account(s) but all are in error
+  //   'connected'    → at least one healthy bank-synced account
+  //   'disconnected' → has bank-synced account(s) but all are in error
   //   'manual'       → only manual accounts for this institution
   const institutions = useMemo(() => {
     const byName = new Map();
 
-    for (const a of tellerAccounts) {
+    for (const a of bankAccounts) {
       const name = a.institution?.name;
       if (!name) continue;
       const cur = byName.get(name) ?? { name, status: 'disconnected', hasError: false };
@@ -45,14 +45,14 @@ export default function ConnectionsHeader({ summaryAccounts = [], onRefresh }) {
           byName.set(name, { name, status: 'manual', hasError: false });
         }
       } else if (!byName.has(name)) {
-        // A Teller-cached account whose token is missing from /api/accounts
+        // A SimpleFIN-cached account whose token is missing from /api/accounts
         // (e.g. backend restart with empty token list). Surface as disconnected.
         byName.set(name, { name, status: 'disconnected', hasError: true });
       }
     }
 
     return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [tellerAccounts, summaryAccounts]);
+  }, [bankAccounts, summaryAccounts]);
 
   const closeManage = () => {
     setShowManage(false);
@@ -83,8 +83,8 @@ export default function ConnectionsHeader({ summaryAccounts = [], onRefresh }) {
               : isManual ? '#9ca3af'
                 : '#dc2626';
 
-            const title = isConnected ? `${inst.name} — connected via Teller`
-              : isManual ? `${inst.name} — manual entry (not connected to Teller)`
+            const title = isConnected ? `${inst.name} — connected`
+              : isManual ? `${inst.name} — manual entry (not connected)`
                 : `${inst.name} — connection error, click to reconnect`;
 
             const suffix = isManual ? ' · Manual'

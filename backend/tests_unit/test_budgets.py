@@ -9,11 +9,11 @@ def _seed_current_month_spending(client, monkeypatch):
     today = date.today().isoformat()
     state.stored_transactions["t1"] = {
         "id": "t1", "date": today, "description": "RESTAURANT", "amount": 30.0,
-        "category": "Dining", "transaction_type": "debit", "source": "teller",
+        "category": "Dining", "transaction_type": "debit", "source": "simplefin",
     }
     state.stored_transactions["t2"] = {
         "id": "t2", "date": today, "description": "CAFE", "amount": 15.0,
-        "category": "Dining", "transaction_type": "debit", "source": "teller",
+        "category": "Dining", "transaction_type": "debit", "source": "simplefin",
     }
 
 

@@ -64,7 +64,7 @@ export default function TxnRow({
   const isShared = !!txn.is_shared;
   const isCredit = txn.transaction_type === 'credit';
   const sourceLabel = channelLabel(txn.source);
-  const sourceClass = sourceLabel.toLowerCase() === 'teller' ? 'tx-src-badge--teller' : 'tx-src-badge--csv';
+  const sourceClass = txn.source === 'simplefin' ? 'tx-src-badge--bank' : 'tx-src-badge--csv';
 
   const handleSplit = async (val) => {
     if (splitting) return;

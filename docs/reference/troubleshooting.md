@@ -1,30 +1,13 @@
 # Troubleshooting
 
-## "Connect a Bank" button is missing
+## SimpleFIN sync fails with "No SimpleFIN access URLs configured"
 
-- Confirm `TELLER_APP_ID` is set in `.env`.
-- Restart the backend after editing `.env`.
+- Connect a bank first via **Linked Accounts** → **Connect via SimpleFIN** (paste a Setup Token generated at [bridge.simplefin.org/simplefin/create](https://bridge.simplefin.org/simplefin/create)).
+- Confirm `SIMPLEFIN_ACCESS_URLS` was populated in `.env` after connecting; restart the backend if you edited `.env` by hand.
 
-## Bank shows "Connection Error"
+## SimpleFIN sync is rate-limited
 
-- Click **↺** on the row in [Linked Accounts](../modals/accounts-modal.md) to re-enroll.
-- If it still fails, disconnect and reconnect.
-
-## Bank shows "Rate Limited"
-
-- Teller is throttling. Wait several minutes and retry. The token is still valid.
-
-## Phantom or "test" accounts in the Accounts modal
-
-Stale or fake tokens (`tok_abc…`, `tok_one`, `tok_two`, …) in `TELLER_API_KEY=` produce zombie rows.
-
-```bash
-py backend/scripts/prune_tokens.py
-```
-
-Lists each token masked, flags suspect ones, and removes interactively.
-
-The backend logs a warning at startup when these are detected — check the logs.
+- SimpleFIN asks clients to stay under ~24 requests/day per Access URL. Wait and retry, or sync less frequently.
 
 ## Google Sheets export not working
 

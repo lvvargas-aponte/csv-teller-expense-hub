@@ -505,7 +505,7 @@ export default function App() {
       </Routes>
 
       {sync.showSyncModal && (
-        <SyncModal onSync={sync.syncTeller} onClose={() => sync.setShowSyncModal(false)} />
+        <SyncModal onSync={sync.syncBanks} onClose={() => sync.setShowSyncModal(false)} />
       )}
       {sync.showAccountsModal && (
         <AccountsModal

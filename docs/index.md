@@ -1,6 +1,6 @@
 # Personal Finance Hub
 
-A self-hosted **Personal Finance Hub with an AI Virtual Financial Advisor**. It pulls transactions from your banks (via Teller) and CSV uploads, tracks balances and net worth, manages budgets and savings goals, plans debt payoff, and includes a chat advisor grounded in your real financial data via a local LLM.
+A self-hosted **Personal Finance Hub with an AI Virtual Financial Advisor**. It pulls transactions from your banks (via SimpleFIN) and CSV uploads, tracks balances and net worth, manages budgets and savings goals, plans debt payoff, and includes a chat advisor grounded in your real financial data via a local LLM.
 
 This knowledge base reflects the application **as it is today** — every page links back to the file paths it documents.
 

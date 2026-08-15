@@ -4,15 +4,11 @@
 
 All settings live in `.env` at the project root (copy from `.env.example`).
 
-## Teller
+## SimpleFIN (bank sync)
 
 | Variable | Default | Notes |
 |---|---|---|
-| `TELLER_APP_ID` | — | Required to enable bank linking |
-| `TELLER_ENVIRONMENT` | `sandbox` | `sandbox` \| `development` \| `production` |
-| `TELLER_API_KEY` | (empty) | Comma-separated access tokens — managed by the UI; do not edit by hand |
-| `TELLER_CERT_PATH` | `./certs/certificate.pem` | Required for non-sandbox |
-| `TELLER_KEY_PATH` | `./certs/private_key.pem` | Required for non-sandbox |
+| `SIMPLEFIN_ACCESS_URLS` | (empty) | Comma-separated Access URLs — written automatically after claiming a Setup Token in the Linked Accounts modal; leave blank and don't edit by hand |
 
 ## SnapTrade (brokerage / crypto holdings)
 

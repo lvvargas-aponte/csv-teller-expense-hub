@@ -7,7 +7,7 @@ jest.mock('axios');
 jest.mock('../ui/styles', () => ({
   modal: {}, modalHeader: {}, modalTitle: {}, modalSub: {}, closeBtn: {},
   modalBody: {}, modalFooter: {}, row2: {}, fieldGroup: {}, label: {},
-  input: {}, btn: {}, btnSecondary: {}, btnTeller: {}, btnPrimary: {},
+  input: {}, btn: {}, btnSecondary: {}, btnPrimary: {},
 }));
 jest.mock('../ui/Backdrop', () => ({ onClose, children }) => (
   <div data-testid="backdrop">{children}</div>

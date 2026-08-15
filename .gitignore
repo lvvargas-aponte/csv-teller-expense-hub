@@ -2,6 +2,10 @@
 .idea/
 *.iml
 
+# ── Local Docker build CA (e.g. antivirus/corporate TLS-inspection root) ──────
+backend/docker-ca/extra-ca.pem
+frontend/docker-ca/extra-ca.pem
+
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
@@ -32,7 +36,6 @@ csv_imports/
 
 # ── Crash dumps & logs ────────────────────────────────────────────────────────
 *.stackdump
-teller-tokens.log
 
 # ── Docs (built site) ─────────────────────────────────────────────────────────
 /site/

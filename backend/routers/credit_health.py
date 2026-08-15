@@ -1,6 +1,6 @@
 """Credit utilization endpoint — per-card balance vs. credit_limit.
 
-Pulls live balances from the cached Teller accounts and manual accounts,
+Pulls live balances from the cached SimpleFIN accounts and manual accounts,
 joins against the user-edited ``account_details`` side-car for credit
 limits.  Cards without a configured limit are still returned so the UI
 can prompt the user to fill it in.
@@ -24,14 +24,14 @@ def _status_for(pct: float) -> str:
 
 @router.get("/accounts/credit-health")
 async def credit_health() -> Dict[str, Any]:
-    teller_accounts = state._balances_cache.get("teller_accounts", []) or []
+    linked_accounts = state._balances_cache.get("simplefin_accounts", []) or []
     manual_accounts = list(state._manual_accounts.values())
 
     out: List[Dict[str, Any]] = []
     total_balance = 0.0
     total_limit = 0.0
 
-    for acct in list(teller_accounts) + manual_accounts:
+    for acct in list(linked_accounts) + manual_accounts:
         if (acct.get("type") or "").lower() != "credit":
             continue
         acct_id = acct.get("id") or ""

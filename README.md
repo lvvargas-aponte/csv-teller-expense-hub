@@ -2,10 +2,10 @@
 
 ## 🎯 Overview
 This app helps you:
-- Connect bank accounts via Teller.io and pull transactions directly from the UI
+- Connect bank accounts via SimpleFIN and pull transactions directly from the UI
 - Auto-import CSV files from Discover & Barclays
 - Review and mark shared expenses, then send them to Google Sheets
-- Track live account balances and net worth (Teller + manually added accounts)
+- Track live account balances and net worth (SimpleFIN + manually added accounts)
 - Plan debt payoff with avalanche or snowball strategy
 - Get AI-powered spending insights via a local LLM (optional)
 - Chat with a virtual finance advisor that sees your transactions, balances, and shared splits (optional)
@@ -22,10 +22,10 @@ This app helps you:
 - Place `credentials.json` in the `backend/` folder
 - Share your Google Sheet with the service account email (found in `credentials.json` as `client_email`)
 
-### 2. Teller.io Account
-- Sign up at [Teller.io](https://teller.io) and get your **Application ID**
-- Set `TELLER_APP_ID` in your `.env` — the app handles the rest
-- Bank connections and access tokens are managed entirely from the **🏦 Accounts** button in the UI; no terminal steps required
+### 2. SimpleFIN Account
+- Visit [bridge.simplefin.org/simplefin/create](https://bridge.simplefin.org/simplefin/create), link a bank, and copy the one-time **Setup Token** it gives you
+- Paste that token into the **🏦 Accounts** panel in the UI — no terminal steps, no API keys to generate up front
+- The app exchanges the token for a durable **Access URL** and saves it to `SIMPLEFIN_ACCESS_URLS` in your `.env` automatically
 
 ### 3. Google Sheet Setup
 - Create a Google Sheet with these headers (swap in your actual names):
@@ -55,12 +55,10 @@ This app helps you:
 Create a `.env` file in the project root (copy from `.env.example`):
 
 ```bash
-# Teller API
-TELLER_ENVIRONMENT=sandbox       # sandbox | development | production
-TELLER_APP_ID=your_app_id
-TELLER_API_KEY=                  # leave blank — tokens are saved automatically from the UI
-TELLER_CERT_PATH=./certs/certificate.pem
-TELLER_KEY_PATH=./certs/private_key.pem
+# SimpleFIN — connect a bank via the "Connect via SimpleFIN" box in the
+# Linked Accounts modal (paste the Setup Token from bridge.simplefin.org).
+# The resulting Access URL is saved here automatically — leave this blank.
+SIMPLEFIN_ACCESS_URLS=
 
 # Google Sheets
 SPREADSHEET_ID=your_google_sheet_id
@@ -187,13 +185,12 @@ chmod +x run_csv_watcher.sh
 │           ├── EditModal.js
 │           ├── NoteModal.js
 │           └── ...
-├── certs/                       # Teller mTLS certificates (non-sandbox only)
-│   ├── certificate.pem
-│   └── private_key.pem
 └── csv_imports/                 # created automatically
     ├── processed/
     └── failed/
 ```
+
+> SimpleFIN needs no certificates or app registration — connecting a bank is just pasting a Setup Token in the UI (see below).
 
 ---
 
@@ -207,12 +204,13 @@ The app has two pages, selectable from the tabs in the header:
 
 #### 1. Connect Bank Accounts
 
-Click **🏦 Accounts** in the header to open the Accounts panel:
-- Click **+ Connect a Bank** to link a new bank account through the Teller Connect popup
+Click **🏦 Accounts** in the header to open the Linked Accounts panel:
+- Visit [bridge.simplefin.org/simplefin/create](https://bridge.simplefin.org/simplefin/create), connect a bank, and copy the Setup Token it gives you
+- Paste the token into the **Connect via SimpleFIN** box and click **Connect**
 - Connected accounts are listed with their status (Active / Closed / Connection Error / Rate Limited)
-- Use **↺** to re-authenticate a broken connection, or **🗑️ Disconnect** to remove an account
+- Use **🗑️ Disconnect** to drop a connection (local history stays) or **Delete permanently** to remove an account and its data entirely
 
-Access tokens are saved automatically to `TELLER_API_KEY` in your `.env` and take effect immediately without a restart.
+The Access URL from a claimed Setup Token is saved automatically to `SIMPLEFIN_ACCESS_URLS` in your `.env` and takes effect immediately without a restart.
 
 #### 2. Import Transactions
 
@@ -244,13 +242,13 @@ Access tokens are saved automatically to `TELLER_API_KEY` in your `.env` and tak
 ### Finances page
 
 #### Account Balances
-- Shows live balances pulled from all connected Teller accounts
+- Shows live balances pulled from all connected SimpleFIN accounts
 - Displays net worth (cash + savings minus credit debt)
-- Click **+ Add Account** to manually add a bank or account not connected via Teller — these are saved to `backend/manual_accounts.json` and persist across restarts
+- Click **+ Add Account** to manually add a bank or account not connected via SimpleFIN — these are saved to `backend/manual_accounts.json` and persist across restarts
 - Manually added accounts show a **Manual** badge and can be removed with ✕
 
 #### Debt Payoff Planner
-- Credit accounts from Teller are pre-filled automatically; add more rows manually
+- Credit accounts from SimpleFIN are pre-filled automatically; add more rows manually
 - Choose **Avalanche** (highest APR first — minimises total interest) or **Snowball** (lowest balance first — faster early wins)
 - Enter an optional extra monthly payment to see how much interest you save
 - Click **Calculate** to see the payoff date and total interest per account
@@ -299,22 +297,16 @@ curl -X POST http://localhost:8000/api/upload-csv \
 
 ## 🔍 Troubleshooting
 
-**"Connect a Bank" button missing?**
-- Check that `TELLER_APP_ID` is set in `.env`
-- Restart the backend after editing `.env`
+**"Connect via SimpleFIN" doesn't work / says failed to connect?**
+- Setup Tokens are one-time use — get a fresh one from [bridge.simplefin.org/simplefin/create](https://bridge.simplefin.org/simplefin/create) if a previous attempt already consumed it
+- Restart the backend after manually editing `SIMPLEFIN_ACCESS_URLS` in `.env`
 
 **Bank connection shows "Connection Error"?**
-- Click **↺** on the account row to re-authenticate
-- If the error persists, disconnect and reconnect the account
-
-**Phantom or "test" accounts in the Accounts modal?**
-- Usually caused by stale or fake tokens stuck in `TELLER_API_KEY=` (e.g. `tok_abc…`, `tok_one`, `tok_two` left over from earlier test runs). Each bad token produces one "Connection Error" row.
-- Run `py backend/scripts/prune_tokens.py` from the repo root — it lists every token masked, flags ones that look synthetic, and lets you remove them interactively. Non-destructive; each removal requires confirmation.
-- On startup the backend now logs a warning when it sees test-looking tokens, so you don't have to hunt for them.
+- Disconnect the account and reconnect it via a fresh Setup Token from bridge.simplefin.org
 
 **Bank shows "Rate Limited"?**
-- Teller is throttling requests — wait a few minutes and sync again
-- The token is still valid; no re-authentication is needed
+- SimpleFIN is throttling requests for that Access URL — wait a while and sync again
+- The connection is still valid; no reconnect is needed
 
 **Google Sheets not working?**
 - Confirm `credentials.json` is in the `backend/` folder
@@ -327,10 +319,9 @@ curl -X POST http://localhost:8000/api/upload-csv \
 - Without Docker: check the terminal running uvicorn
 - Check `csv_imports/failed/` for error logs
 
-**Teller not pulling transactions?**
+**SimpleFIN not pulling transactions?**
 - Open **🏦 Accounts** and confirm accounts show as Active
-- Check that `TELLER_ENVIRONMENT` in `.env` matches where you enrolled (`sandbox` vs `development`)
-- For cert errors (non-sandbox), confirm `TELLER_CERT_PATH` and `TELLER_KEY_PATH` point to your Teller certificates
+- Confirm `SIMPLEFIN_ACCESS_URLS` in `.env` isn't empty — it's only populated after a successful Setup Token claim
 
 **AI features not working?**
 - Make sure Ollama is running: `ollama serve`
@@ -344,6 +335,6 @@ curl -X POST http://localhost:8000/api/upload-csv \
 
 - **Transactions** live in memory until sent to Google Sheets. Restarting the app clears the queue.
 - **Manually added balances** are persisted to `backend/manual_accounts.json` and survive restarts.
-- All transaction sources (Teller + CSVs) appear together in one review table.
+- All transaction sources (SimpleFIN + CSVs) appear together in one review table.
 - The CSV watcher processes files one at a time.
 - MIT License — feel free to fork and adapt for your household.

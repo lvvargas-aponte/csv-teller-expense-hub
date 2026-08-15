@@ -66,9 +66,9 @@ def _goal_alerts() -> List[Dict[str, Any]]:
 
 def _credit_utilization_alerts() -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
-    teller_accounts = state._balances_cache.get("teller_accounts", []) or []
+    linked_accounts = state._balances_cache.get("simplefin_accounts", []) or []
     manual_accounts = list(state._manual_accounts.values())
-    for acct in list(teller_accounts) + manual_accounts:
+    for acct in list(linked_accounts) + manual_accounts:
         if (acct.get("type") or "").lower() != "credit":
             continue
         details = state.account_details.get(acct.get("id") or "") or {}

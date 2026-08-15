@@ -2,7 +2,7 @@
 
 > Source: `backend/routers/snaptrade.py`, `backend/snaptrade.py`, `frontend/src/components/finances/InvestmentsTab.js`
 
-[SnapTrade](https://snaptrade.com) provides the brokerage connection used by the **Investments** tab. It aggregates accounts and positions from Robinhood (stocks + crypto), M1 Finance, E-trade, Schwab, Fidelity, and 20+ other brokers — neither Teller nor plain bank APIs surface this data.
+[SnapTrade](https://snaptrade.com) provides the brokerage connection used by the **Investments** tab. It aggregates accounts and positions from Robinhood (stocks + crypto), M1 Finance, E-trade, Schwab, Fidelity, and 20+ other brokers — neither SimpleFIN nor plain bank APIs surface this data.
 
 ## One-time setup
 

@@ -11,11 +11,11 @@ Lists every account grouped by type — **Depository** (checking / savings / mon
 For each account:
 
 - Inline-editable institution, nickname, APR (credit), credit limit, statement / due day
-- Live balance from Teller, or **Manual** badge for hand-entered accounts
+- Live balance from SimpleFIN, or **Manual** badge for hand-entered accounts
 
 Actions:
 
-- **+ Add Account** opens the [Add Account modal](../modals/add-account.md) — for accounts not connected via Teller.
+- **+ Add Account** opens the [Add Account modal](../modals/add-account.md) — for accounts not connected via SimpleFIN.
 - **✕** removes a manual account.
 
 Backend: `GET /api/balances/summary`, `POST /api/balances/manual`, `PUT /api/balances/manual/{id}`, `PUT /api/accounts/{id}/details`.
@@ -24,7 +24,7 @@ Backend: `GET /api/balances/summary`, `POST /api/balances/manual`, `PUT /api/bal
 
 Plan how to pay down credit-card debt.
 
-1. Credit accounts from Teller pre-fill automatically; add more rows manually if needed.
+1. Credit accounts from SimpleFIN pre-fill automatically; add more rows manually if needed.
 2. Pick a strategy:
    - **Avalanche** — highest APR first (minimizes total interest)
    - **Snowball** — lowest balance first (faster early wins)

@@ -14,7 +14,7 @@ def _add_txn(tid, amount, days_ago, description="NETFLIX MEMBERSHIP", category="
     d = (date.today() - timedelta(days=days_ago)).isoformat()
     state.stored_transactions[tid] = {
         "id": tid, "date": d, "description": description, "amount": amount,
-        "category": category, "transaction_type": "debit", "source": "teller",
+        "category": category, "transaction_type": "debit", "source": "simplefin",
     }
 
 

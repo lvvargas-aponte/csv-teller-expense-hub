@@ -106,7 +106,7 @@ class TestSearchTransactions:
 # ---------------------------------------------------------------------------
 
 def _seed_cash(amount: float, acct_id: str = "acc_cash") -> None:
-    state._balances_cache["teller_accounts"] = [
+    state._balances_cache["simplefin_accounts"] = [
         {"id": acct_id, "institution": "Ally", "name": "Checking",
          "type": "depository", "subtype": "checking",
          "available": amount, "ledger": amount}
@@ -114,8 +114,8 @@ def _seed_cash(amount: float, acct_id: str = "acc_cash") -> None:
 
 
 def _seed_credit(amount: float, acct_id: str = "acc_card") -> None:
-    state._balances_cache["teller_accounts"] = (
-        state._balances_cache.get("teller_accounts") or []
+    state._balances_cache["simplefin_accounts"] = (
+        state._balances_cache.get("simplefin_accounts") or []
     ) + [
         {"id": acct_id, "institution": "Chase", "name": "Sapphire",
          "type": "credit", "subtype": "credit_card",
@@ -209,7 +209,7 @@ class TestListAccounts:
 
 class TestGetDebt:
     def _seed(self):
-        state._balances_cache["teller_accounts"] = [
+        state._balances_cache["simplefin_accounts"] = [
             {"id": "acc_chase", "institution": "Chase", "name": "Sapphire",
              "type": "credit", "subtype": "credit_card",
              "available": 0.0, "ledger": 1200.0},
@@ -404,12 +404,12 @@ def _seed_txn(txn_id: str, date_str: str, category: str, amount: float) -> None:
 
 def _seed_savings_txn(txn_id: str, date_str: str, amount: float, direction: str, transfer_to: str = "manual_savings") -> None:
     """Seed a Savings transaction with transfer_to_account_id set (like the
-    real Teller-tagged transfers to a manual account)."""
+    real SimpleFIN-tagged transfers to a manual account)."""
     state.stored_transactions[txn_id] = {
         "id": txn_id, "date": date_str,
         "description": f"SAVINGS XFER {txn_id}", "amount": amount,
         "category": "Savings", "transaction_type": direction,
-        "source": "teller", "transfer_to_account_id": transfer_to,
+        "source": "simplefin", "transfer_to_account_id": transfer_to,
         "is_shared": False,
     }
 

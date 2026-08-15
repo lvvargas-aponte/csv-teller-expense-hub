@@ -17,8 +17,8 @@ from db.base import sync_engine
 class AccountsRepo(Protocol):
     """Public surface — the operations every backing store implements."""
 
-    def upsert_teller_account(
-        self, account: Dict[str, Any], source: str = "teller"
+    def upsert_synced_account(
+        self, account: Dict[str, Any], source: str = "simplefin"
     ) -> None: ...
 
     def upsert_manual_account(
@@ -66,19 +66,19 @@ def _enrollment_id(account: Dict[str, Any]) -> Optional[str]:
 class PgAccountsRepo:
     """Postgres-backed implementation. Default in production.
 
-    Phase 4 added the Teller-account upsert. Phase 5 added the manual-account
+    Phase 4 added the synced-account upsert. Phase 5 added the manual-account
     upsert and the balance-snapshot append so every balance refresh
-    (Teller sync OR manual edit) contributes a row to the timeseries the
+    (SimpleFIN sync OR manual edit) contributes a row to the timeseries the
     dashboards chart from.
     """
 
-    def upsert_teller_account(
-        self, account: Dict[str, Any], source: str = "teller"
+    def upsert_synced_account(
+        self, account: Dict[str, Any], source: str = "simplefin"
     ) -> None:
         """Insert or update one ``accounts`` row for a synced (non-manual) account.
 
-        The dict is shaped the way Teller's ``GET /accounts`` response delivers
-        it: ``id``, ``name``, ``type``, ``subtype``, nested ``institution.name``
+        The dict is shaped the way a provider's accounts listing delivers it:
+        ``id``, ``name``, ``type``, ``subtype``, nested ``institution.name``
         and optional nested ``enrollment.id``. The SnapTrade sync builds the
         same shape and passes ``source='snaptrade'`` — both flavors set
         ``manual=false`` because the balance is refreshed by sync, not typed.
@@ -182,9 +182,9 @@ class PgAccountsRepo:
     ) -> None:
         """Append one row to ``balance_snapshots``.
 
-        ``source`` is one of ``'teller'``, ``'manual'``, ``'csv'``, or
-        ``'override'`` (a user-supplied value that supersedes a Teller-reported
-        balance). ``raw`` stores the original upstream payload as JSONB so
+        ``source`` is one of ``'simplefin'``, ``'manual'``, ``'csv'``, or
+        ``'override'`` (a user-supplied value that supersedes a provider-
+        reported balance). ``raw`` stores the original upstream payload as JSONB so
         future analyses can recover fields we don't break out into columns
         today.
 

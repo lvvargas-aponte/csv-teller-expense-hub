@@ -3,9 +3,9 @@ import axios from 'axios';
 import { API_BASE } from '../utils/formatting';
 import { userMessage } from '../utils/errorMessage';
 
-// Owns the Teller sync, CSV upload, and Send-to-Sheet flows plus the modal
-// visibility flags they trigger. Reaches back into App's transaction-list
-// hook via `reload` and surfaces failures via `setError`.
+// Owns the bank sync (SimpleFIN), CSV upload, and Send-to-Sheet
+// flows plus the modal visibility flags they trigger. Reaches back into
+// App's transaction-list hook via `reload` and surfaces failures via `setError`.
 export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sharedCount }) {
   const [syncing, setSyncing] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -16,18 +16,20 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
   const [pendingCsvFile, setPendingCsvFile] = useState(null);
   const [accountsRefreshKey, setAccountsRefreshKey] = useState(0);
 
-  const syncTeller = useCallback(async (fromDate, toDate, accountIds) => {
+  // Syncs the connected SimpleFIN source.
+  const syncBanks = useCallback(async (fromDate, toDate, accountIds) => {
     setShowSyncModal(false);
     setSyncing(true);
+    const body = { from_date: fromDate, to_date: toDate };
+    if (accountIds !== null) body.account_ids = accountIds;
+
     try {
-      const body = { from_date: fromDate, to_date: toDate };
-      if (accountIds !== null) body.account_ids = accountIds;
-      const res = await axios.post(`${API_BASE}/api/teller/sync`, body);
+      const res = await axios.post(`${API_BASE}/api/simplefin/sync`, body);
       setSyncToast(res.data);
       setAccountsRefreshKey((k) => k + 1);
       await reload();
     } catch (e) {
-      setError(userMessage(e, 'Teller sync failed — please try again.'));
+      setError(userMessage(e, 'Bank sync failed — please try again.'));
     } finally {
       setSyncing(false);
     }
@@ -105,7 +107,7 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
     setPendingCsvFile,
     accountsRefreshKey,
     setAccountsRefreshKey,
-    syncTeller,
+    syncBanks,
     handleCsvPicked,
     submitCsvUpload,
     sendToSheet,

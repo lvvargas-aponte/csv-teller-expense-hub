@@ -1,7 +1,7 @@
 /**
  * Account details API — user-supplied metadata (APR, credit limit, statement/due
- * days, minimum payment) for both Teller and manual accounts.  Stored in a
- * side-car `account_details.json` so Teller refreshes don't blow away edits.
+ * days, minimum payment) for both SimpleFIN and manual accounts.  Stored in a
+ * side-car `account_details.json` so SimpleFIN refreshes don't blow away edits.
  */
 import axios from 'axios';
 

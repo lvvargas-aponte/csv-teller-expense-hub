@@ -2,7 +2,7 @@
 
 > Source: `frontend/src/App.js`, `frontend/src/components/transactions/*`, `backend/routers/transactions.py`
 
-The home tab. A review queue of every transaction (Teller-synced + CSV-uploaded) where you mark splits, add notes, categorize, and send shared expenses to Google Sheets.
+The home tab. A review queue of every transaction (SimpleFIN-synced + CSV-uploaded) where you mark splits, add notes, categorize, and send shared expenses to Google Sheets.
 
 ## What you see
 

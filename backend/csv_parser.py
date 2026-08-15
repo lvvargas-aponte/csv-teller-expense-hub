@@ -31,7 +31,7 @@ def dedupe_key(
     """Canonical 'same transaction' key for cross-source dedupe.
 
     transaction_id-based dedupe catches re-uploads of the same CSV, but not
-    the case where a purchase arrives once via CSV and once via Teller (or
+    the case where a purchase arrives once via CSV and once via SimpleFIN (or
     twice from two banks formatted differently). This key normalizes the
     user-visible fields so those collide:
       - description: lowercased, non-alphanumerics collapsed to spaces, trimmed
@@ -55,7 +55,7 @@ class BankType(str, Enum):
     """Enumeration of supported bank types"""
     DISCOVER = "discover"
     BARCLAYS = "barclays"
-    TELLER = "teller"
+    SIMPLEFIN = "simplefin"
     UNKNOWN = "unknown"
 
 
@@ -72,8 +72,8 @@ class Transaction:
     post_date: Optional[str] = None
     category: Optional[str] = None
     transaction_id: Optional[str] = None
-    # FK to ``accounts.id`` (structured table). Populated for Teller-sourced
-    # txns by ``routers/teller.py``; NULL for CSV uploads, which don't carry
+    # FK to ``accounts.id`` (structured table). Populated for SimpleFIN-sourced
+    # txns by ``routers/simplefin.py``; NULL for CSV uploads, which don't carry
     # account identity.
     account_id: Optional[str] = None
     is_shared: bool = False

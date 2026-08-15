@@ -14,7 +14,7 @@ export default function BalancesCard({ summary, loading, error, onHide, index, k
       loading={loading}
       error={error}
       empty={empty}
-      emptyText="No accounts yet — connect via Teller or add manually on the Accounts tab."
+      emptyText="No accounts yet — connect via SimpleFIN or add manually on the Accounts tab."
       onHide={onHide}
     >
       {summary && (
