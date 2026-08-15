@@ -10,10 +10,11 @@ Usage (inside the backend container):
     python scripts/migrate_json_to_pg.py --check    # dry-run row counts only
 
 ``teller_cache.json`` is NOT imported into ``balance_snapshots`` — it is a
-point-in-time cache, not history. Its four top-level keys (``fetched_at``,
-``teller_accounts``, ``teller_cash``, ``teller_credit_debt``) become four
-rows in ``json_stores`` under ``store_name='balances_cache'``, matching the
-Phase 2 PgStore layout.
+point-in-time cache, not history. Its four top-level keys become four rows
+in ``json_stores`` under ``store_name='balances_cache'``, matching the
+Phase 2 PgStore layout. The legacy Teller key names are renamed to the
+SimpleFIN ones the app reads today (see ``_BALANCES_CACHE_KEY_RENAMES``) —
+without that the imported rows would be invisible to every caller.
 
 Conversations keep their nested ``messages`` list inside the JSONB payload
 for now — Phase 6 rewrites the advisor to explode them into
@@ -49,6 +50,21 @@ SOURCES: list[tuple[str, str]] = [
     ("goals.json",           "goals"),
     ("account_details.json", "account_details"),
 ]
+
+# Legacy ``teller_cache.json`` key → the key the balances cache uses now.
+_BALANCES_CACHE_KEY_RENAMES = {
+    "fetched_at":         "simplefin_fetched_at",
+    "teller_accounts":    "simplefin_accounts",
+    "teller_cash":        "simplefin_cash",
+    "teller_credit_debt": "simplefin_credit_debt",
+}
+
+
+def _store_key(store_name: str, key: str) -> str:
+    """Map a legacy sidecar key onto its current name."""
+    if store_name == "balances_cache":
+        return _BALANCES_CACHE_KEY_RENAMES.get(key, key)
+    return key
 
 
 def _load_json(path: Path) -> dict | None:
@@ -88,7 +104,8 @@ def migrate_file(path: Path, store_name: str, dry_run: bool) -> tuple[int, int]:
     inserted = 0
     already = 0
     with sync_engine.begin() as conn:
-        for key, value in data.items():
+        for raw_key, value in data.items():
+            key = _store_key(store_name, str(raw_key))
             if dry_run:
                 exists = conn.execute(
                     text(

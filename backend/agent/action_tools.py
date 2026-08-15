@@ -1,10 +1,10 @@
 """Action tools — Fin-triggered data refreshes.
 
 Thin wrappers over the same coroutines the REST endpoints use
-(``routers.teller`` / ``routers.balances`` / ``routers.snaptrade``), so
+(``routers.simplefin`` / ``routers.balances`` / ``routers.snaptrade``), so
 there is exactly one sync implementation. These are Fin's only
 state-mutating tools; all three are idempotent syncs. Config problems
-(no Teller tokens, SnapTrade not connected) come back as structured
+(no SimpleFIN connection, SnapTrade not connected) come back as structured
 ``synced: false`` payloads instead of tool errors so the model can tell
 the user what to connect.
 """
@@ -25,12 +25,12 @@ from agent.schemas import (
 
 
 async def _sync_transactions(args: SyncTransactionsArgs) -> Dict[str, Any]:
-    from models import TellerSyncRequest
-    from routers.teller import sync_teller_transactions
+    from models import SimplefinSyncRequest
+    from routers.simplefin import sync_simplefin_transactions
 
     try:
-        out = await sync_teller_transactions(
-            TellerSyncRequest(from_date=args.from_date, to_date=args.to_date)
+        out = await sync_simplefin_transactions(
+            SimplefinSyncRequest(from_date=args.from_date, to_date=args.to_date)
         )
     except HTTPException as e:
         return {"synced": False, "note": str(e.detail)}
@@ -118,7 +118,7 @@ def build_action_tools() -> list:
             name="sync_transactions",
             description=(
                 "Pull the latest transactions from the user's connected bank "
-                "accounts (Teller). SLOW (10-30s) — only when freshness "
+                "accounts (SimpleFIN). SLOW (10-30s) — only when freshness "
                 "matters: the user asks about today/this week, says data "
                 "looks stale, or explicitly asks to refresh. Defaults to the "
                 "previous-month date range; pass from_date/to_date (ISO) to "

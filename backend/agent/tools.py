@@ -148,7 +148,7 @@ async def _list_accounts(args: ListAccountsArgs) -> Dict[str, Any]:
     snap = _balances_snapshot()
     rows: List[Dict[str, Any]] = []
     for source, accounts in (
-        ("teller", snap["teller_accounts"]),
+        ("simplefin", snap["linked_accounts"]),
         ("snaptrade", snap["snaptrade_accounts"]),
         ("manual", snap["manual_accounts"]),
     ):

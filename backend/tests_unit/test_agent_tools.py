@@ -161,7 +161,7 @@ class TestGetBalance:
 
 class TestListAccounts:
     def _seed(self):
-        state._balances_cache["teller_accounts"] = [
+        state._balances_cache["simplefin_accounts"] = [
             {"id": "acc_ally", "institution": "Ally", "name": "Interest Checking",
              "type": "depository", "subtype": "checking",
              "available": 25300.46, "ledger": 25300.46},

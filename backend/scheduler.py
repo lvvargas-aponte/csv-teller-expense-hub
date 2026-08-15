@@ -26,10 +26,10 @@ SCHEDULER_POLL_SEC = 60
 
 
 async def _run_sync_transactions() -> Dict[str, Any]:
-    from models import TellerSyncRequest
-    from routers.teller import sync_teller_transactions
+    from models import SimplefinSyncRequest
+    from routers.simplefin import sync_simplefin_transactions
 
-    out = await sync_teller_transactions(TellerSyncRequest())
+    out = await sync_simplefin_transactions(SimplefinSyncRequest())
     return {"total_fetched": out["total_fetched"], "total_new": out["total_new"]}
 
 

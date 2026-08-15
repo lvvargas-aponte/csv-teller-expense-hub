@@ -1,5 +1,5 @@
 """Unit tests for Fin's action tools — the underlying router coroutines
-are mocked; no Teller/SnapTrade network calls."""
+are mocked; no SimpleFIN/SnapTrade network calls."""
 import asyncio
 from unittest.mock import AsyncMock, patch
 
@@ -29,7 +29,7 @@ class TestSyncTransactions:
             "total_fetched": 12, "total_new": 3,
             "details": [{"account": "Ally – Checking", "fetched": 12, "new": 3}],
         })
-        with patch("routers.teller.sync_teller_transactions", new=fake):
+        with patch("routers.simplefin.sync_simplefin_transactions", new=fake):
             out = _run(_sync_transactions(
                 SyncTransactionsArgs(from_date="2026-07-01", to_date="2026-07-11")
             ))
@@ -40,12 +40,12 @@ class TestSyncTransactions:
         assert req.from_date == "2026-07-01"
         assert req.to_date == "2026-07-11"
 
-    def test_no_tokens_returns_structured_note(self):
-        fake = AsyncMock(side_effect=HTTPException(500, "No Teller access tokens configured."))
-        with patch("routers.teller.sync_teller_transactions", new=fake):
+    def test_no_connection_returns_structured_note(self):
+        fake = AsyncMock(side_effect=HTTPException(500, "No SimpleFIN access URLs configured."))
+        with patch("routers.simplefin.sync_simplefin_transactions", new=fake):
             out = _run(_sync_transactions(SyncTransactionsArgs()))
         assert out["synced"] is False
-        assert "Teller" in out["note"]
+        assert "SimpleFIN" in out["note"]
 
     def test_per_account_errors_surfaced(self):
         fake = AsyncMock(return_value={
@@ -54,7 +54,7 @@ class TestSyncTransactions:
             "details": [{"account": "Chase – Card", "error": "enrollment expired",
                          "enrollment_status": "disconnected"}],
         })
-        with patch("routers.teller.sync_teller_transactions", new=fake):
+        with patch("routers.simplefin.sync_simplefin_transactions", new=fake):
             out = _run(_sync_transactions(SyncTransactionsArgs()))
         assert out["synced"] is True
         assert out["account_errors"][0]["error"] == "enrollment expired"

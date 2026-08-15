@@ -51,7 +51,7 @@ Proposed facts appear in the Memory panel for confirm/reject; confirmed facts ar
 | `search_documents` | pgvector over the Knowledge library | "what does the IRS say about Roth limits" |
 | `recall_past_conversation` | pgvector over past chat turns | "like we talked about last time" |
 | `remember_about_user` / `recall_about_user` | `user_facts` + embeddings | personal memory |
-| `sync_transactions` | `POST /teller/sync` logic | "what did I spend today?" — pulls latest bank transactions first |
+| `sync_transactions` | `POST /simplefin/sync` logic | "what did I spend today?" — pulls latest bank transactions first |
 | `refresh_balances` | `GET /balances/summary?force=true` logic | "what do I have right now?" — live balance refresh |
 | `sync_investments` | `POST /snaptrade/sync` logic | refresh brokerage holdings before portfolio advice |
 | `schedule_sync` / `list_scheduled_tasks` / `cancel_scheduled_task` | `scheduled_tasks` table + `backend/scheduler.py` | "sync my transactions every week" — recurring background syncs |
