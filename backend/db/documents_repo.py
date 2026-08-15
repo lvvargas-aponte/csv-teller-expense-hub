@@ -117,9 +117,12 @@ def mark_superseded(document_id: int, replaced_by_id: int) -> None:
     with sync_engine.begin() as conn:
         conn.execute(
             text(
+                # CAST(...) rather than ``:patch::jsonb`` — the trailing
+                # ``::`` stops text() from recognizing :patch as a bind
+                # param, which reaches the driver as literal SQL.
                 "UPDATE documents "
                 "SET status = 'superseded', "
-                "    doc_metadata = doc_metadata || :patch::jsonb "
+                "    doc_metadata = doc_metadata || CAST(:patch AS JSONB) "
                 "WHERE id = :id"
             ),
             {

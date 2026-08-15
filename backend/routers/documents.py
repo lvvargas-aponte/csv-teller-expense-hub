@@ -229,7 +229,7 @@ async def list_allowed_hosts():
 async def import_from_url(req: UrlImportRequest, background_tasks: BackgroundTasks):
     """Fetch a URL through the SSRF-guarded fetcher and ingest the body.
 
-    Only allowlisted hosts (see ``url_fetcher.ALLOWED_HOSTS``) are
+    Only allowlisted hosts (see ``url_fetcher.get_allowed_hosts``) are
     accepted — we do NOT support arbitrary user-supplied URLs yet.
 
     Source-of-truth URL choice: ``source`` stores the **user-requested**

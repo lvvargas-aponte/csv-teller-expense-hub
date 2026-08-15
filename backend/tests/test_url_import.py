@@ -33,6 +33,16 @@ def _patch_resolves_public_ok():
     return patch.object(url_fetcher, "_check_resolves_public", lambda host: None)
 
 
+def _patch_allowlist(*hosts):
+    """Force the effective allowlist.
+
+    Must patch ``get_allowed_hosts`` — the host check calls it per request
+    so runtime seed additions are picked up. Patching the BASE_ALLOWED_HOSTS
+    constant instead would be silently ignored.
+    """
+    return patch.object(url_fetcher, "get_allowed_hosts", lambda: set(hosts))
+
+
 # ---------------------------------------------------------------------------
 # url_fetcher unit tests — exercise each guard in isolation.
 # ---------------------------------------------------------------------------
@@ -82,14 +92,14 @@ class TestPrivateIpGuard:
         with patch("socket.getaddrinfo", return_value=fake_addrinfo):
             # Inject the host into the allowlist so we hit the IP guard,
             # not the host guard.
-            with patch.object(url_fetcher, "ALLOWED_HOSTS", {"rebound.example.com"}):
+            with _patch_allowlist("rebound.example.com"):
                 with pytest.raises(url_fetcher.FetchError, match="loopback|private|reserved"):
                     url_fetcher.fetch("https://rebound.example.com/x")
 
     def test_rejects_private_range(self):
         fake_addrinfo = [(2, 1, 6, "", ("10.0.0.5", 0))]
         with patch("socket.getaddrinfo", return_value=fake_addrinfo):
-            with patch.object(url_fetcher, "ALLOWED_HOSTS", {"rebound.example.com"}):
+            with _patch_allowlist("rebound.example.com"):
                 with pytest.raises(url_fetcher.FetchError, match="loopback|private|reserved"):
                     url_fetcher.fetch("https://rebound.example.com/x")
 
@@ -97,7 +107,7 @@ class TestPrivateIpGuard:
         # 169.254.169.254 — cloud metadata endpoint.
         fake_addrinfo = [(2, 1, 6, "", ("169.254.169.254", 0))]
         with patch("socket.getaddrinfo", return_value=fake_addrinfo):
-            with patch.object(url_fetcher, "ALLOWED_HOSTS", {"rebound.example.com"}):
+            with _patch_allowlist("rebound.example.com"):
                 with pytest.raises(url_fetcher.FetchError, match="loopback|private|reserved|link"):
                     url_fetcher.fetch("https://rebound.example.com/x")
 
@@ -253,7 +263,11 @@ class TestImportEndpoint:
         assert resp.status_code == 200
         hosts = resp.json()
         assert "www.irs.gov" in hosts
-        assert "www.bogleheads.org" in hosts
+        assert "earlyretirementnow.com" in hosts
+        # Bogleheads is deliberately excluded — its wiki sits behind
+        # Cloudflare TLS-fingerprint protection that 403s plain httpx, so
+        # allowlisting it would only produce failed imports.
+        assert "www.bogleheads.org" not in hosts
 
 
 class TestReimportVersioning:

@@ -98,10 +98,6 @@ def get_allowed_hosts() -> set[str]:
         return set(BASE_ALLOWED_HOSTS)
 
 
-# Backwards-compat alias for any external code that still references the
-# old constant name.  New code should use ``get_allowed_hosts()``.
-ALLOWED_HOSTS = BASE_ALLOWED_HOSTS
-
 # User-agent string.  Bot-flavored UAs ("MyBot/1.0") get 403'd by several
 # government sites (SSA, parts of investor.gov) that filter on UA shape.
 # Mozilla-prefixed strings are the de-facto convention for well-behaved
