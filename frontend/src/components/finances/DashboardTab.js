@@ -5,7 +5,8 @@ import {
   getIncomeVsExpenses,
 } from '../../api/dashboard';
 import { getBalancesSummary } from '../../api/balances';
-import { fmt$, fmtSigned } from '../../utils/formatting';
+import { fmt$, fmtSigned, greetingFor, formatToday } from '../../utils/formatting';
+import KpiCard from '../ui/KpiCard';
 
 import NetWorthCard from './cards/NetWorthCard';
 import CashFlowCard from './cards/CashFlowCard';
@@ -24,17 +25,6 @@ const RANGE_OPTIONS = [
   { label: '6M', months: 6 },
   { label: '12M', months: 12 },
 ];
-
-function greetingFor(date) {
-  const h = date.getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
-}
-
-function formatToday(date) {
-  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-}
 
 export default function DashboardTab({ healthScore }) {
   const [months, setMonths] = useState(6);
@@ -243,38 +233,3 @@ export default function DashboardTab({ healthScore }) {
   );
 }
 
-function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur, help }) {
-  let arrow = null;
-  let deltaColor = 'var(--text-muted)';
-  if ((delta !== null && delta !== undefined)) {
-    const positive = delta >= 0;
-    arrow = positive ? '↑' : '↓';
-    const good = deltaInverse ? !positive : positive;
-    deltaColor = good ? '#059669' : '#ef4444';
-  }
-  return (
-    <div className="eh-kpi">
-      <div className="eh-kpi-label">
-        <span>{label}</span>
-        {help && (
-          <span className="eh-info-wrap eh-kpi-info" tabIndex={0} aria-label={`About ${label}`}>
-            <span className="eh-info-icon">i</span>
-            <span className="eh-info-tooltip" role="tooltip">
-              <div className="eh-info-tooltip-title">{label}</div>
-              {help}
-            </span>
-          </span>
-        )}
-      </div>
-      <div className={`eh-kpi-value ${valueClass || ''}${blur ? ' eh-blur' : ''}`}>{value}</div>
-      {(delta !== null && delta !== undefined) && (
-        <div className="eh-kpi-delta" style={{ color: deltaColor }}>
-          <span>{arrow}</span>
-          <span className={blur ? 'eh-blur' : ''}>{fmt$(delta)}</span>
-          <span className="eh-kpi-delta-suffix">vs prior</span>
-        </div>
-      )}
-      <div className="eh-kpi-bar" style={{ background: barColor }} />
-    </div>
-  );
-}

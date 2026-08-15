@@ -1,4 +1,36 @@
-import { fmt$, fmtDate, toYMD, prevMonthRange, thisMonthRange } from '../formatting';
+import {
+  fmt$, fmtDate, toYMD, prevMonthRange, thisMonthRange, greetingFor, formatToday,
+} from '../formatting';
+
+describe('greetingFor', () => {
+  const at = (hour) => new Date(2026, 7, 15, hour, 0, 0);
+
+  test('morning covers midnight through 11:59', () => {
+    expect(greetingFor(at(0))).toBe('Good morning');
+    expect(greetingFor(at(11))).toBe('Good morning');
+  });
+
+  test('afternoon starts at noon and runs to 17:59', () => {
+    expect(greetingFor(at(12))).toBe('Good afternoon');
+    expect(greetingFor(at(17))).toBe('Good afternoon');
+  });
+
+  test('evening starts at 18:00', () => {
+    expect(greetingFor(at(18))).toBe('Good evening');
+    expect(greetingFor(at(23))).toBe('Good evening');
+  });
+});
+
+describe('formatToday', () => {
+  test('renders month name and day without the year', () => {
+    // Month is 0-indexed: 7 === August.
+    expect(formatToday(new Date(2026, 7, 15))).toBe('August 15');
+  });
+
+  test('does not zero-pad single-digit days', () => {
+    expect(formatToday(new Date(2026, 0, 1))).toBe('January 1');
+  });
+});
 
 describe('fmt$', () => {
   test('formats positive number as USD currency', () => {

@@ -71,6 +71,20 @@ export const formatAccountType = (type) => ({
 export const formatCategory = (cat) =>
   (cat || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
+// Time-of-day greeting for the dashboard / Today banners. Shared so both
+// pages address the user the same way at the same hour.
+export function greetingFor(date) {
+  const h = date.getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+// "August 15" — the banner date beside the greeting.
+export function formatToday(date) {
+  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+}
+
 export function txnMonthKey(dateStr) {
   if (!dateStr) return null;
   // ISO format (YYYY-MM-DD from SimpleFIN): append T00:00:00 so it's treated as local time, not UTC.
