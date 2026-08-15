@@ -14,10 +14,15 @@ from fastapi import APIRouter, HTTPException
 import state
 from category_normalizer import normalize as normalize_category
 from csv_parser import Transaction as CsvTransaction, BankType, dedupe_key
-from helpers import _env_add_simplefin_url, _env_remove_simplefin_url, _previous_month_range
+from helpers import (
+    _env_add_simplefin_url,
+    _env_remove_simplefin_url,
+    _previous_month_range,
+    derive_direction,
+)
 from models import SimplefinClaimRequest, SimplefinSyncRequest
 from routers.balances import persist_simplefin_balances
-from simplefin import _mask_url
+from simplefin import mask_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -36,13 +41,13 @@ async def claim_simplefin_token(req: SimplefinClaimRequest):
     access_url = await state.simplefin.claim_setup_token(req.setup_token)
 
     if access_url in state.SIMPLEFIN_ACCESS_URLS:
-        logger.info(f"[SimpleFIN] Access URL {_mask_url(access_url)} already registered — skipping.")
+        logger.info(f"[SimpleFIN] Access URL {mask_url(access_url)} already registered — skipping.")
         return {"claimed": False, "reason": "duplicate", "total_connections": len(state.SIMPLEFIN_ACCESS_URLS)}
 
     state.SIMPLEFIN_ACCESS_URLS.append(access_url)
     _env_add_simplefin_url(access_url)
     logger.info(
-        f"[SimpleFIN] New access URL {_mask_url(access_url)} added "
+        f"[SimpleFIN] New access URL {mask_url(access_url)} added "
         f"({len(state.SIMPLEFIN_ACCESS_URLS)} total)."
     )
 
@@ -50,19 +55,19 @@ async def claim_simplefin_token(req: SimplefinClaimRequest):
 
 
 @router.delete("/simplefin/connections", status_code=200)
-async def remove_simplefin_connection(access_url_masked: str):
+async def remove_simplefin_connection(connection_id: str):
     """Drop a stored access URL entirely (all accounts behind it disappear).
 
     SimpleFIN has no API to revoke just this URL server-side — it's simply
-    removed from local storage. Matched by masked form since the frontend
-    never holds the raw URL after claiming it.
+    removed from local storage. Matched by ``simplefin.connection_id`` since
+    the frontend never holds the raw URL after claiming it.
     """
-    match = state.simplefin.remove_by_masked(access_url_masked)
+    match = state.simplefin.remove_by_id(connection_id)
     if not match:
         raise HTTPException(status_code=404, detail="No matching SimpleFIN connection found.")
     _env_remove_simplefin_url(match)
-    logger.info(f"[SimpleFIN] Removed access URL {access_url_masked}.")
-    return {"removed": access_url_masked, "total_connections": len(state.SIMPLEFIN_ACCESS_URLS)}
+    logger.info(f"[SimpleFIN] Removed access URL {mask_url(match)} ({connection_id}).")
+    return {"removed": connection_id, "total_connections": len(state.SIMPLEFIN_ACCESS_URLS)}
 
 
 @router.post("/simplefin/sync")
@@ -169,6 +174,9 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                         for field in ("transaction_type", "account_type", "category",
                                       "institution", "description", "amount", "date"):
                             existing[field] = getattr(txn, field)
+                        # transaction_type may have flipped on re-sync; keep the
+                        # canonical direction field consistent with it.
+                        existing["direction"] = derive_direction(txn.transaction_type)
                         state.stored_transactions[txn.transaction_id] = existing
 
                 total_fetched += len(filtered)
@@ -179,10 +187,12 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                     "new": added,
                     "date_range": f"{from_date} → {to_date}",
                 })
-                state._transactions_store.save()
 
             except Exception as e:
                 results.append({"account": acct_name, "error": str(e)})
+
+    # One write for the whole sync rather than one per account.
+    state._transactions_store.save()
 
     return {
         "message": f"SimpleFIN sync complete. {total_added} new transactions added ({from_date} → {to_date}).",

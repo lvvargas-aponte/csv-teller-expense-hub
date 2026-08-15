@@ -3,8 +3,6 @@ user-supplied details (APR, due day, etc.)."""
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote, unquote
-
 from fastapi import APIRouter, HTTPException, Query
 
 import state
@@ -12,6 +10,11 @@ from models import AccountDetails, AccountDetailsIn
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Synthetic account id standing in for a whole failed access URL — SimpleFIN
+# reports errors per connection, not per account. The suffix is a
+# ``simplefin.connection_id``.
+_SF_ERROR_PREFIX = "_sferror_"
 
 
 async def _fetch_simplefin_accounts_normalized() -> List[Dict[str, Any]]:
@@ -23,45 +26,32 @@ async def _fetch_simplefin_accounts_normalized() -> List[Dict[str, Any]]:
     SimpleFIN reports errors per access URL, not per account, so there is no
     finer-grained placeholder to build.
     """
-    from simplefin import infer_account_bucket
+    from routers.balances import is_simplefin_account_hidden
+    from simplefin import iter_normalized_accounts
 
     url_batches, url_errors = await state.simplefin.list_accounts_by_url()
-    out: List[Dict[str, Any]] = []
-
-    for _url, accounts in url_batches:
-        for acct in accounts:
-            acct_id = acct.get("id")
-            if not acct_id:
-                continue
-            shadow = state._manual_accounts.get(acct_id)
-            if shadow and shadow.get("disconnected_from") == "simplefin":
-                continue
-            org_name = acct.get("_org_name") or "Bank"
-            name = acct.get("name") or acct_id
-            try:
-                raw_balance = float(acct.get("balance") or 0.0)
-            except (TypeError, ValueError):
-                raw_balance = None
-            acct_type, acct_subtype = infer_account_bucket(name, org_name, raw_balance)
-            out.append({
-                "id": acct_id,
-                "name": name,
-                "type": acct_type,
-                "subtype": acct_subtype,
-                "institution": {"name": org_name},
-                "balance": {},
-                "_source": "simplefin",
-            })
+    out: List[Dict[str, Any]] = [
+        {
+            "id": acct["id"],
+            "name": acct["name"],
+            "type": acct["type"],
+            "subtype": acct["subtype"],
+            "institution": {"name": acct["institution"]},
+            "balance": {},
+            "_source": "simplefin",
+        }
+        for acct in iter_normalized_accounts(url_batches, is_simplefin_account_hidden)
+    ]
 
     for err in url_errors:
-        masked = err.get("url", "")
         out.append({
-            "id": f"_sferror_{quote(masked, safe='')}",
+            "id": f"{_SF_ERROR_PREFIX}{err.get('id', '')}",
             "name": "Unknown account",
             "type": "", "subtype": "",
             "institution": {"name": "SimpleFIN"},
             "balance": {},
             "_connection_error": True,
+            "_connection_label": err.get("label", ""),
             "_source": "simplefin",
         })
 
@@ -107,19 +97,8 @@ def _promote_simplefin_account_to_manual_shadow(account_id: str) -> Optional[Dic
     state._manual_accounts[account_id] = shadow
     state._manual_accounts_store.save()
 
-    remaining = [a for a in cached if a.get("id") != account_id]
-    total_cash = sum(
-        float(a.get("available") or 0.0)
-        for a in remaining if a.get("type") == "depository"
-    )
-    total_credit = sum(
-        float(a.get("ledger") or 0.0)
-        for a in remaining if a.get("type") == "credit"
-    )
-    state._balances_cache_store.data["simplefin_accounts"] = remaining
-    state._balances_cache_store.data["simplefin_cash"] = round(total_cash, 2)
-    state._balances_cache_store.data["simplefin_credit_debt"] = round(total_credit, 2)
-    state._balances_cache_store.save()
+    from routers.balances import write_simplefin_cache
+    write_simplefin_cache([a for a in cached if a.get("id") != account_id])
 
     from db.accounts_repo import get_repo
     get_repo().upsert_manual_account(
@@ -155,23 +134,19 @@ async def delete_account(
     """
     if (
         not state.SIMPLEFIN_ACCESS_URLS
-        and not account_id.startswith("_sferror_")
+        and not account_id.startswith(_SF_ERROR_PREFIX)
     ):
         if not (purge and account_id in state._manual_accounts):
             raise HTTPException(status_code=500, detail="No SimpleFIN connections configured.")
 
-    # SimpleFIN error placeholder (id starts with "_sferror_") — SimpleFIN
-    # reports errors per access URL, not per account, so removing it drops
-    # the whole connection (every account behind that URL disappears too).
-    if account_id.startswith("_sferror_"):
-        from helpers import _env_remove_simplefin_url
+    # SimpleFIN error placeholder — SimpleFIN reports errors per access URL,
+    # not per account, so removing it drops the whole connection (every
+    # account behind that URL disappears too). Delegated to the SimpleFIN
+    # router, which owns access-URL lifecycle.
+    if account_id.startswith(_SF_ERROR_PREFIX):
+        from routers.simplefin import remove_simplefin_connection
 
-        masked = unquote(account_id[len("_sferror_"):])
-        removed = state.simplefin.remove_by_masked(masked)
-        if not removed:
-            raise HTTPException(status_code=404, detail="No matching SimpleFIN connection found.")
-        _env_remove_simplefin_url(removed)
-        logger.info("[SimpleFIN] Removed broken access URL (error account deleted).")
+        await remove_simplefin_connection(account_id[len(_SF_ERROR_PREFIX):])
         return {"deleted": account_id, "purged": True}
 
     is_simplefin_account = any(

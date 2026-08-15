@@ -19,6 +19,38 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def is_simplefin_account_hidden(account_id: str) -> bool:
+    """True when a SimpleFIN account has been locally "disconnected".
+
+    SimpleFIN has no per-account revoke, so hiding one writes a manual
+    shadow record (see ``routers/accounts.py``). Every listing and sync path
+    consults this so a hidden account can't reappear through one of them.
+    """
+    shadow = state._manual_accounts.get(account_id)
+    return bool(shadow and shadow.get("disconnected_from") == "simplefin")
+
+
+def write_simplefin_cache(accounts: List[Dict[str, Any]]) -> None:
+    """Persist the SimpleFIN account list and re-derive its cash/debt totals.
+
+    The totals are always recomputed from the list itself, so callers that
+    mutate it (a balance override, hiding an account) can't leave the
+    scalars disagreeing with the rows.
+    """
+    total_cash = sum(
+        float(a.get("available") or 0.0)
+        for a in accounts if a.get("type") == "depository"
+    )
+    total_credit = sum(
+        float(a.get("ledger") or 0.0)
+        for a in accounts if a.get("type") == "credit"
+    )
+    state._balances_cache_store.data["simplefin_accounts"] = accounts
+    state._balances_cache_store.data["simplefin_cash"] = round(total_cash, 2)
+    state._balances_cache_store.data["simplefin_credit_debt"] = round(total_credit, 2)
+    state._balances_cache_store.save()
+
+
 def _manual_account_txn_delta(account_id: str) -> float:
     """Signed delta of linked transactions for a manual account.
 
@@ -188,54 +220,32 @@ async def persist_simplefin_balances(
     by ``/simplefin/sync`` and a forced ``/balances/summary`` refresh so
     both code paths write the same cache shape.
     """
-    from simplefin import infer_account_bucket
+    from simplefin import iter_normalized_accounts
 
     accounts_out: List[AccountBalance] = []
     total_cash = 0.0
     total_credit_debt = 0.0
-    seen_ids: set[str] = set()
 
-    for _url, accounts in url_batches:
-        for acct in accounts:
-            acct_id = acct.get("id")
-            if not acct_id or acct_id in seen_ids:
-                continue
-            # SimpleFIN has no per-account revoke — "disconnecting" one
-            # account (routers/simplefin.py) just hides it locally via a
-            # manual shadow. Skip it here so it doesn't reappear on sync.
-            shadow = state._manual_accounts.get(acct_id)
-            if shadow and shadow.get("disconnected_from") == "simplefin":
-                continue
-            seen_ids.add(acct_id)
+    for acct in iter_normalized_accounts(url_batches, is_simplefin_account_hidden):
+        raw_balance = acct["raw_balance"]
+        if acct["type"] == "credit":
+            # SimpleFIN reports credit-card/loan balances as negative
+            # (money owed); this app's convention stores debt positive.
+            available = ledger = round(abs(raw_balance), 2)
+            total_credit_debt += ledger
+        else:
+            available = ledger = round(raw_balance, 2)
+            total_cash += available
 
-            org_name = acct.get("_org_name") or "Bank"
-            name = acct.get("name") or acct_id
-
-            try:
-                raw_balance = float(acct.get("balance") or 0.0)
-            except (TypeError, ValueError):
-                raw_balance = 0.0
-
-            acct_type, acct_subtype = infer_account_bucket(name, org_name, raw_balance)
-
-            if acct_type == "credit":
-                # SimpleFIN reports credit-card/loan balances as negative
-                # (money owed); this app's convention stores debt positive.
-                available = ledger = round(abs(raw_balance), 2)
-                total_credit_debt += ledger
-            else:
-                available = ledger = round(raw_balance, 2)
-                total_cash += available
-
-            accounts_out.append(AccountBalance(
-                id=acct_id,
-                institution=org_name,
-                name=name,
-                type=acct_type,
-                subtype=acct_subtype,
-                available=available,
-                ledger=ledger,
-            ))
+        accounts_out.append(AccountBalance(
+            id=acct["id"],
+            institution=acct["institution"],
+            name=acct["name"],
+            type=acct["type"],
+            subtype=acct["subtype"],
+            available=available,
+            ledger=ledger,
+        ))
 
     state._balances_cache_store.data.update({
         "simplefin_fetched_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
@@ -441,20 +451,7 @@ async def update_account_balance(account_id: str, req: ManualAccountUpdate):
         if req.ledger is not None:
             target["ledger"] = float(req.ledger)
 
-        # Recompute cached totals from the (possibly mutated) account list so
-        # the summary endpoint reflects the override on the very next call.
-        total_cash = sum(
-            float(a.get("available") or 0.0)
-            for a in cached_accounts if a.get("type") == "depository"
-        )
-        total_credit = sum(
-            float(a.get("ledger") or 0.0)
-            for a in cached_accounts if a.get("type") == "credit"
-        )
-        state._balances_cache_store.data["simplefin_accounts"] = cached_accounts
-        state._balances_cache_store.data["simplefin_cash"] = round(total_cash, 2)
-        state._balances_cache_store.data["simplefin_credit_debt"] = round(total_credit, 2)
-        state._balances_cache_store.save()
+        write_simplefin_cache(cached_accounts)
 
         get_repo().insert_balance_snapshot(
             account_id=account_id,

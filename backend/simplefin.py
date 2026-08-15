@@ -22,8 +22,9 @@ Mocking in tests: patch individual async methods on the instance, e.g.
     patch.object(state.simplefin, "list_accounts_by_url", AsyncMock(return_value=([], [])))
 """
 import base64
+import hashlib
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -42,13 +43,30 @@ _LOAN_KEYWORDS = ("loan", "mortgage")
 _SAVINGS_KEYWORDS = ("saving", "hysa", "money market")
 
 
-def _mask_url(url: str) -> str:
-    """Return a safely loggable representation of an access URL (strip credentials)."""
+def mask_url(url: str) -> str:
+    """Return a safely loggable representation of an access URL (strip credentials).
+
+    Display only — every access URL from the same Bridge shares a host and
+    path, so masked forms are NOT unique. Use ``connection_id`` to identify
+    a connection.
+    """
     try:
         parts = urlsplit(url)
         return f"{parts.scheme}://***@{parts.hostname or '?'}{parts.path}"
     except Exception:
         return "***"
+
+
+def connection_id(access_url: str) -> str:
+    """Stable, URL-safe, non-secret identifier for an access URL.
+
+    The credentials live in the URL's userinfo, so the URL itself can't be
+    handed to the frontend; and masking collapses every connection from the
+    same Bridge onto the same string (``https://***@bridge.simplefin.org/
+    simplefin``), which would make deletes ambiguous. A truncated digest is
+    unique per connection and leaks nothing.
+    """
+    return hashlib.sha256(access_url.encode("utf-8")).hexdigest()[:16]
 
 
 def _detail(public_msg: str, debug_msg: str) -> str:
@@ -95,6 +113,48 @@ def infer_account_bucket(
     return "depository", "checking"
 
 
+def iter_normalized_accounts(
+    url_batches: List[Tuple[str, List[Dict[str, Any]]]],
+    is_hidden: Callable[[str], bool],
+) -> Iterator[Dict[str, Any]]:
+    """Yield one normalized dict per visible account across every batch.
+
+    The single place that turns a raw SimpleFIN account into the fields the
+    app cares about — id, institution, name, balance, and the inferred
+    type/subtype. ``/accounts`` and the balances cache both build their own
+    output shape from this so they can never drift on what an account *is*
+    or on which accounts are visible.
+
+    ``is_hidden`` is injected (rather than reading ``state`` here) to keep
+    this module free of app-state imports. Duplicate ids across access URLs
+    are yielded once.
+    """
+    seen: set = set()
+    for _url, accounts in url_batches:
+        for acct in accounts:
+            acct_id = acct.get("id")
+            if not acct_id or acct_id in seen or is_hidden(acct_id):
+                continue
+            seen.add(acct_id)
+
+            org_name = acct.get("_org_name") or "Bank"
+            name = acct.get("name") or acct_id
+            try:
+                raw_balance = float(acct.get("balance") or 0.0)
+            except (TypeError, ValueError):
+                raw_balance = 0.0
+
+            acct_type, acct_subtype = infer_account_bucket(name, org_name, raw_balance)
+            yield {
+                "id": acct_id,
+                "institution": org_name,
+                "name": name,
+                "type": acct_type,
+                "subtype": acct_subtype,
+                "raw_balance": raw_balance,
+            }
+
+
 class SimpleFinClient:
     """Encapsulates all SimpleFIN Bridge API calls.
 
@@ -106,14 +166,14 @@ class SimpleFinClient:
     def __init__(self, access_urls: List[str]) -> None:
         self._urls = access_urls
 
-    def remove_by_masked(self, masked: str) -> Optional[str]:
-        """Remove and return the access URL whose masked form matches ``masked``.
+    def remove_by_id(self, conn_id: str) -> Optional[str]:
+        """Remove and return the access URL whose ``connection_id`` matches.
 
-        Used to delete a connection from a value the frontend can safely
-        hold (the raw URL, which embeds Basic Auth credentials, never leaves
-        the backend after claiming).
+        Lets a connection be deleted from a value the frontend can safely
+        hold — the raw URL embeds Basic Auth credentials and never leaves
+        the backend after claiming.
         """
-        match = next((u for u in self._urls if _mask_url(u) == masked), None)
+        match = next((u for u in self._urls if connection_id(u) == conn_id), None)
         if match:
             self._urls.remove(match)
         return match
@@ -180,7 +240,7 @@ class SimpleFinClient:
 
         Returns ``(successes, errors)`` where successes is
         ``[(access_url, accounts_list), ...]`` and errors is
-        ``[{"url": masked, "error": str}, ...]``.
+        ``[{"id": connection_id, "label": masked, "error": str}, ...]``.
         """
         successes: List[Tuple[str, List[Dict[str, Any]]]] = []
         errors: List[Dict[str, Any]] = []
@@ -194,7 +254,7 @@ class SimpleFinClient:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
             for url in self._urls:
                 base_url, auth = _split_auth(url)
-                masked = _mask_url(url)
+                masked = mask_url(url)
                 try:
                     resp = await client.get(f"{base_url}/accounts", params=params, auth=auth)
                     resp.raise_for_status()
@@ -227,9 +287,17 @@ class SimpleFinClient:
                     successes.append((url, accounts))
                 except httpx.HTTPStatusError as e:
                     logger.warning(f"[SimpleFIN] {masked} failed ({e.response.status_code}): {e.response.text}")
-                    errors.append({"url": masked, "error": f"Auth failed ({e.response.status_code})"})
+                    errors.append({
+                        "id": connection_id(url),
+                        "label": masked,
+                        "error": f"Auth failed ({e.response.status_code})",
+                    })
                 except Exception as e:
                     logger.warning(f"[SimpleFIN] {masked} error: {e}")
-                    errors.append({"url": masked, "error": str(e)})
+                    errors.append({
+                        "id": connection_id(url),
+                        "label": masked,
+                        "error": str(e),
+                    })
 
         return successes, errors
