@@ -14,9 +14,10 @@ const NAV_SECTIONS = [
   {
     label: 'Plan',
     items: [
-      { id: 'budgets', icon: '🎯', label: 'Budgets' },
-      { id: 'goals',   icon: '⭐', label: 'Goals' },
-      { id: 'bills',   icon: '📅', label: 'Bills' },
+      { id: 'budgets',     icon: '🎯', label: 'Budgets' },
+      { id: 'goals',       icon: '⭐', label: 'Goals' },
+      { id: 'bills',       icon: '📅', label: 'Bills' },
+      { id: 'debt-payoff', icon: '💳', label: 'Debt Payoff' },
     ],
   },
   {
@@ -43,7 +44,7 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore }) {
 
       <div className="eh-sidebar-logo">
         <div className="eh-sidebar-logo-icon">💰</div>
-        <div className="eh-sidebar-logo-text">ExpensesHub</div>
+        <div className="eh-sidebar-logo-text">Financial Freedom</div>
       </div>
 
       {NAV_SECTIONS.map((section) => (

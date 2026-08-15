@@ -32,6 +32,14 @@ services:
       - DATABASE_URL=postgresql+asyncpg://expense:${POSTGRES_PASSWORD:-expense_dev}@db:5432/expense_hub
     volumes:
       - ./backend:/app
+      # Shares the real .env with the container at the exact path config.py /
+      # helpers.py resolve to (Path(__file__).parent.parent from /app == "/").
+      # Without this, connections saved at runtime (SimpleFIN access URLs,
+      # Teller tokens) write to the container's own throwaway filesystem
+      # instead of this file, and vanish the next time the container is
+      # recreated (rebuild, `docker compose down`, etc.) rather than just
+      # restarted.
+      - ./.env:/.env
       # Built mkdocs site for the in-app Help button (served at /help).
       # Run `mkdocs build` from the project root to populate; otherwise the
       # mount is empty and the backend logs a warning at startup.

@@ -36,6 +36,7 @@ export default function PayoffPlanner({ creditAccounts = [] }) {
           orderById={planner.orderById}
           onSetRow={planner.setRow}
           onPersistApr={planner.persistApr}
+          onPersistDetail={planner.persistDetail}
           onAddRow={planner.addRow}
           onRemoveRow={planner.removeRow}
           onStrategyChange={planner.handleStrategyChange}
@@ -48,6 +49,7 @@ export default function PayoffPlanner({ creditAccounts = [] }) {
           strategy={planner.strategy}
           totalMonths={planner.totalMonths}
           totalPaid={planner.totalPaid}
+          rows={planner.rows}
         />
 
         <PayoffAdvice advice={planner.advice} adviceError={planner.adviceError} />

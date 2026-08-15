@@ -1,12 +1,26 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Spin from '../../ui/Spin';
 import { AprCell, AprLegend } from './AprCell';
+import { fmtSigned } from '../../../utils/formatting';
+
+const DEBT_CLASSES = [
+  { id: 'credit_card', label: '💳 Credit Card' },
+  { id: 'loan',         label: '🏠 Loan' },
+  { id: 'other',        label: 'Other' },
+];
 
 export default function PayoffForm({
   rows, strategy, extra, error, loading, orderById,
-  onSetRow, onPersistApr, onAddRow, onRemoveRow,
+  onSetRow, onPersistApr, onPersistDetail, onAddRow, onRemoveRow,
   onStrategyChange, onExtraChange, onCalculate,
 }) {
+  const [expanded, setExpanded] = useState(() => new Set());
+  const toggleExpanded = (id) => setExpanded((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
   return (
     <>
       <div className="ov-strategy-row">
@@ -30,6 +44,7 @@ export default function PayoffForm({
           <thead>
             <tr>
               <th style={{ width: 28 }}></th>
+              <th style={{ width: 24 }}></th>
               <th>Account</th>
               <th style={{ width: 130 }}>Balance</th>
               <th style={{ width: 120 }}>
@@ -45,68 +60,91 @@ export default function PayoffForm({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ padding: '24px 14px', color: '#6b7280', fontSize: 13, textAlign: 'center' }}>
+                <td colSpan={7} style={{ padding: '24px 14px', color: '#6b7280', fontSize: 13, textAlign: 'center' }}>
                   No debts yet. Click <strong>+ Add debt</strong> below to get started.
                 </td>
               </tr>
             ) : rows.map((r, idx) => {
               const order = orderById.get(r._id);
+              const isOpen = expanded.has(r._id);
               // The strategy is part of the key on purpose: switching strategies
               // re-mounts each row so the entrance animation re-plays in the
               // new sort order.
               return (
-                <tr key={`${strategy}-${r._id}`} className="ov-row-animate"
-                    style={{ animationDelay: `${idx * 0.04}s` }}>
-                  <td style={{ textAlign: 'center', paddingRight: 4 }}>
-                    {order ? <span className="ov-order-badge">{order}</span> : <span style={{ display: 'inline-block', width: 20 }} />}
-                  </td>
-                  <td>
-                    <input
-                      className="ov-debt-input"
-                      type="text"
-                      placeholder="Account name"
-                      value={r.name}
-                      onChange={(e) => onSetRow(r._id, 'name', e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <div className="ov-debt-input-wrap">
-                      <span className="ov-debt-input-prefix">$</span>
+                <React.Fragment key={`${strategy}-${r._id}`}>
+                  <tr className="ov-row-animate" style={{ animationDelay: `${idx * 0.04}s` }}>
+                    <td style={{ textAlign: 'center', paddingRight: 4 }}>
+                      {order ? <span className="ov-order-badge">{order}</span> : <span style={{ display: 'inline-block', width: 20 }} />}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        type="button"
+                        className={`ov-expand-toggle${isOpen ? ' ov-expand-toggle--open' : ''}`}
+                        onClick={() => toggleExpanded(r._id)}
+                        aria-label={isOpen ? 'Hide debt details' : 'Show debt details'}
+                        aria-expanded={isOpen}
+                        title="Class, asset value, due date, deferred interest"
+                      >›</button>
+                    </td>
+                    <td>
                       <input
-                        className="ov-debt-input ov-num"
-                        type="number" min="0" step="0.01" placeholder="0.00"
-                        value={r.balance}
-                        onChange={(e) => onSetRow(r._id, 'balance', e.target.value)}
+                        className="ov-debt-input"
+                        type="text"
+                        placeholder="Account name"
+                        value={r.name}
+                        onChange={(e) => onSetRow(r._id, 'name', e.target.value)}
                       />
-                    </div>
-                  </td>
-                  <td>
-                    <AprCell
-                      value={r.apr}
-                      onChange={(v) => { onSetRow(r._id, 'apr', v); onPersistApr?.(r._id, v); }}
-                    />
-                  </td>
-                  <td>
-                    <div className="ov-debt-input-wrap">
-                      <span className="ov-debt-input-prefix">$</span>
-                      <input
-                        className="ov-debt-input ov-num"
-                        type="number" min="0" step="0.01" placeholder="0.00"
-                        value={r.min_payment}
-                        onChange={(e) => onSetRow(r._id, 'min_payment', e.target.value)}
+                    </td>
+                    <td>
+                      <div className="ov-debt-input-wrap">
+                        <span className="ov-debt-input-prefix">$</span>
+                        <input
+                          className="ov-debt-input ov-num"
+                          type="number" min="0" step="0.01" placeholder="0.00"
+                          value={r.balance}
+                          onChange={(e) => onSetRow(r._id, 'balance', e.target.value)}
+                        />
+                      </div>
+                    </td>
+                    <td>
+                      <AprCell
+                        value={r.apr}
+                        onChange={(v) => { onSetRow(r._id, 'apr', v); onPersistApr?.(r._id, v); }}
                       />
-                    </div>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <button
-                      type="button"
-                      className="ov-icon-btn ov-icon-btn--danger"
-                      onClick={() => onRemoveRow(r._id)}
-                      aria-label="Remove debt"
-                      title="Remove"
-                    >✕</button>
-                  </td>
-                </tr>
+                    </td>
+                    <td>
+                      <div className="ov-debt-input-wrap">
+                        <span className="ov-debt-input-prefix">$</span>
+                        <input
+                          className="ov-debt-input ov-num"
+                          type="number" min="0" step="0.01" placeholder="0.00"
+                          value={r.min_payment}
+                          onChange={(e) => onSetRow(r._id, 'min_payment', e.target.value)}
+                        />
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        type="button"
+                        className="ov-icon-btn ov-icon-btn--danger"
+                        onClick={() => onRemoveRow(r._id)}
+                        aria-label="Remove debt"
+                        title="Remove"
+                      >✕</button>
+                    </td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="ov-debt-detail-row">
+                      <td colSpan={7}>
+                        <DebtDetailPanel
+                          row={r}
+                          onSetRow={onSetRow}
+                          onPersistDetail={onPersistDetail}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -144,5 +182,98 @@ export default function PayoffForm({
         </button>
       </div>
     </>
+  );
+}
+
+function DebtDetailPanel({ row, onSetRow, onPersistDetail }) {
+  const update = (key, backendKey, val) => {
+    onSetRow(row._id, key, val);
+    onPersistDetail?.(row._id, { [backendKey]: val });
+  };
+
+  const equity = (parseFloat(row.assetValue) || 0) - (parseFloat(row.balance) || 0);
+  const hasAssetValue = row.assetValue !== '' && row.assetValue !== null && row.assetValue !== undefined;
+
+  return (
+    <div className="ov-debt-detail-panel">
+      <div className="ov-debt-detail-field">
+        <span className="ov-debt-detail-label">Debt type</span>
+        <div className="ov-class-tabs">
+          {DEBT_CLASSES.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={`ov-class-tab${row.debtClass === c.id ? ' ov-class-tab--active' : ''}`}
+              onClick={() => update('debtClass', 'debt_class', c.id)}
+            >{c.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {row.debtClass === 'loan' && (
+        <div className="ov-debt-detail-field">
+          <span className="ov-debt-detail-label">Asset value</span>
+          <div className="ov-debt-input-wrap">
+            <span className="ov-debt-input-prefix">$</span>
+            <input
+              className="ov-debt-input ov-num"
+              type="number" min="0" step="100" placeholder="Current market value"
+              value={row.assetValue}
+              onChange={(e) => onSetRow(row._id, 'assetValue', e.target.value)}
+              onBlur={(e) => onPersistDetail?.(row._id, { asset_value: e.target.value === '' ? null : parseFloat(e.target.value) })}
+            />
+          </div>
+          {hasAssetValue && (
+            <span className={`ov-equity-badge ${equity >= 0 ? 'ov-equity-badge--pos' : 'ov-equity-badge--neg'}`}>
+              Equity {fmtSigned(equity)}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="ov-debt-detail-field">
+        <span className="ov-debt-detail-label">Due date</span>
+        <input
+          className="ov-debt-input"
+          type="date"
+          value={row.dueDate}
+          onChange={(e) => update('dueDate', 'due_date', e.target.value)}
+        />
+      </div>
+
+      <div className="ov-debt-detail-field ov-debt-detail-field--wide">
+        <label className="ov-debt-detail-checkbox">
+          <input
+            type="checkbox"
+            checked={row.deferredInterest}
+            onChange={(e) => update('deferredInterest', 'deferred_interest', e.target.checked)}
+          />
+          Deferred interest promo
+        </label>
+        {row.deferredInterest && (
+          <div className="ov-promo-fields">
+            <div>
+              <span className="ov-debt-detail-label">Promo APR %</span>
+              <input
+                className="ov-debt-input ov-num"
+                type="number" min="0" step="0.01" placeholder="0"
+                value={row.promoApr}
+                onChange={(e) => onSetRow(row._id, 'promoApr', e.target.value)}
+                onBlur={(e) => onPersistDetail?.(row._id, { promo_apr: e.target.value === '' ? null : parseFloat(e.target.value) })}
+              />
+            </div>
+            <div>
+              <span className="ov-debt-detail-label">Promo expires</span>
+              <input
+                className="ov-debt-input"
+                type="date"
+                value={row.promoExpires}
+                onChange={(e) => update('promoExpires', 'promo_expires', e.target.value)}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

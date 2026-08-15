@@ -108,7 +108,7 @@ ALLOWED_HOSTS = BASE_ALLOWED_HOSTS
 # fetchers (curl, archive.org bots, RSS readers); we still identify
 # ourselves honestly in the parenthetical so server logs aren't misled.
 USER_AGENT = (
-    "Mozilla/5.0 (compatible; ExpensesHub-Knowledge/1.0; "
+    "Mozilla/5.0 (compatible; FinancialFreedom-Knowledge/1.0; "
     "+local-only personal-finance research)"
 )
 

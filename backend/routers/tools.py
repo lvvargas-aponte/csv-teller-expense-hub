@@ -30,6 +30,21 @@ async def payoff_plan(req: PayoffRequest):
         interest_paid = [0.0] * len(ordered)
         payoff_months = [0] * len(ordered)
         month = 0
+        today = date.today()
+
+        # Deferred-interest promos: months remaining from today until each
+        # account's promo_expires, if configured. The promo rate applies for
+        # months 1..promo_months, then the regular apr takes over.
+        promo_months = [None] * len(ordered)
+        for i, acct in enumerate(ordered):
+            if acct.promo_apr is not None and acct.promo_expires:
+                try:
+                    exp = date.fromisoformat(acct.promo_expires)
+                    promo_months[i] = max(
+                        0, (exp.year - today.year) * 12 + (exp.month - today.month)
+                    )
+                except ValueError:
+                    promo_months[i] = None
 
         while any(b > 0 for b in balances) and month < max_months:
             month += 1
@@ -37,7 +52,9 @@ async def payoff_plan(req: PayoffRequest):
             for i, acct in enumerate(ordered):
                 if balances[i] <= 0:
                     continue
-                monthly_rate = acct.apr / 100.0 / 12.0
+                in_promo = promo_months[i] is not None and month <= promo_months[i]
+                rate = acct.promo_apr if in_promo else acct.apr
+                monthly_rate = rate / 100.0 / 12.0
                 interest = balances[i] * monthly_rate
                 interest_paid[i] += interest
                 balances[i] += interest
@@ -62,7 +79,6 @@ async def payoff_plan(req: PayoffRequest):
                 payoff_months[i] = max_months
 
         results = []
-        today = date.today()
         for i, acct in enumerate(ordered):
             pm = payoff_months[i]
             payoff_date_obj = date(
@@ -70,11 +86,15 @@ async def payoff_plan(req: PayoffRequest):
                 (today.month - 1 + pm) % 12 + 1,
                 1,
             )
+            promo_expired_before_payoff = (
+                promo_months[i] is not None and pm > promo_months[i]
+            )
             results.append({
                 "name": acct.name,
                 "payoff_months": pm,
                 "total_interest": round(interest_paid[i], 2),
                 "payoff_date": payoff_date_obj.strftime("%Y-%m"),
+                "promo_expired_before_payoff": promo_expired_before_payoff,
             })
         total_months = max(payoff_months) if payoff_months else 0
         return results, total_months

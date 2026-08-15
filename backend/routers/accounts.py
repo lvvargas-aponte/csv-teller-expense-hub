@@ -275,18 +275,28 @@ async def upsert_account_details(account_id: str, req: AccountDetailsIn):
     _validate_day("due_day", req.due_day)
     if req.apr is not None and req.apr < 0:
         raise HTTPException(status_code=422, detail="apr must be >= 0")
+    if req.asset_value is not None and req.asset_value < 0:
+        raise HTTPException(status_code=422, detail="asset_value must be >= 0")
+    if req.promo_apr is not None and req.promo_apr < 0:
+        raise HTTPException(status_code=422, detail="promo_apr must be >= 0")
 
     existing = state.account_details.get(account_id)
     record: Dict = {
-        "account_id":      account_id,
-        "apr":             req.apr,
-        "credit_limit":    req.credit_limit,
-        "minimum_payment": req.minimum_payment,
-        "statement_day":   req.statement_day,
-        "due_day":         req.due_day,
-        "notes":           req.notes,
-        "created":         existing.get("created", _now_iso()) if existing else _now_iso(),
-        "updated":         _now_iso(),
+        "account_id":        account_id,
+        "apr":               req.apr,
+        "credit_limit":      req.credit_limit,
+        "minimum_payment":   req.minimum_payment,
+        "statement_day":     req.statement_day,
+        "due_day":           req.due_day,
+        "notes":             req.notes,
+        "debt_class":        req.debt_class,
+        "asset_value":       req.asset_value,
+        "due_date":          req.due_date,
+        "deferred_interest": req.deferred_interest,
+        "promo_apr":         req.promo_apr,
+        "promo_expires":     req.promo_expires,
+        "created":           existing.get("created", _now_iso()) if existing else _now_iso(),
+        "updated":           _now_iso(),
     }
     state.account_details[account_id] = record
     state._account_details_store.save()

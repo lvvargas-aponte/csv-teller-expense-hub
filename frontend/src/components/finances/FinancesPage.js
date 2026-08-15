@@ -97,7 +97,6 @@ export default function FinancesPage() {
               onRefresh={() => loadBalances(true)}
               onMutate={() => loadBalances(false)}
             />
-            <PayoffPlanner creditAccounts={creditAccounts} />
             <SpendingInsights
               summary={summary}
               dashboard={dashboard}
@@ -136,6 +135,12 @@ export default function FinancesPage() {
               <UpcomingBillsCard onNavigateToAccounts={() => setActiveId('accounts')} />
               <RecurringChargesCard variant="detail" />
             </div>
+          </SimplePage>
+        )}
+
+        {activeId === 'debt-payoff' && (
+          <SimplePage title="Debt Payoff">
+            <PayoffPlanner creditAccounts={creditAccounts} />
           </SimplePage>
         )}
 

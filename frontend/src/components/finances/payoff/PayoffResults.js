@@ -1,9 +1,11 @@
 import React from 'react';
-import { fmt$ } from '../../../utils/formatting';
+import { fmt$, fmtDate } from '../../../utils/formatting';
 import { fmtMonths } from './helpers';
 
-export default function PayoffResults({ results, strategy, totalMonths, totalPaid }) {
+export default function PayoffResults({ results, strategy, totalMonths, totalPaid, rows = [] }) {
   if (!results || !results.accounts || results.accounts.length === 0) return null;
+
+  const promoWarnings = results.accounts.filter((a) => a.promo_expired_before_payoff);
 
   return (
     <div className="ov-payoff-result">
@@ -60,6 +62,17 @@ export default function PayoffResults({ results, strategy, totalMonths, totalPai
           You save {fmt$(results.interest_saved_vs_minimums)} vs. paying minimums only.
         </div>
       )}
+
+      {promoWarnings.map((a) => {
+        const row = rows.find((r) => r.name === a.name);
+        return (
+          <div key={a.name} className="ov-promo-warning">
+            ⚠️ {a.name}{row?.promoApr ? `'s ${row.promoApr}% promo` : "'s promo"}
+            {row?.promoExpires ? ` ends ${fmtDate(row.promoExpires)}` : ' expires'} — it won't
+            be paid off by then, so deferred interest may apply retroactively per the card's terms.
+          </div>
+        );
+      })}
     </div>
   );
 }

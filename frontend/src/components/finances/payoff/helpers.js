@@ -1,5 +1,7 @@
 export const blankRow = () => ({
   _id: crypto.randomUUID(), accountId: null, name: '', balance: '', apr: '', min_payment: '',
+  debtClass: 'credit_card', assetValue: '', dueDate: '',
+  deferredInterest: false, promoApr: '', promoExpires: '',
 });
 
 export function aprBadgeClass(apr) {

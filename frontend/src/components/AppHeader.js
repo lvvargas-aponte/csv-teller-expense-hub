@@ -10,7 +10,7 @@ export default function AppHeader({ isDark, onToggleTheme }) {
       <div className="tx-header-inner">
         <NavLink to="/" className="tx-brand" end>
           <div className="tx-brand-icon" aria-hidden="true">💚</div>
-          <span className="tx-brand-name">Expenses<span>Hub</span></span>
+          <span className="tx-brand-name">Financial <span>Freedom</span></span>
         </NavLink>
         <nav className="tx-tabs" aria-label="Modules">
           <NavLink

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import axios from 'axios';
-import { API_BASE } from '../../../utils/formatting';
 import { userMessage } from '../../../utils/errorMessage';
 import { getAllAccountDetails, upsertAccountDetails } from '../../../api/accountDetails';
+import { payoffPlan, payoffAdvice } from '../../../api/tools';
 import { blankRow, sortByStrategy } from './helpers';
 
 // Owns all PayoffPlanner state + side-effects: rows, strategy, extra payment,
@@ -19,6 +18,10 @@ export function usePayoffPlanner(creditAccounts) {
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [adviceError,   setAdviceError]   = useState(null);
   const [prefilled,     setPrefilled]     = useState(false);
+  // Last-known full account-details record per accountId (backend field
+  // names), used to merge partial edits before PUTing — a bare partial PUT
+  // would otherwise null out any fields not included in this edit.
+  const [detailsByAccountId, setDetailsByAccountId] = useState({});
 
   // Prefill once when credit accounts become available.
   useEffect(() => {
@@ -32,6 +35,7 @@ export function usePayoffPlanner(creditAccounts) {
       } catch { /* no details configured yet */ }
       const enriched = creditAccounts.map((acct) => {
         const details = detailsMap[acct.id] || null;
+        const inferredClass = acct.subtype === 'loan' ? 'loan' : 'credit_card';
         return {
           _id:         crypto.randomUUID(),
           accountId:   acct.id,
@@ -39,10 +43,17 @@ export function usePayoffPlanner(creditAccounts) {
           balance:     (acct.ledger !== null && acct.ledger !== undefined) ? String(Math.abs(parseFloat(acct.ledger))) : '',
           apr:         (details?.apr !== null && details?.apr !== undefined) ? String(details.apr) : '',
           min_payment: (details?.minimum_payment !== null && details?.minimum_payment !== undefined) ? String(details.minimum_payment) : '',
+          debtClass:        details?.debt_class || inferredClass,
+          assetValue:       (details?.asset_value !== null && details?.asset_value !== undefined) ? String(details.asset_value) : '',
+          dueDate:          details?.due_date || '',
+          deferredInterest: !!details?.deferred_interest,
+          promoApr:         (details?.promo_apr !== null && details?.promo_apr !== undefined) ? String(details.promo_apr) : '',
+          promoExpires:     details?.promo_expires || '',
         };
       });
       if (!cancelled) {
         setRows(sortByStrategy(enriched, 'avalanche'));
+        setDetailsByAccountId(detailsMap);
         setPrefilled(true);
       }
     })();
@@ -54,17 +65,44 @@ export function usePayoffPlanner(creditAccounts) {
     setResults(null);
   }, []);
 
-  const persistApr = useCallback(async (id, apr) => {
+  // Merge `patch` (backend field names, e.g. { apr } or { debt_class }) into
+  // the last-known full details record for this row's account, then PUT the
+  // merged object so unrelated saved fields (due_day, notes, …) survive.
+  // Manually-added debts (no accountId) are never persisted — same as
+  // balance/min_payment today.
+  const persistDetail = useCallback(async (id, patch) => {
     const row = rows.find((r) => r._id === id);
     if (!row?.accountId) return;
+    const prevDetails = detailsByAccountId[row.accountId] || {};
+    const merged = { ...prevDetails, ...patch };
+    setDetailsByAccountId((m) => ({ ...m, [row.accountId]: merged }));
+    const payload = {
+      apr:                merged.apr ?? null,
+      credit_limit:       merged.credit_limit ?? null,
+      minimum_payment:    merged.minimum_payment ?? null,
+      statement_day:      merged.statement_day ?? null,
+      due_day:            merged.due_day ?? null,
+      notes:              merged.notes ?? '',
+      debt_class:         merged.debt_class ?? null,
+      asset_value:        merged.asset_value ?? null,
+      due_date:           merged.due_date ?? null,
+      deferred_interest:  !!merged.deferred_interest,
+      promo_apr:          merged.promo_apr ?? null,
+      promo_expires:      merged.promo_expires ?? null,
+    };
+    try {
+      await upsertAccountDetails(row.accountId, payload);
+    } catch (e) {
+      setDetailsByAccountId((m) => ({ ...m, [row.accountId]: prevDetails }));
+      setError(userMessage(e, 'Failed to save.'));
+    }
+  }, [rows, detailsByAccountId]);
+
+  const persistApr = useCallback((id, apr) => {
     const value = apr === '' || apr === null || apr === undefined ? null : parseFloat(apr);
     if (value !== null && Number.isNaN(value)) return;
-    try {
-      await upsertAccountDetails(row.accountId, { apr: value });
-    } catch (e) {
-      setError(userMessage(e, 'Failed to save APR.'));
-    }
-  }, [rows]);
+    return persistDetail(id, { apr: value });
+  }, [persistDetail]);
 
   const addRow = useCallback(() => setRows((prev) => [...prev, blankRow()]), []);
   const removeRow = useCallback((id) => {
@@ -100,6 +138,10 @@ export function usePayoffPlanner(creditAccounts) {
     balance:     parseFloat(r.balance)     || 0,
     apr:         parseFloat(r.apr)         || 0,
     min_payment: parseFloat(r.min_payment) || 0,
+    ...(r.deferredInterest && r.promoExpires ? {
+      promo_apr:     parseFloat(r.promoApr) || 0,
+      promo_expires: r.promoExpires,
+    } : {}),
   })), [rows]);
 
   const handleCalculate = useCallback(async () => {
@@ -108,10 +150,10 @@ export function usePayoffPlanner(creditAccounts) {
     setResults(null);
     setAdvice(null);
     try {
-      const res = await axios.post(`${API_BASE}/api/tools/payoff-plan`, {
-        accounts:      accountsPayload(),
+      const res = await payoffPlan({
+        accounts:     accountsPayload(),
         strategy,
-        extra_monthly: parseFloat(extra) || 0,
+        extraMonthly: parseFloat(extra) || 0,
       });
       setResults(res.data);
     } catch (e) {
@@ -126,11 +168,11 @@ export function usePayoffPlanner(creditAccounts) {
     setAdviceError(null);
     setAdvice(null);
     try {
-      const res = await axios.post(`${API_BASE}/api/tools/payoff-advice`, {
-        accounts:      accountsPayload(),
+      const res = await payoffAdvice({
+        accounts:     accountsPayload(),
         strategy,
-        extra_monthly: parseFloat(extra) || 0,
-        plan_results:  results ?? undefined,
+        extraMonthly: parseFloat(extra) || 0,
+        planResults:  results,
       });
       if (res.data.ai_available) setAdvice(res.data.advice);
       else setAdviceError('Ollama is not running. Start it with: ollama serve');
@@ -163,7 +205,7 @@ export function usePayoffPlanner(creditAccounts) {
     loading, error,
     advice, adviceLoading, adviceError,
     orderById, totalMonths, totalPaid,
-    setRow, persistApr, addRow, removeRow,
+    setRow, persistApr, persistDetail, addRow, removeRow,
     handleStrategyChange, setExtraPayment,
     handleCalculate, handleGetAdvice,
   };

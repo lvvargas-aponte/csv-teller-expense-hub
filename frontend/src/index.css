@@ -949,7 +949,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 .advisor-input-row { display: flex; gap: 8px; align-items: flex-end; }
 .advisor-input { flex: 1; resize: vertical; min-height: 44px; }
 
-/* ── ExpensesHub Dashboard shell ──────────────────────────────────────── */
+/* ── Financial Freedom Dashboard shell ──────────────────────────────────────── */
 .eh-app {
   display: flex;
   flex-direction: row;
@@ -2628,6 +2628,70 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   flex-shrink: 0;
 }
 
+/* Per-debt detail expander (class, asset value/equity, due date, deferred interest) */
+.ov-expand-toggle {
+  width: 20px; height: 20px;
+  border: none; background: none; cursor: pointer;
+  color: #9ca3af; font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: transform .16s, color .12s;
+}
+.ov-expand-toggle:hover { color: #059669; }
+.ov-expand-toggle--open { transform: rotate(90deg); color: #059669; }
+
+.ov-debt-detail-row td { padding: 0; border-bottom: 1px solid #d1fae5; }
+.ov-debt-detail-panel {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 20px;
+  background: #f9fefb;
+  padding: 14px 18px;
+}
+.ov-debt-detail-field { display: flex; flex-direction: column; gap: 5px; min-width: 150px; }
+.ov-debt-detail-field--wide { min-width: 220px; }
+.ov-debt-detail-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #9ca3af;
+}
+
+.ov-class-tabs { display: flex; gap: 4px; }
+.ov-class-tab {
+  padding: 5px 10px; border-radius: 6px;
+  font-size: 11px; font-weight: 600;
+  cursor: pointer; border: 1px solid #d1fae5; background: #fff;
+  color: #6b7280;
+  transition: all .14s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.ov-class-tab.ov-class-tab--active {
+  background: #059669; border-color: #059669; color: #fff;
+}
+
+.ov-equity-badge {
+  font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 99px;
+  width: fit-content;
+}
+.ov-equity-badge--pos { background: #d1fae5; color: #059669; }
+.ov-equity-badge--neg { background: #fee2e2; color: #ef4444; }
+
+.ov-debt-detail-checkbox {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: #374151;
+  cursor: pointer;
+}
+.ov-promo-fields { display: flex; gap: 14px; margin-top: 8px; }
+.ov-promo-fields > div { display: flex; flex-direction: column; gap: 5px; }
+
+.ov-promo-warning {
+  margin-top: 10px;
+  font-size: 12px; font-weight: 600; line-height: 1.5;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
 /* Extra payment row */
 .ov-extra-row {
   display: flex; align-items: center; gap: 12px;
@@ -3367,6 +3431,19 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 [data-theme='dark'] .ov-debt-table th { background: var(--bg-secondary); color: var(--text-faint); border-bottom-color: var(--border); }
 [data-theme='dark'] .ov-debt-table td { border-bottom-color: var(--border); }
 [data-theme='dark'] .ov-debt-table tbody tr:hover { background: var(--bg-secondary); }
+
+[data-theme='dark'] .ov-expand-toggle { color: var(--text-faint); }
+[data-theme='dark'] .ov-expand-toggle:hover,
+[data-theme='dark'] .ov-expand-toggle--open { color: var(--accent); }
+[data-theme='dark'] .ov-debt-detail-row td { border-bottom-color: var(--border); }
+[data-theme='dark'] .ov-debt-detail-panel { background: var(--bg-secondary); }
+[data-theme='dark'] .ov-debt-detail-label { color: var(--text-faint); }
+[data-theme='dark'] .ov-class-tab { background: var(--bg-card); border-color: var(--border); color: var(--text-muted); }
+[data-theme='dark'] .ov-class-tab.ov-class-tab--active { background: var(--accent); border-color: var(--accent); color: #fff; }
+[data-theme='dark'] .ov-equity-badge--pos { background: var(--accent-light); color: var(--accent); }
+[data-theme='dark'] .ov-equity-badge--neg { background: #3b1414; color: #fca5a5; }
+[data-theme='dark'] .ov-debt-detail-checkbox { color: var(--text-primary); }
+[data-theme='dark'] .ov-promo-warning { background: #3b2a08; border-color: #92400e; color: #fbbf24; }
 
 [data-theme='dark'] .ov-debt-input { color: var(--text-primary); }
 [data-theme='dark'] .ov-debt-input:focus { background: var(--bg-card); border-color: var(--border-mid); }

@@ -103,6 +103,13 @@ class AccountDetailsIn(BaseModel):
     statement_day: Optional[int] = None   # 1-31 (day of month the statement cuts)
     due_day: Optional[int] = None         # 1-31 (day of month the payment is due)
     notes: str = ""
+    # Debt Payoff Planner metadata
+    debt_class: Optional[Literal["credit_card", "loan", "other"]] = None
+    asset_value: Optional[float] = None       # current market value, for "loan" class — drives equity
+    due_date: Optional[str] = None            # ISO YYYY-MM-DD
+    deferred_interest: bool = False
+    promo_apr: Optional[float] = None         # rate that applies until promo_expires
+    promo_expires: Optional[str] = None       # ISO YYYY-MM-DD
 
 
 class AccountDetails(AccountDetailsIn):
@@ -160,6 +167,8 @@ class PayoffAccount(BaseModel):
     balance: float
     apr: float        # e.g. 24.99 means 24.99%
     min_payment: float
+    promo_apr: Optional[float] = None       # deferred-interest rate that applies until promo_expires
+    promo_expires: Optional[str] = None     # ISO YYYY-MM-DD
 
 
 class PayoffRequest(BaseModel):
