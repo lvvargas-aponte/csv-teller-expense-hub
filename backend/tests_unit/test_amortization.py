@@ -404,6 +404,144 @@ class TestDateHelpers:
         assert amort.current_period_index(date(2020, 3, 1), date(2026, 3, 1)) == 73
 
 
+class TestSimulatePayoffPlan:
+    """Multi-debt strategy simulation.
+
+    Exact HTTP-level values are pinned in
+    ``test_payoff_plan_characterization.py``; these cover the mechanics.
+    """
+    AS_OF = date(2026, 8, 15)
+
+    def _run(self, debts, extra=0.0, strategy="avalanche"):
+        return amort.simulate_payoff_plan(
+            debts, extra_monthly=extra, strategy=strategy, as_of=self.AS_OF
+        )
+
+    def test_avalanche_orders_by_apr_descending(self):
+        debts = [
+            amort.DebtInput("Low APR", 1000, 5.0, 50),
+            amort.DebtInput("High APR", 1000, 25.0, 50),
+        ]
+        assert [d.name for d in amort.order_debts(debts, "avalanche")] == [
+            "High APR", "Low APR"
+        ]
+
+    def test_snowball_orders_by_balance_ascending(self):
+        debts = [
+            amort.DebtInput("Big", 5000, 25.0, 50),
+            amort.DebtInput("Small", 500, 5.0, 50),
+        ]
+        assert [d.name for d in amort.order_debts(debts, "snowball")] == ["Small", "Big"]
+
+    def test_freed_minimum_rolls_into_the_next_debt(self):
+        """The defining mechanic: a retired debt's minimum is not lost.
+
+        Small clears quickly on its own $200; from then on Big should be
+        receiving $100 + $200 rather than just $100.
+        """
+        debts = [
+            amort.DebtInput("Small", 400, 0.0, 200),
+            amort.DebtInput("Big", 3000, 0.0, 100),
+        ]
+        result = self._run(debts, strategy="snowball")
+
+        rows = {r["name"]: r for r in result["accounts"]}
+        assert rows["Small"]["payoff_months"] == 2
+
+        # Without rollover Big needs 30 months at $100/mo (asserted below).
+        # With Small's $200 arriving from month 3 it pays $300/mo instead.
+        assert rows["Big"]["payoff_months"] == 12
+
+        solo = self._run([amort.DebtInput("Big", 3000, 0.0, 100)])
+        assert solo["accounts"][0]["payoff_months"] == 30
+
+    def test_rollover_accumulates_across_several_payoffs(self):
+        debts = [
+            amort.DebtInput("A", 100, 0.0, 100),
+            amort.DebtInput("B", 200, 0.0, 100),
+            amort.DebtInput("C", 3000, 0.0, 100),
+        ]
+        result = self._run(debts, strategy="snowball")
+        rows = {r["name"]: r for r in result["accounts"]}
+
+        assert rows["A"]["payoff_months"] == 1
+        assert rows["B"]["payoff_months"] == 2
+        # C pays $100 alone, +$100 once A clears, +$200 once B clears —
+        # 30 months of solo payments compress to 11.
+        assert rows["C"]["payoff_months"] == 11
+
+    def test_extra_spills_to_the_next_debt_when_it_overshoots(self):
+        """A large extra payment must not be stranded on a cleared debt."""
+        debts = [
+            amort.DebtInput("Tiny", 50, 0.0, 10),
+            amort.DebtInput("Next", 500, 0.0, 10),
+        ]
+        result = self._run(debts, extra=1000, strategy="snowball")
+        rows = {r["name"]: r for r in result["accounts"]}
+        assert rows["Tiny"]["payoff_months"] == 1
+        assert rows["Next"]["payoff_months"] == 1
+
+    def test_strategy_changes_the_outcome_with_three_debts(self):
+        debts = [
+            amort.DebtInput("A", 800, 19.99, 25),
+            amort.DebtInput("B", 2400, 22.99, 60),
+            amort.DebtInput("C", 5000, 14.5, 100),
+        ]
+        avalanche = self._run(debts, extra=100, strategy="avalanche")
+        snowball = self._run(debts, extra=100, strategy="snowball")
+        assert avalanche["grand_total_interest"] < snowball["grand_total_interest"]
+
+    def test_zero_interest_debts_repay_exactly_the_principal(self):
+        debts = [amort.DebtInput("Zero", 1200, 0.0, 100)]
+        result = self._run(debts)
+        assert result["grand_total_interest"] == 0.0
+        assert result["accounts"][0]["payoff_months"] == 12
+
+    def test_empty_input(self):
+        result = self._run([])
+        assert result["accounts"] == []
+        assert result["grand_total_interest"] == 0.0
+        assert result["grand_total_months"] == 0
+
+    def test_interest_saved_is_zero_without_extra(self):
+        debts = [amort.DebtInput("Card", 2000, 20.0, 50)]
+        assert self._run(debts)["interest_saved_vs_minimums"] == 0.0
+
+    def test_interest_saved_is_positive_with_extra(self):
+        debts = [amort.DebtInput("Card", 2000, 20.0, 50)]
+        assert self._run(debts, extra=200)["interest_saved_vs_minimums"] > 0
+
+    def test_promo_rate_applies_inside_its_window(self):
+        debts = [
+            amort.DebtInput(
+                "Promo", 4000, 26.99, 100,
+                promo_apr=0.0, promo_expires="2027-08-01",   # 12 months from AS_OF
+            )
+        ]
+        result = self._run(debts)
+        row = result["accounts"][0]
+        assert row["promo_expired_before_payoff"] is True
+        # A year of 0% then 26.99% still costs less than 26.99% throughout.
+        no_promo = self._run([amort.DebtInput("Plain", 4000, 26.99, 100)])
+        assert result["grand_total_interest"] < no_promo["grand_total_interest"]
+
+    def test_unparseable_promo_date_falls_back_to_the_regular_rate(self):
+        debts = [
+            amort.DebtInput("Bad", 1000, 20.0, 100, promo_apr=0.0, promo_expires="nope")
+        ]
+        plain = self._run([amort.DebtInput("Bad", 1000, 20.0, 100)])
+        assert self._run(debts)["grand_total_interest"] == plain["grand_total_interest"]
+
+    def test_caps_at_max_periods(self):
+        debts = [amort.DebtInput("Underwater", 10000, 29.99, 50)]
+        result = amort.simulate_payoff_plan(
+            debts, extra_monthly=0.0, strategy="avalanche",
+            as_of=self.AS_OF, max_periods=24,
+        )
+        assert result["accounts"][0]["payoff_months"] == 24
+        assert result["grand_total_months"] == 24
+
+
 class TestPurity:
     def test_module_does_not_import_application_state(self):
         """Guards the design rule in the module docstring.

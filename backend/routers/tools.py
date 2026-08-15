@@ -1,11 +1,15 @@
-"""Tools routes: payoff plan calculator and AI advice."""
+"""Tools routes: payoff plan calculator and AI advice.
+
+Thin HTTP layer only — the simulation itself lives in ``amortization`` so
+it can be unit-tested without a client and reused outside a request.
+"""
 import logging
-from datetime import date
 
 from fastapi import APIRouter
 
+import amortization
 from llm_client import ask_ollama
-from models import PayoffAccount, PayoffRequest, PayoffAdviceRequest
+from models import PayoffRequest, PayoffAdviceRequest
 import state
 
 logger = logging.getLogger(__name__)
@@ -14,105 +18,24 @@ router = APIRouter()
 
 @router.post("/tools/payoff-plan")
 async def payoff_plan(req: PayoffRequest):
-    """Compute a month-by-month debt payoff plan using avalanche or snowball strategy."""
-    max_months = state.PAYOFF_MAX_MONTHS
-
-    def _simulate(
-        accounts_input: list[PayoffAccount], extra: float, strategy: str
-    ) -> tuple[list[dict], int]:
-        """Run the payoff simulation; return per-account results and total months."""
-        if strategy == "avalanche":
-            ordered = sorted(accounts_input, key=lambda a: a.apr, reverse=True)
-        else:
-            ordered = sorted(accounts_input, key=lambda a: a.balance)
-
-        balances = [a.balance for a in ordered]
-        interest_paid = [0.0] * len(ordered)
-        payoff_months = [0] * len(ordered)
-        month = 0
-        today = date.today()
-
-        # Deferred-interest promos: months remaining from today until each
-        # account's promo_expires, if configured. The promo rate applies for
-        # months 1..promo_months, then the regular apr takes over.
-        promo_months = [None] * len(ordered)
-        for i, acct in enumerate(ordered):
-            if acct.promo_apr is not None and acct.promo_expires:
-                try:
-                    exp = date.fromisoformat(acct.promo_expires)
-                    promo_months[i] = max(
-                        0, (exp.year - today.year) * 12 + (exp.month - today.month)
-                    )
-                except ValueError:
-                    promo_months[i] = None
-
-        while any(b > 0 for b in balances) and month < max_months:
-            month += 1
-            # Apply interest and minimum payments
-            for i, acct in enumerate(ordered):
-                if balances[i] <= 0:
-                    continue
-                in_promo = promo_months[i] is not None and month <= promo_months[i]
-                rate = acct.promo_apr if in_promo else acct.apr
-                monthly_rate = rate / 100.0 / 12.0
-                interest = balances[i] * monthly_rate
-                interest_paid[i] += interest
-                balances[i] += interest
-                balances[i] = max(0.0, balances[i] - acct.min_payment)
-                if balances[i] <= 0:
-                    payoff_months[i] = payoff_months[i] or month
-
-            # Apply extra to priority account (first non-zero balance)
-            remaining_extra = extra
-            for i in range(len(ordered)):
-                if balances[i] > 0 and remaining_extra > 0:
-                    applied = min(remaining_extra, balances[i])
-                    balances[i] -= applied
-                    remaining_extra -= applied
-                    if balances[i] <= 0:
-                        payoff_months[i] = payoff_months[i] or month
-                    break
-
-        # Catch any that never reached 0 (hit cap)
-        for i in range(len(ordered)):
-            if payoff_months[i] == 0 and balances[i] > 0:
-                payoff_months[i] = max_months
-
-        results = []
-        for i, acct in enumerate(ordered):
-            pm = payoff_months[i]
-            payoff_date_obj = date(
-                today.year + (today.month - 1 + pm) // 12,
-                (today.month - 1 + pm) % 12 + 1,
-                1,
-            )
-            promo_expired_before_payoff = (
-                promo_months[i] is not None and pm > promo_months[i]
-            )
-            results.append({
-                "name": acct.name,
-                "payoff_months": pm,
-                "total_interest": round(interest_paid[i], 2),
-                "payoff_date": payoff_date_obj.strftime("%Y-%m"),
-                "promo_expired_before_payoff": promo_expired_before_payoff,
-            })
-        total_months = max(payoff_months) if payoff_months else 0
-        return results, total_months
-
-    with_extra, grand_months = _simulate(req.accounts, req.extra_monthly, req.strategy)
-    baseline, _ = _simulate(req.accounts, 0.0, req.strategy)
-
-    grand_total_interest = round(sum(a["total_interest"] for a in with_extra), 2)
-    baseline_total = round(sum(a["total_interest"] for a in baseline), 2)
-    interest_saved = round(baseline_total - grand_total_interest, 2)
-
-    return {
-        "accounts": with_extra,
-        "grand_total_interest": grand_total_interest,
-        "grand_total_months": grand_months,
-        "interest_saved_vs_minimums": interest_saved,
-        "strategy": req.strategy,
-    }
+    """Compute a month-by-month debt payoff plan (avalanche or snowball)."""
+    debts = [
+        amortization.DebtInput(
+            name=a.name,
+            balance=a.balance,
+            apr=a.apr,
+            min_payment=a.min_payment,
+            promo_apr=a.promo_apr,
+            promo_expires=a.promo_expires,
+        )
+        for a in req.accounts
+    ]
+    return amortization.simulate_payoff_plan(
+        debts,
+        extra_monthly=req.extra_monthly,
+        strategy=req.strategy,
+        max_periods=state.PAYOFF_MAX_MONTHS,
+    )
 
 
 @router.post("/tools/payoff-advice")

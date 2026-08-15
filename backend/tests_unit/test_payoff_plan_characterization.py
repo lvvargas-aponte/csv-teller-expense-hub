@@ -7,23 +7,30 @@ proven behavior-preserving. Unlike ``test_new_endpoints.TestPayoffPlan``,
 which asserts relative properties (avalanche <= snowball, extra reduces
 interest), every number here is an exact pinned value.
 
-**These are not assertions that the current behavior is correct.** Two
-known defects are deliberately pinned below so the refactor diff stays
-legible; each is marked ``PINNED BUG`` and lists the file to update when
-the fix lands in its own commit:
+History
+-------
+The simulation originally lived inline in ``routers/tools.py``. These
+values were captured from that implementation, then the body moved to
+``amortization.simulate_payoff_plan()``. Every single-debt, ordering and
+promo case below came through the move **byte-identical**, which is what
+proves the relocation was faithful.
 
-1. **No minimum-payment rollover.** When an account reaches zero its
-   freed-up minimum is never redirected to the next debt — each account
-   pays only its own ``min_payment`` forever, and ``extra`` only ever
-   goes to the first non-zero balance. That cascade is the defining
-   mechanic of both snowball and avalanche, so current payoff dates are
-   later and total interest higher than reality.
+The multi-debt totals then changed — deliberately — when the
+minimum-payment rollover was fixed in the same pass. Previously a retired
+debt's freed-up minimum was never redirected: each account paid only its
+own ``min_payment`` forever, so strategy changed the result *ordering*
+and nothing else. That cascade is the defining mechanic of both snowball
+and avalanche. The corrected values are pinned below and are strictly
+lower; ``test_avalanche_now_beats_snowball_with_extra`` covers the
+behavior that was previously impossible to observe.
 
-2. **Unbounded negative amortization.** A minimum payment below the
-   monthly interest charge runs the full ``PAYOFF_MAX_MONTHS`` (600) cap
-   and reports a nonsense total (see
-   ``test_min_payment_below_interest_runs_to_cap`` — $21.6 *billion*).
-   There is no guard and nothing tells the user the debt never amortizes.
+**One known defect is still deliberately pinned**, marked ``PINNED BUG``:
+unbounded negative amortization. A minimum payment below the monthly
+interest charge runs the full ``PAYOFF_MAX_MONTHS`` (600) cap and reports
+a nonsense total (see ``test_min_payment_below_interest_runs_to_cap`` —
+$21.6 *billion*). ``amortization.build_schedule`` already flags this via
+``negative_amortization``; wiring that guard into the multi-debt
+simulation is a separate change.
 
 Date handling: ``payoff_months`` and every dollar figure are independent
 of the current date and are pinned exactly. ``payoff_date`` is derived
@@ -134,12 +141,14 @@ class TestMultipleAccounts:
             "accounts": self._TWO_CARDS, "strategy": "avalanche", "extra_monthly": 0.0,
         })
 
-        assert data["grand_total_interest"] == pytest.approx(3818.35)
-        assert data["grand_total_months"] == 87
+        assert data["grand_total_interest"] == pytest.approx(3343.51)
+        assert data["grand_total_months"] == 69
 
         accounts = _by_name(data)
-        assert accounts["High"]["payoff_months"] == 87
-        assert accounts["High"]["total_interest"] == pytest.approx(3512.71)
+        # Low clears at 46 on its own minimum; its $40 then rolls into High,
+        # pulling High in from month 87 to 69 and saving $474.84 of interest.
+        assert accounts["High"]["payoff_months"] == 69
+        assert accounts["High"]["total_interest"] == pytest.approx(3037.87)
         assert accounts["Low"]["payoff_months"] == 46
         assert accounts["Low"]["total_interest"] == pytest.approx(305.64)
 
@@ -156,19 +165,13 @@ class TestMultipleAccounts:
         })
         assert [a["name"] for a in data["accounts"]] == ["Low", "High"]
 
-    def test_strategy_is_inert_without_extra_payment(self, client):
-        """PINNED BUG #1 — avalanche and snowball are indistinguishable here.
+    def test_two_debts_converge_regardless_of_strategy(self, client):
+        """With two debts and no extra, both strategies land identically.
 
-        With no extra payment, strategy currently changes only the result
-        ordering, never the money: each account pays its own minimum in
-        isolation and no freed-up minimum ever cascades. Identical totals
-        across both strategies is the symptom.
-
-        After the rollover fix these totals must both DROP (Low frees
-        $40/mo into High at month 46). They may still equal each other in
-        this two-account case — whichever debt finishes first frees its
-        minimum into the survivor either way — so extend
-        ``test_three_card_snowball_extra100`` to prove ordering matters.
+        Not the old bug — this one is real. Whichever debt clears first
+        frees its minimum into the sole survivor either way, so there is
+        no decision left for the strategy to make. Ordering only starts
+        mattering at three debts (see the pair of tests below).
         """
         avalanche = _post(client, {
             "accounts": self._TWO_CARDS, "strategy": "avalanche", "extra_monthly": 0.0,
@@ -185,38 +188,75 @@ class TestMultipleAccounts:
             "accounts": self._TWO_CARDS, "strategy": "avalanche", "extra_monthly": 200.0,
         })
 
-        assert data["grand_total_interest"] == pytest.approx(610.51)
-        assert data["grand_total_months"] == 18
-        assert data["interest_saved_vs_minimums"] == pytest.approx(3207.84)
+        assert data["grand_total_interest"] == pytest.approx(600.58)
+        assert data["grand_total_months"] == 17
+        assert data["interest_saved_vs_minimums"] == pytest.approx(2742.93)
 
         accounts = _by_name(data)
         assert accounts["High"]["payoff_months"] == 13
         assert accounts["High"]["total_interest"] == pytest.approx(439.17)
-        assert accounts["Low"]["payoff_months"] == 18
-        assert accounts["Low"]["total_interest"] == pytest.approx(171.34)
+        # High clears at 13; its $75 minimum plus the $200 extra then hit Low,
+        # which lands at 17 instead of 18.
+        assert accounts["Low"]["payoff_months"] == 17
+        assert accounts["Low"]["total_interest"] == pytest.approx(161.41)
+
+    _THREE_CARDS = [
+        {"name": "A", "balance": 800.0, "apr": 19.99, "min_payment": 25.0},
+        {"name": "B", "balance": 2400.0, "apr": 22.99, "min_payment": 60.0},
+        {"name": "C", "balance": 5000.0, "apr": 14.5, "min_payment": 100.0},
+    ]
 
     def test_three_card_snowball_with_extra(self, client):
         data = _post(client, {
-            "accounts": [
-                {"name": "A", "balance": 800.0, "apr": 19.99, "min_payment": 25.0},
-                {"name": "B", "balance": 2400.0, "apr": 22.99, "min_payment": 60.0},
-                {"name": "C", "balance": 5000.0, "apr": 14.5, "min_payment": 100.0},
-            ],
-            "strategy": "snowball",
-            "extra_monthly": 100.0,
+            "accounts": self._THREE_CARDS, "strategy": "snowball", "extra_monthly": 100.0,
         })
 
-        assert data["grand_total_interest"] == pytest.approx(2665.45)
-        assert data["grand_total_months"] == 47
-        assert data["interest_saved_vs_minimums"] == pytest.approx(2599.88)
+        assert data["grand_total_interest"] == pytest.approx(2307.97)
+        assert data["grand_total_months"] == 37
+        assert data["interest_saved_vs_minimums"] == pytest.approx(2770.07)
 
         accounts = _by_name(data)
-        assert accounts["A"]["payoff_months"] == 7
+        assert accounts["A"]["payoff_months"] == 7      # smallest balance first
         assert accounts["A"]["total_interest"] == pytest.approx(53.12)
-        assert accounts["B"]["payoff_months"] == 24
-        assert accounts["B"]["total_interest"] == pytest.approx(730.57)
-        assert accounts["C"]["payoff_months"] == 47
-        assert accounts["C"]["total_interest"] == pytest.approx(1881.76)
+        assert accounts["B"]["payoff_months"] == 22
+        assert accounts["B"]["total_interest"] == pytest.approx(660.03)
+        assert accounts["C"]["payoff_months"] == 37
+        assert accounts["C"]["total_interest"] == pytest.approx(1594.82)
+
+    def test_three_card_avalanche_with_extra(self, client):
+        data = _post(client, {
+            "accounts": self._THREE_CARDS, "strategy": "avalanche", "extra_monthly": 100.0,
+        })
+
+        assert data["grand_total_interest"] == pytest.approx(2264.13)
+        assert data["grand_total_months"] == 37
+
+        accounts = _by_name(data)
+        assert accounts["B"]["payoff_months"] == 18     # highest APR first
+        assert accounts["B"]["total_interest"] == pytest.approx(456.68)
+        assert accounts["A"]["payoff_months"] == 21
+        assert accounts["A"]["total_interest"] == pytest.approx(225.15)
+        assert accounts["C"]["payoff_months"] == 37
+        assert accounts["C"]["total_interest"] == pytest.approx(1582.30)
+
+    def test_avalanche_now_beats_snowball_with_extra(self, client):
+        """The behavior the rollover bug made impossible to observe.
+
+        Attacking the 22.99% card before the $800 one costs $43.84 less
+        in total interest. Before the fix these two were bit-identical,
+        so the strategy toggle was decorative.
+        """
+        avalanche = _post(client, {
+            "accounts": self._THREE_CARDS, "strategy": "avalanche", "extra_monthly": 100.0,
+        })
+        snowball = _post(client, {
+            "accounts": self._THREE_CARDS, "strategy": "snowball", "extra_monthly": 100.0,
+        })
+
+        assert avalanche["grand_total_interest"] < snowball["grand_total_interest"]
+        assert snowball["grand_total_interest"] - avalanche["grand_total_interest"] == (
+            pytest.approx(43.84)
+        )
 
 
 class TestPromoApr:

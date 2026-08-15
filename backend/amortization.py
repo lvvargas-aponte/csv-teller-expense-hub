@@ -449,3 +449,159 @@ def compare_extra_payment(
         )),
         "months_saved": baseline.payoff_months - accelerated.payoff_months,
     }
+
+
+# ---------------------------------------------------------------------------
+# Multi-debt payoff strategy simulation
+# ---------------------------------------------------------------------------
+#
+# A different problem from build_schedule. That one amortizes ONE loan in
+# isolation; this one models MANY debts competing for a shared pool of money,
+# where the order you attack them in changes the outcome and a retired debt's
+# freed-up minimum cascades into the next.
+#
+# Deliberately float math, not Decimal, unlike the rest of this module. This
+# is a comparative planning tool — "avalanche beats snowball by $400" — not a
+# statement reconciliation, so sub-cent precision buys nothing, and the output
+# is pinned by tests_unit/test_payoff_plan_characterization.py. Switching it
+# to Decimal would move every pinned number for no user-visible gain.
+
+@dataclass(frozen=True)
+class DebtInput:
+    """One debt in a payoff plan.
+
+    A plain dataclass rather than the Pydantic ``PayoffAccount`` so this
+    module keeps no dependency on ``models`` (and therefore none on FastAPI).
+    The router converts at its boundary.
+    """
+    name: str
+    balance: float
+    apr: float
+    min_payment: float
+    promo_apr: Optional[float] = None
+    promo_expires: Optional[str] = None      # ISO YYYY-MM-DD
+
+
+def _promo_window_months(debt: DebtInput, today: date) -> Optional[int]:
+    """Whole months from today until this debt's promo rate expires.
+
+    ``None`` when the debt has no promo window or the stored date is
+    unparseable. Note the window is applied as ``period <= window``, so a
+    promo expiring N months out charges the promo rate for N periods.
+    """
+    if debt.promo_apr is None or not debt.promo_expires:
+        return None
+    try:
+        expires = date.fromisoformat(debt.promo_expires)
+    except ValueError:
+        return None
+    return max(0, (expires.year - today.year) * 12 + (expires.month - today.month))
+
+
+def order_debts(debts: Sequence[DebtInput], strategy: str) -> List[DebtInput]:
+    """Attack order. Avalanche = highest APR first (least total interest);
+    anything else = snowball, lowest balance first (fastest first win)."""
+    if strategy == "avalanche":
+        return sorted(debts, key=lambda d: d.apr, reverse=True)
+    return sorted(debts, key=lambda d: d.balance)
+
+
+def simulate_payoff_plan(
+    debts: Sequence[DebtInput],
+    *,
+    extra_monthly: float = 0.0,
+    strategy: str = "avalanche",
+    as_of: Optional[date] = None,
+    max_periods: int = MAX_PERIODS,
+) -> Dict[str, Any]:
+    """Month-by-month multi-debt payoff simulation.
+
+    Each period: accrue interest and apply every debt's minimum, then throw
+    the extra payment plus every freed-up minimum at the highest-priority
+    surviving debt.
+
+    Runs twice — once with the extra, once without — so
+    ``interest_saved_vs_minimums`` reflects what the extra payment actually
+    bought.
+    """
+    today = as_of or date.today()
+
+    def _run(extra: float) -> Tuple[List[Dict[str, Any]], int]:
+        ordered = order_debts(debts, strategy)
+        count = len(ordered)
+        balances = [d.balance for d in ordered]
+        interest_paid = [0.0] * count
+        payoff_months = [0] * count
+        promo_windows = [_promo_window_months(d, today) for d in ordered]
+        month = 0
+
+        while any(b > 0 for b in balances) and month < max_periods:
+            month += 1
+
+            # Freed-up minimums cascade. Once a debt is retired its minimum
+            # payment doesn't vanish from the budget — it rolls into whatever
+            # you're attacking next. That snowballing is the entire point of
+            # both strategies; without it the ordering changes nothing.
+            rollover = sum(
+                d.min_payment for i, d in enumerate(ordered) if balances[i] <= 0
+            )
+
+            for i, debt in enumerate(ordered):
+                if balances[i] <= 0:
+                    continue
+                in_promo = promo_windows[i] is not None and month <= promo_windows[i]
+                rate = debt.promo_apr if in_promo else debt.apr
+                interest = balances[i] * (rate / 100.0 / 12.0)
+                interest_paid[i] += interest
+                balances[i] += interest
+                balances[i] = max(0.0, balances[i] - debt.min_payment)
+                if balances[i] <= 0:
+                    payoff_months[i] = payoff_months[i] or month
+
+            # Extra + rollover go to the first surviving debt in attack order.
+            # Any surplus beyond what clears it spills to the next, so a large
+            # extra payment isn't wasted in the month a debt is retired.
+            available = extra + rollover
+            for i in range(count):
+                if available <= 0:
+                    break
+                if balances[i] <= 0:
+                    continue
+                applied = min(available, balances[i])
+                balances[i] -= applied
+                available -= applied
+                if balances[i] <= 0:
+                    payoff_months[i] = payoff_months[i] or month
+
+        # Anything still outstanding hit the cap rather than being repaid.
+        for i in range(count):
+            if payoff_months[i] == 0 and balances[i] > 0:
+                payoff_months[i] = max_periods
+
+        rows: List[Dict[str, Any]] = []
+        for i, debt in enumerate(ordered):
+            months = payoff_months[i]
+            rows.append({
+                "name": debt.name,
+                "payoff_months": months,
+                "total_interest": round(interest_paid[i], 2),
+                "payoff_date": payoff_date(today.replace(day=1), months).strftime("%Y-%m"),
+                "promo_expired_before_payoff": (
+                    promo_windows[i] is not None and months > promo_windows[i]
+                ),
+            })
+        return rows, (max(payoff_months) if payoff_months else 0)
+
+    with_extra, grand_months = _run(extra_monthly)
+    baseline, _ = _run(0.0)
+
+    grand_total_interest = round(sum(r["total_interest"] for r in with_extra), 2)
+    baseline_total = round(sum(r["total_interest"] for r in baseline), 2)
+
+    return {
+        "accounts": with_extra,
+        "grand_total_interest": grand_total_interest,
+        "grand_total_months": grand_months,
+        "interest_saved_vs_minimums": round(baseline_total - grand_total_interest, 2),
+        "strategy": strategy,
+    }
