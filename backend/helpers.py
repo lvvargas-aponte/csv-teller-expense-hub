@@ -3,7 +3,7 @@ import logging
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -95,3 +95,46 @@ def _decode_csv_bytes(raw: bytes) -> str:
         except UnicodeDecodeError:
             continue
     raise ValueError("Could not decode CSV file — unsupported encoding")
+
+
+# ---------------------------------------------------------------------------
+# Transaction direction — canonical money-flow field
+# ---------------------------------------------------------------------------
+
+_LEGACY_DISCOVER_INFLOW_CATEGORIES = frozenset({"payments and credits"})
+
+
+def derive_direction(transaction_type: Optional[str]) -> str:
+    """Canonical direction from a parser-normalized transaction_type."""
+    return "inflow" if transaction_type == "credit" else "outflow"
+
+
+def txn_direction(txn: Dict[str, Any]) -> str:
+    """Money-flow direction of a stored transaction dict.
+
+    A stamped ``direction`` field wins. The fallback exists for records
+    ingested before the field was added — including legacy Discover rows
+    where purchases were stored as ``credit`` (only their
+    "Payments and Credits" rows are real inflows). The fallback becomes
+    dead code once ``scripts/normalize_directions.py`` has run.
+    """
+    direction = txn.get("direction")
+    if direction in ("outflow", "inflow"):
+        return direction
+
+    txn_type = txn.get("transaction_type")
+    if txn_type == "credit":
+        if txn.get("source") == "discover":
+            category = (txn.get("category") or "").strip().lower()
+            if category in _LEGACY_DISCOVER_INFLOW_CATEGORIES:
+                return "inflow"
+            return "outflow"
+        return "inflow"
+    if txn_type == "debit":
+        return "outflow"
+
+    try:
+        amount = float(txn.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    return "outflow" if amount > 0 else "inflow"
