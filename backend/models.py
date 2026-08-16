@@ -259,6 +259,34 @@ class DealInputs(BaseModel):
     source_property_id: Optional[str] = None
 
 
+class RetirementAssumptionsIn(BaseModel):
+    """Retirement projection assumptions.
+
+    Every field is optional: an omitted value falls back to the module
+    default rather than being frozen into the saved record, so improving a
+    default later benefits anyone who never set it explicitly.
+    """
+    current_age: Optional[int] = None
+    # None = solve for the earliest sustainable year rather than assume one.
+    target_retirement_age: Optional[int] = None
+    investment_return_pct: Optional[float] = None
+    inflation_pct: Optional[float] = None
+    rent_growth_pct: Optional[float] = None
+    expense_growth_pct: Optional[float] = None
+    appreciation_pct: Optional[float] = None
+    safe_withdrawal_rate_pct: Optional[float] = None
+    # None = derive from actual trailing spending, which beats a guessed
+    # percentage of income: it is what this household really costs.
+    retirement_spending_monthly: Optional[float] = None
+    monthly_contribution: Optional[float] = None
+    contribution_growth_pct: Optional[float] = None
+    social_security_monthly: Optional[float] = None
+    social_security_start_age: Optional[int] = None
+    tax_rate_on_withdrawals_pct: Optional[float] = None
+    effective_tax_rate_on_rental_pct: Optional[float] = None
+    horizon_years: Optional[int] = None
+
+
 class LoanWhatIfRequest(BaseModel):
     """"What if I paid $X more each month?" for a single loan."""
     extra_monthly: float = 0.0

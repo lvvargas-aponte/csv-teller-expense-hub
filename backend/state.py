@@ -64,6 +64,7 @@ _goals_store           = PgStore("goals",           "goals")
 _account_details_store = PgStore("account_details", "account-details")
 _snaptrade_creds_store = PgStore("snaptrade_creds", "snaptrade-creds")
 _coach_dismissals_store = PgStore("coach_dismissals", "coach-dismissals")
+_retirement_store = PgStore("retirement_assumptions", "retirement-assumptions")
 
 
 def _migrate_reviewed_field() -> None:
@@ -118,6 +119,10 @@ snaptrade_creds:     MutableMapping[str, Any]  = _snaptrade_creds_store.data
 # (e.g. 'over_budget:Dining:2026-08'). Because the period is part of the
 # key, dismissing an August warning correctly lets September's reappear.
 coach_dismissals:    MutableMapping[str, Any]  = _coach_dismissals_store.data
+# Single-key store ('household'). A config blob rather than a typed table:
+# these assumptions change shape every time a new what-if is asked for, and
+# a migration per question would be absurd.
+retirement_assumptions: MutableMapping[str, Any] = _retirement_store.data
 
 # ---------------------------------------------------------------------------
 # SnapTradeClient instance
@@ -154,6 +159,7 @@ _STORE_NAMES = (
     ("_account_details_store", "account_details", "account-details"),
     ("_snaptrade_creds_store", "snaptrade_creds", "snaptrade-creds"),
     ("_coach_dismissals_store", "coach_dismissals", "coach-dismissals"),
+    ("_retirement_store", "retirement_assumptions", "retirement-assumptions"),
 )
 
 _LIVE_REFS = (
@@ -166,6 +172,7 @@ _LIVE_REFS = (
     ("account_details",     "_account_details_store"),
     ("snaptrade_creds",     "_snaptrade_creds_store"),
     ("coach_dismissals",    "_coach_dismissals_store"),
+    ("retirement_assumptions", "_retirement_store"),
 )
 
 

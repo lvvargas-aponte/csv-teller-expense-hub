@@ -4195,3 +4195,53 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   .eq-headline-value { font-size: 24px; }
   .eq-proceeds-amount { font-size: 22px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RETIREMENT
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.ret-hero {
+  background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+  color: #fff; border-radius: var(--radius);
+  padding: 28px 24px; text-align: center; margin-bottom: 16px;
+}
+/* Falling short is information, not failure — amber, not red. */
+.ret-hero--short {
+  background: linear-gradient(135deg, #b45309 0%, #7c2d12 100%);
+}
+.ret-hero-label {
+  font-size: 12px; text-transform: uppercase;
+  letter-spacing: .06em; opacity: .85; font-weight: 600;
+}
+.ret-hero-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 52px; font-weight: 700; line-height: 1.1; margin: 6px 0 4px;
+}
+.ret-hero-sub { font-size: 13px; opacity: .9; }
+
+.ret-preview {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  background: var(--amber-light); border: 1px solid var(--amber);
+  color: var(--text-primary); border-radius: var(--radius-sm);
+  padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
+}
+
+.ret-milestone {
+  font-family: 'DM Sans', system-ui, sans-serif; color: var(--text-secondary);
+}
+.ret-slip { color: var(--red); font-weight: 600; margin-left: 6px; }
+
+.ret-toggle {
+  background: none; border: none; cursor: pointer; font: inherit;
+  color: var(--accent); font-weight: 600; padding: 0; font-size: 13px;
+}
+.ret-assumptions { margin-top: 14px; }
+.ret-hint {
+  font-size: 10px; color: var(--text-faint); line-height: 1.4; margin-top: 2px;
+}
+
+@media (max-width: 640px) {
+  .ret-hero-value { font-size: 38px; }
+  .ret-hero { padding: 22px 18px; }
+}

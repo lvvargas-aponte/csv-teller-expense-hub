@@ -37,6 +37,12 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    label: 'Future',
+    items: [
+      { id: 'retirement', icon: '🌅', label: 'Retirement' },
+    ],
+  },
+  {
     label: 'Tools',
     items: [
       { id: 'knowledge',   icon: '📚', label: 'Knowledge' },
