@@ -18,6 +18,28 @@ All data lives in **Postgres 16** with the **pgvector** extension. Migrations ar
 | `user_profile` | Person names + global settings |
 | `seeds` | Category-suggestion seed data (customizable) |
 
+## Real-estate tables
+
+Added in `0011_properties_and_loans`. Typed tables rather than the
+`json_stores` facade that budgets and goals use — these are genuinely
+relational, and the money in them gets compared against servicer statements.
+
+| Table | Purpose |
+|---|---|
+| `properties` | One row per holding, with a full operating-expense model so a rental has an honest pro forma before any transaction is tagged to it |
+| `property_valuations` | Value timeseries; `properties.current_value` caches the newest |
+| `loans` | Amortizing debt, optionally secured by a property. `escrow_monthly` is kept separate from `payment_amount` because escrow doesn't pay down principal |
+| `rental_terms` | Per-unit lease detail for multi-unit properties |
+
+Deletion semantics: removing a property cascades into its valuations and
+rental terms, but only NULLs `property_id` on its loans — selling the house
+must not delete the mortgage record.
+
+Transactions carry an optional `property_id`, added dynamically the same way
+`transfer_to_account_id` is, rather than through a join table: transactions
+are authoritative in `json_stores`, so a join table would fork the source of
+truth.
+
 ## Conversation tables
 
 | Table | Purpose |

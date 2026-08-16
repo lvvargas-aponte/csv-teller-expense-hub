@@ -94,6 +94,28 @@ All endpoints are mounted under `/api`. The static help site lives at `/help/`. 
 | `PUT` | `/api/goals/{id}` | Update |
 | `DELETE` | `/api/goals/{id}` | Remove |
 
+## Properties
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/properties` | All properties, each with economics attached |
+| `POST` | `/api/properties` | Create (a purchase price + date seeds a valuation) |
+| `GET` | `/api/properties/portfolio` | Totals: value, debt, equity, NOI, cash flow, underperformers |
+| `GET` | `/api/properties/suggest-transactions` | Proposed property tags for untagged transactions |
+| `GET/PUT/DELETE` | `/api/properties/{id}` | Fetch / update / remove one |
+| `GET/POST` | `/api/properties/{id}/valuations` | Value history; POST refreshes `current_value` |
+
+## Loans
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/loans` | All loans; `?property_id=` filters to one property |
+| `POST` | `/api/loans` | Create |
+| `GET/PUT/DELETE` | `/api/loans/{id}` | Fetch / update / remove one |
+| `GET` | `/api/loans/{id}/current-payment` | Interest vs. principal for the payment due now |
+| `GET` | `/api/loans/{id}/schedule` | Amortization schedule (`from_period`, `limit`; 60 default) |
+| `POST` | `/api/loans/{id}/what-if` | Months and interest saved by paying extra |
+
 ## Tools (debt payoff)
 
 | Method | Path | Purpose |

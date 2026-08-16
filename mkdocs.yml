@@ -75,6 +75,8 @@ nav:
       - Finances → Overview: tabs/finances-overview.md
       - Finances → Accounts: tabs/finances-accounts.md
       - Finances → Investments: tabs/finances-investments.md
+      - Finances → Properties: tabs/finances-properties.md
+      - Finances → Loans: tabs/finances-loans.md
       - Finances → Budgets: tabs/finances-budgets.md
       - Finances → Goals: tabs/finances-goals.md
       - Finances → Bills: tabs/finances-bills.md
