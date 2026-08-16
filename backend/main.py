@@ -12,8 +12,8 @@ from config import SPREADSHEET_ID, CREDENTIALS_FILE, SIMPLEFIN_ACCESS_URLS
 
 from routers import (
     accounts, advisor, alerts, balances, bills, budgets, credit_health, dashboard,
-    digest, documents, goals, insights, investments, layout, profile, seeds, sheets,
-    snaptrade, subscriptions, tools, user_facts,
+    digest, documents, goals, identity, insights, investments, layout, profile, seeds,
+    sheets, snaptrade, subscriptions, tools, user_facts,
 )
 from routers import simplefin as simplefin_router
 from routers import transactions
@@ -108,6 +108,7 @@ app.include_router(investments.router,  prefix="/api")
 app.include_router(user_facts.router,   prefix="/api")
 app.include_router(subscriptions.router, prefix="/api")
 app.include_router(digest.router,       prefix="/api")
+app.include_router(identity.router,      prefix="/api")
 
 
 # Static help site — built from /docs by mkdocs into /docs/site.

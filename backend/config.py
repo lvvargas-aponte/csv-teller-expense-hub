@@ -36,9 +36,17 @@ SHEET_NAME: str | None = os.getenv("SHEET_NAME")
 _credentials_filename: str = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
 CREDENTIALS_FILE: Path = Path(__file__).parent / _credentials_filename
 
-# Person names for shared-expense splits
+# Person names for shared-expense splits. Both instances MUST set these to
+# identical values — the shared Google Sheet's owes columns are named after
+# them, so a mismatch makes each instance look for a column the other didn't
+# write.
 PERSON_1_NAME: str = os.getenv("PERSON_1_NAME", "Person 1")
 PERSON_2_NAME: str = os.getenv("PERSON_2_NAME", "Person 2")
+
+# Which of the two person slots THIS instance is. 1 → PERSON_1_NAME and the
+# person_1_owes field; 2 → PERSON_2_NAME and person_2_owes. The two instances
+# must pick different slots.
+INSTANCE_PERSON_SLOT: int = int(os.getenv("INSTANCE_PERSON_SLOT", "1"))
 
 # Error verbosity — True in local dev (default), False in production
 DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
