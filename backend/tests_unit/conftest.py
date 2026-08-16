@@ -26,12 +26,13 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import state  # noqa: E402
-from db import accounts_repo_memory  # noqa: E402
+from db import accounts_repo_memory, properties_repo_memory  # noqa: E402
 
 # Swap BEFORE importing ``main`` (which wires routers) so the router calls to
-# ``get_repo()`` return the InMemoryAccountsRepo from the very first request.
+# ``get_repo()`` return the in-memory repos from the very first request.
 state.configure_for_tests()
 accounts_repo_memory.install_for_tests()
+properties_repo_memory.install_for_tests()
 
 from main import app  # noqa: E402
 
@@ -41,9 +42,11 @@ def reset_state():
     """Wipe in-memory state before AND after every test."""
     state.reset_in_memory_stores()
     accounts_repo_memory.reset()
+    properties_repo_memory.reset()
     yield
     state.reset_in_memory_stores()
     accounts_repo_memory.reset()
+    properties_repo_memory.reset()
 
 
 @pytest.fixture

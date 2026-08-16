@@ -117,9 +117,14 @@ def mark_superseded(document_id: int, replaced_by_id: int) -> None:
     with sync_engine.begin() as conn:
         conn.execute(
             text(
+                # CAST(:patch AS jsonb), not :patch::jsonb — SQLAlchemy's
+                # text() reads the colons in a `::` cast as parameter syntax
+                # and leaves the bind unresolved, so Postgres rejects the
+                # statement outright. Superseding silently raised until this
+                # was fixed.
                 "UPDATE documents "
                 "SET status = 'superseded', "
-                "    doc_metadata = doc_metadata || :patch::jsonb "
+                "    doc_metadata = doc_metadata || CAST(:patch AS jsonb) "
                 "WHERE id = :id"
             ),
             {

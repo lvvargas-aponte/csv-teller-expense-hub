@@ -175,6 +175,213 @@ class Holding(Base):
     __table_args__ = (Index("ix_holdings_account_id", "account_id"),)
 
 
+class Property(Base):
+    """A real-estate holding. See ``alembic/versions/0011_properties_and_loans.py``.
+
+    Carries a full operating-expense model so a rental has an honest pro
+    forma before any transaction has been tagged to it. Actuals derived
+    from tagged transactions are reported alongside, never blended in.
+    """
+    __tablename__ = "properties"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    address: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
+    property_type: Mapped[str] = mapped_column(
+        String(20), server_default="single_family", nullable=False
+    )
+    # Gates whether this property contributes rent.
+    status: Mapped[str] = mapped_column(String(20), server_default="rental", nullable=False)
+    units: Mapped[int] = mapped_column(Integer, server_default="1", nullable=False)
+
+    purchase_date: Mapped[Optional[date]] = mapped_column(Date)
+    purchase_price: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    closing_costs: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    capital_improvements: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+
+    # Denormalized latest valuation.
+    current_value: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+
+    monthly_rent: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    other_monthly_income: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    vacancy_rate_pct: Mapped[float] = mapped_column(
+        Numeric(5, 2), server_default="5", nullable=False
+    )
+
+    property_tax_annual: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    insurance_annual: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    hoa_monthly: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    utilities_monthly: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    other_monthly_expense: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    mgmt_fee_pct: Mapped[float] = mapped_column(
+        Numeric(5, 2), server_default="0", nullable=False
+    )
+    maintenance_pct_of_rent: Mapped[float] = mapped_column(
+        Numeric(5, 2), server_default="5", nullable=False
+    )
+    capex_reserve_pct_of_rent: Mapped[float] = mapped_column(
+        Numeric(5, 2), server_default="5", nullable=False
+    )
+
+    # NULL = fall back to the household retirement assumption.
+    appreciation_pct: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+    rent_growth_pct: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+
+    # Auto-suggest rules only — matches never write property_id directly.
+    rules: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default="[]", nullable=False
+    )
+    operating_account_id: Mapped[Optional[str]] = mapped_column(
+        String, ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    notes: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (Index("ix_properties_status", "status"),)
+
+
+class PropertyValuation(Base):
+    """Point-in-time value for a property — the appreciation timeseries.
+
+    Same shape as ``balance_snapshots``: history here, current value
+    denormalized onto the parent for cheap reads.
+    """
+    __tablename__ = "property_valuations"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    property_id: Mapped[str] = mapped_column(
+        String, ForeignKey("properties.id", ondelete="CASCADE"), nullable=False
+    )
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+    value: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    # manual | appraisal | avm | purchase
+    source: Mapped[str] = mapped_column(String(20), server_default="manual", nullable=False)
+    notes: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("property_id", "as_of", name="uq_property_valuation_as_of"),
+        Index("ix_property_valuations_property_as_of", "property_id", "as_of"),
+    )
+
+
+class Loan(Base):
+    """Amortizing debt, optionally secured by a property.
+
+    ``escrow_monthly`` is intentionally separate from ``payment_amount``:
+    escrowed taxes and insurance don't pay down principal, and property
+    economics already counts them as operating expenses.
+    """
+    __tablename__ = "loans"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    # mortgage | heloc | auto | student | personal | business | other
+    loan_type: Mapped[str] = mapped_column(
+        String(20), server_default="mortgage", nullable=False
+    )
+    property_id: Mapped[Optional[str]] = mapped_column(
+        String, ForeignKey("properties.id", ondelete="SET NULL")
+    )
+    # When set, the live account balance wins over current_principal.
+    account_id: Mapped[Optional[str]] = mapped_column(
+        String, ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    lender: Mapped[str] = mapped_column(String, server_default="", nullable=False)
+    # 1 = first, 2 = HELOC/second. Needed for CLTV.
+    lien_position: Mapped[int] = mapped_column(
+        SmallInteger, server_default="1", nullable=False
+    )
+
+    original_principal: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    current_principal: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    # Numeric(6,3) matches account_details.apr so rates round-trip identically.
+    interest_rate_pct: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False)
+    rate_type: Mapped[str] = mapped_column(String(10), server_default="fixed", nullable=False)
+    term_months: Mapped[int] = mapped_column(Integer, nullable=False)
+    origination_date: Mapped[date] = mapped_column(Date, nullable=False)
+    first_payment_date: Mapped[Optional[date]] = mapped_column(Date)
+    payment_day: Mapped[Optional[int]] = mapped_column(SmallInteger)
+
+    # P&I only; NULL derives it via amortization.pmt().
+    payment_amount: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    escrow_monthly: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    pmi_monthly: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    extra_monthly: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+
+    io_months: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    balloon_date: Mapped[Optional[date]] = mapped_column(Date)
+    notes: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("ix_loans_property_id", "property_id"),
+        Index("ix_loans_account_id", "account_id"),
+    )
+
+
+class RentalTerm(Base):
+    """Per-unit lease detail. Single-unit properties use
+    ``properties.monthly_rent`` instead and need no row here."""
+    __tablename__ = "rental_terms"
+
+    property_id: Mapped[str] = mapped_column(
+        String, ForeignKey("properties.id", ondelete="CASCADE"), primary_key=True
+    )
+    unit_label: Mapped[str] = mapped_column(
+        String(40), server_default="", primary_key=True
+    )
+    monthly_rent: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    lease_start: Mapped[Optional[date]] = mapped_column(Date)
+    lease_end: Mapped[Optional[date]] = mapped_column(Date)
+    tenant_name: Mapped[str] = mapped_column(String, server_default="", nullable=False)
+    notes: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 

@@ -146,6 +146,13 @@ _TABLES_TO_TRUNCATE = [
     "budgets",
     "holdings",
     "balance_snapshots",
+    # Real-estate domain. Listed before `accounts` because loans and
+    # properties carry FKs into it; TRUNCATE ... CASCADE copes either way,
+    # but keeping child-before-parent order makes the dependency obvious.
+    "rental_terms",
+    "loans",
+    "property_valuations",
+    "properties",
     "transactions",
     "accounts",
 ]
