@@ -7,6 +7,7 @@ const NAV_SECTIONS = [
   {
     label: 'Overview',
     items: [
+      { id: 'today',       icon: '☀️', label: 'Today' },
       { id: 'dashboard',   icon: '📊', label: 'Dashboard' },
       { id: 'accounts',    icon: '🏦', label: 'Accounts' },
     ],

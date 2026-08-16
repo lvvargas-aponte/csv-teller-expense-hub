@@ -3732,3 +3732,117 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   .prop-detail-grid { grid-template-columns: 1fr; }
   .loan-row-figures { width: 100%; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TODAY — safe-to-spend
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.today-greeting {
+  font-size: 13px; color: var(--text-muted); margin-bottom: 12px;
+}
+
+/* The hero. Deliberately the largest type in the app — this is the one
+   number the page exists to deliver. */
+.sts {
+  background: linear-gradient(135deg, var(--accent) 0%, #065f46 100%);
+  border-radius: var(--radius); padding: 28px 24px;
+  color: #fff; position: relative; overflow: hidden;
+}
+.sts--over {
+  background: linear-gradient(135deg, #b45309 0%, #7c2d12 100%);
+}
+.sts--unavailable {
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+.sts-label {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+  opacity: .85; font-weight: 600;
+}
+.sts-amount {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 52px; font-weight: 700; line-height: 1.1; margin: 6px 0 4px;
+}
+.sts-meta {
+  font-size: 13px; opacity: .9; display: flex; gap: 8px; flex-wrap: wrap;
+}
+.sts-dot { opacity: .6; }
+.sts-pace {
+  margin-top: 14px; font-size: 13px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.sts-delta {
+  background: rgba(255, 255, 255, .18);
+  padding: 2px 8px; border-radius: 999px; font-weight: 600;
+}
+.sts-alert {
+  margin-top: 14px; font-size: 13px; line-height: 1.5;
+  background: rgba(0, 0, 0, .18);
+  padding: 10px 12px; border-radius: var(--radius-sm);
+}
+.sts-empty-title {
+  font-size: 20px; font-weight: 700; margin: 8px 0 4px;
+}
+.sts-empty-sub {
+  font-size: 13px; color: var(--text-muted); line-height: 1.5; max-width: 420px;
+}
+
+/* ── month flow ─────────────────────────────────────────────────────────── */
+.today-flow {
+  display: flex; height: 14px; border-radius: 999px;
+  overflow: hidden; background: var(--bg-secondary);
+}
+.today-flow-seg { height: 100%; }
+.today-flow-legend {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  margin-top: 10px; font-size: 12px; color: var(--text-secondary);
+}
+.today-flow-legend i {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 2px; margin-right: 5px;
+}
+.today-note {
+  margin-top: 12px; font-size: 12px; color: var(--text-muted); line-height: 1.5;
+}
+.today-note--caveat { color: var(--amber); }
+
+/* ── coming up ──────────────────────────────────────────────────────────── */
+.today-bills { width: 100%; border-collapse: collapse; font-size: 13px; }
+.today-bills td {
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+}
+.today-bills tr:last-child td { border-bottom: none; }
+.today-bills-date { color: var(--text-muted); font-size: 12px; }
+.today-bills-amt {
+  text-align: right; font-family: 'DM Mono', ui-monospace, monospace;
+}
+.today-bills-after {
+  text-align: right; color: var(--text-faint); font-size: 12px; padding-left: 14px;
+}
+
+/* ── long-horizon anchors ───────────────────────────────────────────────── */
+.today-progress {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; margin-top: 16px;
+}
+.today-progress-item {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.today-progress-label {
+  font-size: 11px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--text-faint);
+}
+.today-progress-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 17px; font-weight: 700; color: var(--text-primary);
+}
+
+.eh-content > .sts + .ov-card,
+.eh-content > .ov-card + .ov-card { margin-top: 16px; }
+
+@media (max-width: 640px) {
+  .sts-amount { font-size: 40px; }
+  .sts { padding: 22px 18px; }
+}

@@ -5,6 +5,7 @@ cache (never triggers a live SimpleFIN fetch) so chat turns stay fast.
 """
 from __future__ import annotations
 
+import calendar
 import logging
 import re
 import statistics
@@ -1192,6 +1193,236 @@ def category_spending_summary(
         "by_month": dict(sorted(by_month.items())),
         "start_date": start_date,
         "end_date": end_date,
+    }
+
+
+def _monthly_debt_minimums() -> float:
+    """Minimum payments across credit cards plus scheduled loan payments.
+
+    Loan payments include escrow: the household really does have to send
+    that money every month, even though escrow doesn't reduce principal.
+    (Property *economics* excludes escrow from debt service for a different
+    reason — there it would double-count against operating expenses. Both
+    are correct in their own context.)
+    """
+    total = 0.0
+    for details in state.account_details.values():
+        minimum = (details or {}).get("minimum_payment")
+        if minimum:
+            try:
+                total += float(minimum)
+            except (TypeError, ValueError):
+                continue
+
+    try:
+        import properties as properties_domain
+        from db import properties_repo
+        for loan in properties_repo.get_repo().list_loans():
+            total += properties_domain.loan_payment(loan)
+            total += float(loan.get("escrow_monthly") or 0)
+    except Exception:  # noqa: BLE001 - properties are optional
+        pass
+
+    return round(total, 2)
+
+
+def _required_goal_contributions() -> float:
+    """What the household's goals demand each month to land on time."""
+    total = 0.0
+    for goal in compute_goal_statuses():
+        required = goal.get("monthly_required")
+        if required and required > 0:
+            total += required
+    return round(total, 2)
+
+
+def compute_safe_to_spend(as_of: Optional[date] = None) -> Dict[str, Any]:
+    """How much is genuinely free to spend today, and this week.
+
+    The envelope is what's left after everything already promised::
+
+        discretionary_pool = income
+                           − fixed bills
+                           − minimum debt payments
+                           − required goal contributions
+
+        remaining = discretionary_pool − discretionary spend so far this month
+        daily     = remaining / days left in the month (today inclusive)
+
+    **Overspending lowers tomorrow's number by construction.** ``remaining``
+    is recomputed from actual month-to-date spend on every call while
+    ``days_left`` shrinks by one each day, so spending $200 over today
+    automatically tightens tomorrow. There is deliberately no carry-over
+    ledger: it would be a second source of truth that drifts from the
+    transactions it claims to summarize.
+
+    ``as_of`` exists so the UI can recompute at yesterday and show the
+    delta — seeing the number move because of last night's dinner is what
+    turns it from a readout into a consequence.
+
+    Two refusals rather than fabrications:
+
+    * No detected income → ``available: false``. A safe-to-spend figure
+      derived from a guessed salary is worse than no figure.
+    * A negative pool → the daily number clamps to 0 and ``over_budget``
+      is set. "You're $340 past plan" is useful; a negative allowance is
+      not a spendable instruction.
+    """
+    today = as_of or date.today()
+
+    income_block = compute_income_estimate()
+    monthly_income = float(income_block.get("monthly_estimate") or 0.0)
+    inbound = sum(
+        float(t.get("monthly_estimate") or 0.0)
+        for t in detect_recurring_inbound_transfers()
+    )
+
+    # Rental profit is real income the household can spend. Only positive
+    # cash flow counts — a property running at a loss is already reflected
+    # in the transactions it generates.
+    rental_net = 0.0
+    try:
+        import properties as properties_domain
+        portfolio = properties_domain.compute_portfolio(as_of=today)
+        rental_net = max(0.0, float(portfolio.get("monthly_cash_flow") or 0.0))
+    except Exception:  # noqa: BLE001 - properties are optional
+        rental_net = 0.0
+
+    total_income = round(monthly_income + inbound + rental_net, 2)
+
+    if income_block.get("confidence") == "none" and total_income <= 0:
+        return {
+            "available": False,
+            "reason": "no_income_detected",
+            "as_of": today.isoformat(),
+            "detail": (
+                "No recurring income found in your transactions. Add an "
+                "income estimate and this becomes a real number."
+            ),
+        }
+
+    # Fixed bills: recurring charges in categories that are unambiguously
+    # obligations. Anything else is treated as discretionary, which keeps
+    # a monthly restaurant habit from being quietly reclassified as a bill.
+    bill_merchants: set = set()
+    fixed_bills = 0.0
+    for charge in detect_recurring_charges():
+        category = (charge.get("category") or "").strip().lower()
+        if category in _ALWAYS_RECURRING_CATEGORIES:
+            fixed_bills += float(charge.get("estimated_monthly_cost") or 0.0)
+            bill_merchants.add(charge["merchant_key"])
+    fixed_bills = round(fixed_bills, 2)
+
+    minimum_debt = _monthly_debt_minimums()
+    required_savings = _required_goal_contributions()
+
+    commitments = round(fixed_bills + minimum_debt + required_savings, 2)
+    discretionary_pool = round(total_income - commitments, 2)
+
+    # Month-to-date discretionary spend: expenses, minus anything already
+    # counted as a fixed bill or a debt payment, so no dollar is subtracted
+    # from the pool twice.
+    month_key = f"{today.year:04d}-{today.month:02d}"
+    spent_so_far = 0.0
+    excluded_categories: set = set()
+    for txn in state.stored_transactions.values():
+        if not _is_expense(txn):
+            continue
+        date_str = txn.get("date", "")
+        if _parse_month_key(date_str) != month_key:
+            continue
+        parsed = _parse_date_obj(date_str)
+        if parsed is None or parsed > today:
+            continue
+
+        category = (txn.get("category") or "").strip().lower()
+        if category in _ALWAYS_RECURRING_CATEGORIES:
+            excluded_categories.add(txn.get("category") or "")
+            continue
+        if _normalize_merchant(txn.get("description", "")) in bill_merchants:
+            excluded_categories.add(txn.get("category") or "Recurring bill")
+            continue
+        try:
+            spent_so_far += abs(float(txn.get("amount", 0)))
+        except (TypeError, ValueError):
+            continue
+    spent_so_far = round(spent_so_far, 2)
+
+    remaining = round(discretionary_pool - spent_so_far, 2)
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    days_left = days_in_month - today.day + 1          # today counts
+    daily = round(max(0.0, remaining) / days_left, 2)
+    weekly = round(daily * min(7, days_left), 2)
+
+    # Straight-line expectation for pace: at day 10 of 30, roughly a third
+    # of the pool should be gone.
+    elapsed = today.day
+    expected = round(discretionary_pool * elapsed / days_in_month, 2) if days_in_month else 0.0
+    if spent_so_far > expected * 1.1:
+        pace = "over"
+    elif spent_so_far < expected * 0.9:
+        pace = "under"
+    else:
+        pace = "on_track"
+
+    caveats: List[str] = []
+    if income_block.get("confidence") == "low":
+        caveats.append(
+            "Income is estimated from a short history, so this figure may move."
+        )
+    if not state.budgets:
+        caveats.append(
+            "No budgets set — the pool is everything left after bills, "
+            "debt minimums and goals."
+        )
+    if discretionary_pool < 0:
+        caveats.append(
+            "Committed spending exceeds income, so there is no discretionary "
+            "pool to draw from this month."
+        )
+
+    return {
+        "available": True,
+        "as_of": today.isoformat(),
+        "period": {
+            "start": f"{month_key}-01",
+            "days_total": days_in_month,
+            "days_elapsed": elapsed,
+            "days_remaining": days_left,
+        },
+        "income": {
+            "monthly": total_income,
+            "confidence": income_block.get("confidence"),
+            "components": {
+                "paychecks": round(monthly_income, 2),
+                "inbound_transfers": round(inbound, 2),
+                "rental_net": round(rental_net, 2),
+            },
+        },
+        "commitments": {
+            "fixed_bills": fixed_bills,
+            "minimum_debt_payments": minimum_debt,
+            "required_goal_contributions": required_savings,
+            "total": commitments,
+        },
+        "discretionary_pool": discretionary_pool,
+        "spent_so_far": spent_so_far,
+        "remaining_pool": remaining,
+        "daily_safe_to_spend": daily,
+        "weekly_safe_to_spend": weekly,
+        "over_budget": remaining < 0,
+        "overspend_amount": round(abs(remaining), 2) if remaining < 0 else 0.0,
+        "pace": pace,
+        "expected_spend_to_date": expected,
+        # Surfaced so the number can be argued with. The most common failure
+        # of a safe-to-spend figure is the user not believing it.
+        "excluded_categories": sorted(c for c in excluded_categories if c),
+        "assumptions": {
+            "basis": "calendar_month",
+            "fixed_bill_source": "detected_recurring",
+            "days_remaining_includes_today": True,
+        },
+        "caveats": caveats,
     }
 
 

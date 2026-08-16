@@ -14,6 +14,7 @@ import AdvisorChat from './AdvisorChat';
 import KnowledgeSection from './KnowledgeSection';
 import PropertiesPage from './PropertiesPage';
 import LoansPage from './LoansPage';
+import TodayPage from './TodayPage';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
 import { getDashboard, getCreditHealth } from '../../api/dashboard';
@@ -102,6 +103,8 @@ export default function FinancesPage() {
       />
 
       <div className="eh-main">
+        {activeId === 'today' && <TodayPage />}
+
         {activeId === 'dashboard' && (
           <DashboardTab healthScore={healthScore} />
         )}

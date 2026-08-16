@@ -14,3 +14,18 @@ export const upsertBudget = (category, data) =>
 
 export const deleteBudget = (category) =>
   axios.delete(`${API}/api/budgets/${encodeURIComponent(category)}`);
+
+/**
+ * Today's and this week's discretionary allowance.
+ *
+ * Pass `asOf` (ISO YYYY-MM-DD) to recompute for an earlier day — the Today
+ * page uses yesterday's figure so the change reads as a consequence of what
+ * was spent rather than an unexplained drift.
+ *
+ * Resolves with `available: false` when no income can be detected; callers
+ * must check that before reading the numbers.
+ */
+export const getSafeToSpend = (asOf) =>
+  axios.get(`${API}/api/budgets/safe-to-spend`, {
+    params: asOf ? { as_of: asOf } : {},
+  });

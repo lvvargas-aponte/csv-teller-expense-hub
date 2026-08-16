@@ -5,16 +5,39 @@ case-insensitively against transaction categories at read time).  The list
 endpoint returns each budget enriched with current-month spend so the UI and
 advisor can show progress without recomputing.
 """
-from datetime import datetime, timezone
-from typing import List
+from datetime import date, datetime, timezone
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 import state
-from analytics import compute_budget_statuses
+from analytics import compute_budget_statuses, compute_safe_to_spend
 from models import BudgetIn, BudgetStatus
 
 router = APIRouter()
+
+
+@router.get("/budgets/safe-to-spend")
+async def safe_to_spend(
+    as_of: Optional[str] = Query(
+        None, description="ISO date; defaults to today. Used to show the delta vs. yesterday."
+    ),
+) -> Dict[str, Any]:
+    """Today's and this week's discretionary allowance.
+
+    Declared before ``/budgets/{category}`` so "safe-to-spend" isn't
+    captured as a category name.
+
+    Returns ``available: false`` when no income can be detected rather than
+    inventing a figure from a guessed salary.
+    """
+    parsed: Optional[date] = None
+    if as_of:
+        try:
+            parsed = date.fromisoformat(as_of)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="as_of must be ISO YYYY-MM-DD")
+    return compute_safe_to_spend(as_of=parsed)
 
 
 def _now_iso() -> str:
