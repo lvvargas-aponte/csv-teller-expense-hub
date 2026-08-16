@@ -142,6 +142,8 @@ _TABLES_TO_TRUNCATE = [
     "advisor_style_profile",
     "fact_reflection_state",
     "scheduled_tasks",
+    "peers",
+    "instance_identity",
     "conversation_turn_embeddings",
     "conversation_turns",
     "conversations",
