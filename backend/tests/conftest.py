@@ -143,6 +143,7 @@ _TABLES_TO_TRUNCATE = [
     "fact_reflection_state",
     "scheduled_tasks",
     "peers",
+    "peer_shared_transactions",
     "instance_identity",
     "conversation_turn_embeddings",
     "conversation_turns",
