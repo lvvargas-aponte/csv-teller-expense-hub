@@ -258,9 +258,36 @@ class TestLoanBalanceResolution:
     def test_falls_back_to_current_principal(self, repo):
         assert properties.resolve_loan_balance(_loan(repo)) == 200000.0
 
-    def test_falls_back_to_original_principal(self, repo):
+    def test_falls_back_to_the_amortized_balance_not_the_original(self, repo):
+        """Using original_principal here would understate equity by every
+        dollar of principal paid to date."""
         loan = _loan(repo, current_principal=None)
+        balance = properties.resolve_loan_balance(loan, as_of=date(2026, 8, 15))
+
+        assert balance is not None
+        assert balance < 240000.0
+        # 79 payments into a $240k / 6% / 30yr loan.
+        assert balance == pytest.approx(219_000, rel=0.02)
+
+    def test_amortized_balance_matches_the_current_split(self, repo):
+        """The two must agree, or equity and the payment table disagree on
+        the same screen."""
+        loan = _loan(repo, current_principal=None)
+        as_of = date(2026, 8, 15)
+        assert properties.resolve_loan_balance(loan, as_of) == pytest.approx(
+            properties.loan_current_split(loan, as_of)["balance"]
+        )
+
+    def test_falls_back_to_original_when_undateable(self, repo):
+        loan = _loan(repo, current_principal=None,
+                     origination_date=None, first_payment_date=None)
         assert properties.resolve_loan_balance(loan) == 240000.0
+
+    def test_before_the_first_payment_is_the_full_principal(self, repo):
+        loan = _loan(repo, current_principal=None)
+        assert properties.resolve_loan_balance(
+            loan, as_of=date(2019, 1, 1)
+        ) == 240000.0
 
 
 class TestLoanSplit:

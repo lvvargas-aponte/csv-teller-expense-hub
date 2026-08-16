@@ -93,13 +93,58 @@ def resolve_asset_value(loan: Dict[str, Any]) -> Optional[float]:
     return None
 
 
-def resolve_loan_balance(loan: Dict[str, Any]) -> Optional[float]:
+def amortized_balance(
+    loan: Dict[str, Any], as_of: Optional[date] = None
+) -> Optional[float]:
+    """Balance implied by the payment schedule as of today.
+
+    Closed-form, so this is cheap enough to call per loan per render.
+    Returns None when the loan lacks the dates or terms to place itself on
+    a schedule.
+    """
+    principal = loan.get("original_principal")
+    if not principal:
+        return None
+
+    first_payment = loan.get("first_payment_date") or loan.get("origination_date")
+    if not first_payment:
+        return None
+    try:
+        start = date.fromisoformat(str(first_payment)[:10])
+    except ValueError:
+        return None
+
+    periods = amortization.current_period_index(start, as_of or date.today())
+    if periods < 1:
+        return float(principal)
+
+    payment = loan_payment(loan)
+    if payment <= 0:
+        return None
+    return float(amortization.remaining_balance(
+        principal, loan.get("interest_rate_pct") or 0, payment, periods
+    ))
+
+
+def resolve_loan_balance(
+    loan: Dict[str, Any], as_of: Optional[date] = None
+) -> Optional[float]:
     """Outstanding principal on this loan.
 
-    A linked account wins: its balance is refreshed by sync, whereas
-    ``current_principal`` is whatever was last typed in. Loan balances are
-    carried as positive numbers even though credit-type accounts store them
-    as negative ledger values.
+    Precedence:
+      1. A linked account — refreshed by sync, so it is the freshest truth.
+      2. ``current_principal`` — explicitly supplied by the user.
+      3. The amortized balance implied by the schedule. Not merely a
+         fallback: for a hand-entered loan with no linked account this is
+         the only figure that reflects payments already made. Using
+         ``original_principal`` here instead understates equity by every
+         dollar of principal paid to date — on a six-year-old mortgage that
+         is tens of thousands of dollars.
+      4. ``original_principal``, when the loan can't be placed on a
+         schedule at all.
+
+    Balances are returned positive even though credit-type accounts store
+    them as negative ledger values.
     """
     account_id = loan.get("account_id")
     if account_id:
@@ -112,6 +157,11 @@ def resolve_loan_balance(loan: Dict[str, Any]) -> Optional[float]:
 
     if loan.get("current_principal") is not None:
         return float(loan["current_principal"])
+
+    scheduled = amortized_balance(loan, as_of)
+    if scheduled is not None:
+        return scheduled
+
     if loan.get("original_principal") is not None:
         return float(loan["original_principal"])
     return None
