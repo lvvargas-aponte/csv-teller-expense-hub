@@ -72,7 +72,7 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
     if (!window.confirm(
       `Send ${sharedCount} shared expense${sharedCount !== 1 ? 's' : ''} to Google Sheet` +
       (sheetLabel ? ` "${sheetLabel}"` : '') +
-      `? They'll be cleared from the queue.`
+      `? They'll stay in your local list.`
     )) return;
 
     setSendingSheet(true);

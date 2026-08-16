@@ -46,7 +46,19 @@ PERSON_2_NAME: str = os.getenv("PERSON_2_NAME", "Person 2")
 # Which of the two person slots THIS instance is. 1 → PERSON_1_NAME and the
 # person_1_owes field; 2 → PERSON_2_NAME and person_2_owes. The two instances
 # must pick different slots.
-INSTANCE_PERSON_SLOT: int = int(os.getenv("INSTANCE_PERSON_SLOT", "1"))
+_raw_instance_person_slot: str = os.getenv("INSTANCE_PERSON_SLOT", "1")
+try:
+    INSTANCE_PERSON_SLOT: int = int(_raw_instance_person_slot)
+except ValueError:
+    raise ValueError(
+        f"INSTANCE_PERSON_SLOT must be 1 or 2, got {_raw_instance_person_slot!r}. "
+        "One instance sets 1, the other sets 2."
+    )
+if INSTANCE_PERSON_SLOT not in (1, 2):
+    raise ValueError(
+        f"INSTANCE_PERSON_SLOT must be 1 or 2, got {INSTANCE_PERSON_SLOT}. "
+        "One instance sets 1, the other sets 2."
+    )
 
 # Error verbosity — True in local dev (default), False in production
 DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"

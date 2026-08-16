@@ -1,4 +1,7 @@
 """Integration tests for the peer's imported shared transactions."""
+import pytest
+from sqlalchemy.exc import DBAPIError
+
 from db import peer_transactions_repo as repo
 
 OWNER = "22222222-2222-2222-2222-222222222222"
@@ -48,6 +51,25 @@ class TestUpsert:
 
     def test_get_missing_returns_none(self):
         assert repo.get("nope") is None
+
+    def test_upsert_applies_schema_defaults_for_omitted_columns(self):
+        row = {
+            "txn_id": f"{OWNER}:defaulted",
+            "owner_user_id": OWNER,
+            "date": "2026-03-15",
+            "description": "GROCERIES",
+            "amount": -40.00,
+            "who": "Christy",
+            "payer_user_id": OWNER,
+            "carried_from_period": None,
+            "settles_in_period": None,
+        }
+        assert repo.upsert_many([row]) == 1
+        stored = repo.get(f"{OWNER}:defaulted")
+        assert stored["notes"] == ""
+        assert stored["reviewed"] is False
+        assert stored["person_1_owes"] == 0.0
+        assert stored["person_2_owes"] == 0.0
 
 
 class TestPeriodFiltering:
@@ -102,6 +124,12 @@ class TestDisputes:
 
     def test_set_dispute_on_missing_row_returns_false(self):
         assert repo.set_dispute("nope", "Y", "Valeria", "x") is False
+
+    def test_set_dispute_rejects_invalid_flag(self):
+        repo.upsert_many([_row("a")])
+        with pytest.raises(DBAPIError) as exc_info:
+            repo.set_dispute(f"{OWNER}:a", "X", "Valeria", "bad flag")
+        assert "peer_shared_transactions_dispute_check" in str(exc_info.value)
 
     def test_upsert_preserves_our_dispute(self):
         """Re-importing the peer's row must not wipe the dispute we raised."""

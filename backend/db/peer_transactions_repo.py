@@ -50,6 +50,16 @@ _UPSERT_PARAMS = (
     "carried_from_period", "settles_in_period",
 )
 
+# Mirrors the server_default of each NOT NULL column in the 0016 migration.
+# A caller omitting one of these keys (or passing None) gets the schema's
+# default instead of an IntegrityError from an explicit NULL.
+_UPSERT_DEFAULTS = {
+    "notes": "",
+    "reviewed": False,
+    "person_1_owes": 0,
+    "person_2_owes": 0,
+}
+
 
 def _to_dict(row) -> Dict[str, Any]:
     return {
@@ -82,7 +92,15 @@ def upsert_many(rows: List[Dict[str, Any]]) -> int:
     """
     if not rows:
         return 0
-    params = [{k: r.get(k) for k in _UPSERT_PARAMS} for r in rows]
+    params = [
+        {
+            k: (r.get(k) if r.get(k) is not None else _UPSERT_DEFAULTS[k])
+            if k in _UPSERT_DEFAULTS
+            else r.get(k)
+            for k in _UPSERT_PARAMS
+        }
+        for r in rows
+    ]
     with sync_engine.begin() as conn:
         conn.execute(_UPSERT_SQL, params)
     return len(rows)

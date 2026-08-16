@@ -43,20 +43,39 @@ def get_identity() -> Optional[Dict[str, Any]]:
 
 
 def set_identity(user_id: str, display_name: str, person_slot: int) -> Dict[str, Any]:
+    """Bootstrap the singleton identity. Never reassigns an existing ``user_id``.
+
+    ``user_id`` namespaces every sheet row this instance ever publishes, so a
+    second caller racing the first bootstrap must not overwrite it. Uses
+    ``ON CONFLICT ... DO NOTHING`` and always returns the row that exists,
+    whichever caller won.
+    """
     with sync_engine.begin() as conn:
-        row = conn.execute(
+        conn.execute(
             text(
                 "INSERT INTO instance_identity (id, user_id, display_name, person_slot) "
                 "VALUES (1, CAST(:uid AS UUID), :name, :slot) "
-                "ON CONFLICT (id) DO UPDATE SET "
-                "  user_id = EXCLUDED.user_id, "
-                "  display_name = EXCLUDED.display_name, "
-                "  person_slot = EXCLUDED.person_slot "
-                f"RETURNING {_IDENTITY_COLS}"
+                "ON CONFLICT (id) DO NOTHING"
             ),
             {"uid": user_id, "name": display_name, "slot": person_slot},
+        )
+        row = conn.execute(
+            text(f"SELECT {_IDENTITY_COLS} FROM instance_identity WHERE id = 1")
         ).fetchone()
     return _identity_to_dict(row)
+
+
+def rename_identity(display_name: str) -> Optional[Dict[str, Any]]:
+    """Update the display name only. ``user_id`` and ``person_slot`` are untouched."""
+    with sync_engine.begin() as conn:
+        row = conn.execute(
+            text(
+                "UPDATE instance_identity SET display_name = :name "
+                f"WHERE id = 1 RETURNING {_IDENTITY_COLS}"
+            ),
+            {"name": display_name},
+        ).fetchone()
+    return _identity_to_dict(row) if row else None
 
 
 def list_peers() -> List[Dict[str, Any]]:

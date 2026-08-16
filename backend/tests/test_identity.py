@@ -22,7 +22,7 @@ class TestInstanceIdentity:
         assert me["person_slot"] == 1
         assert me["created_at"] is not None
 
-    def test_set_identity_twice_updates_rather_than_duplicates(self):
+    def test_set_identity_twice_does_not_duplicate_or_overwrite(self):
         identity_repo.set_identity(
             user_id="11111111-1111-1111-1111-111111111111",
             display_name="Valeria",
@@ -33,18 +33,51 @@ class TestInstanceIdentity:
             display_name="Val",
             person_slot=1,
         )
-        assert identity_repo.get_identity()["display_name"] == "Val"
+        # set_identity is bootstrap-only: a second call with the same id is a
+        # no-op, not an update. Renaming goes through rename_identity.
+        assert identity_repo.get_identity()["display_name"] == "Valeria"
         with sync_engine.connect() as conn:
             count = conn.execute(text("SELECT COUNT(*) FROM instance_identity")).scalar()
         assert count == 1
 
     def test_invalid_person_slot_is_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception) as exc_info:
             identity_repo.set_identity(
                 user_id="11111111-1111-1111-1111-111111111111",
                 display_name="Nobody",
                 person_slot=3,
             )
+        assert "instance_identity_slot_check" in str(exc_info.value)
+
+    def test_set_identity_twice_with_different_user_id_keeps_the_first(self):
+        identity_repo.set_identity(
+            user_id="11111111-1111-1111-1111-111111111111",
+            display_name="Valeria",
+            person_slot=1,
+        )
+        identity_repo.set_identity(
+            user_id="99999999-9999-9999-9999-999999999999",
+            display_name="Someone Else",
+            person_slot=2,
+        )
+        me = identity_repo.get_identity()
+        assert me["user_id"] == "11111111-1111-1111-1111-111111111111"
+        assert me["display_name"] == "Valeria"
+        assert me["person_slot"] == 1
+
+    def test_rename_identity_updates_display_name_only(self):
+        identity_repo.set_identity(
+            user_id="11111111-1111-1111-1111-111111111111",
+            display_name="Valeria",
+            person_slot=1,
+        )
+        updated = identity_repo.rename_identity("Val")
+        assert updated["display_name"] == "Val"
+        assert updated["user_id"] == "11111111-1111-1111-1111-111111111111"
+        assert updated["person_slot"] == 1
+
+    def test_rename_identity_returns_none_when_unset(self):
+        assert identity_repo.rename_identity("Nobody") is None
 
 
 class TestPeers:
@@ -147,6 +180,24 @@ class TestIdentityService:
 
         assert identity_service.current_user_id() is None
 
+    def test_current_user_id_never_raises(self, monkeypatch):
+        import identity_service
+
+        def _boom():
+            raise RuntimeError("db is down")
+
+        monkeypatch.setattr(identity_repo, "get_identity", _boom)
+        assert identity_service.current_user_id() is None
+
+    def test_peer_user_id_never_raises(self, monkeypatch):
+        import identity_service
+
+        def _boom():
+            raise RuntimeError("db is down")
+
+        monkeypatch.setattr(identity_repo, "list_peers", _boom)
+        assert identity_service.peer_user_id() is None
+
 
 class TestIdentityRoutes:
     def test_get_identity_bootstraps_on_first_call(self, client):
@@ -168,3 +219,9 @@ class TestIdentityRoutes:
         client.get("/api/identity")
         res = client.put("/api/identity", json={"display_name": "   "})
         assert res.status_code == 422
+
+    def test_put_identity_leaves_user_id_unchanged(self, client):
+        before = client.get("/api/identity").json()["me"]["user_id"]
+        client.put("/api/identity", json={"display_name": "Val"})
+        after = client.get("/api/identity").json()["me"]["user_id"]
+        assert after == before

@@ -43,6 +43,12 @@ def ensure_identity() -> Dict[str, Any]:
             f"[identity] Bootstrapped instance identity for slot {slot} "
             f"({existing['display_name']})."
         )
+    elif existing["person_slot"] != INSTANCE_PERSON_SLOT:
+        logger.warning(
+            f"[identity] INSTANCE_PERSON_SLOT is {INSTANCE_PERSON_SLOT} but the stored "
+            f"identity has person_slot {existing['person_slot']}. The stored slot wins; "
+            "the env var change was ignored."
+        )
 
     if not identity_repo.list_peers():
         peer_slot = _other_slot(existing["person_slot"])

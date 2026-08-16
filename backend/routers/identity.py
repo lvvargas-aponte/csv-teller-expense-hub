@@ -36,9 +36,8 @@ async def get_identity():
 @router.put("/identity")
 async def update_identity(update: IdentityUpdate):
     """Rename this instance's owner. The user id and person slot are immutable."""
-    me = identity_service.ensure_identity()
-    return identity_repo.set_identity(
-        user_id=me["user_id"],
-        display_name=update.display_name,
-        person_slot=me["person_slot"],
-    )
+    identity_service.ensure_identity()
+    updated = identity_repo.rename_identity(update.display_name)
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Failed to resolve instance identity")
+    return updated
