@@ -18,3 +18,8 @@ export const upsertAccountDetails = (accountId, data) =>
 
 export const deleteAccountDetails = (accountId) =>
   axios.delete(`${API}/api/accounts/${encodeURIComponent(accountId)}/details`);
+
+// Transactions paying down this debt, reconciled across the card side and the
+// funding account, plus progress against the recorded starting balance.
+export const getDebtPayments = (accountId) =>
+  axios.get(`${API}/api/accounts/${encodeURIComponent(accountId)}/debt-payments`);

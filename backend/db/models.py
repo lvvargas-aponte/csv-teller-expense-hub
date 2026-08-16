@@ -228,6 +228,9 @@ class Property(Base):
     utilities_monthly: Mapped[float] = mapped_column(
         Numeric(14, 2), server_default="0", nullable=False
     )
+    landscaping_monthly: Mapped[float] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
     other_monthly_expense: Mapped[float] = mapped_column(
         Numeric(14, 2), server_default="0", nullable=False
     )

@@ -254,6 +254,26 @@ def _validate_iso_date(label: str, value: Optional[str]) -> None:
         )
 
 
+@router.get("/accounts/{account_id}/debt-payments")
+async def get_debt_payments(account_id: str):
+    """Transactions paying down this debt, and how far it has moved.
+
+    Reads ``payoff_start_balance`` / ``payoff_start_date`` / ``payment_account_id``
+    from the account's details record. Returns an empty-but-shaped result when
+    none are set rather than 404ing, so the planner can render the row before
+    the user has configured anything.
+    """
+    from bills import account_lookup
+    from debt_payments import debt_payment_progress
+
+    return debt_payment_progress(
+        account_id,
+        state.account_details.get(account_id),
+        account_lookup(account_id),
+        list(state.stored_transactions.values()),
+    )
+
+
 @router.get("/accounts/details", response_model=Dict[str, Optional[AccountDetails]])
 async def get_all_account_details():
     """Return details for every known account in one call.
@@ -300,6 +320,9 @@ async def upsert_account_details(account_id: str, req: AccountDetailsIn):
         raise HTTPException(status_code=422, detail="promo_apr must be >= 0")
     _validate_iso_date("min_payment_from", req.min_payment_from)
     _validate_iso_date("min_payment_until", req.min_payment_until)
+    _validate_iso_date("payoff_start_date", req.payoff_start_date)
+    if req.payoff_start_balance is not None and req.payoff_start_balance < 0:
+        raise HTTPException(status_code=422, detail="payoff_start_balance must be >= 0")
 
     existing = state.account_details.get(account_id)
     record: Dict = {
@@ -318,6 +341,9 @@ async def upsert_account_details(account_id: str, req: AccountDetailsIn):
         "promo_expires":     req.promo_expires,
         "min_payment_from":  req.min_payment_from,
         "min_payment_until": req.min_payment_until,
+        "payoff_start_balance": req.payoff_start_balance,
+        "payoff_start_date":    req.payoff_start_date,
+        "payment_account_id":   req.payment_account_id,
         "created":           existing.get("created", _now_iso()) if existing else _now_iso(),
         "updated":           _now_iso(),
     }

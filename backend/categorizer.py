@@ -39,6 +39,21 @@ DEFAULT_CATEGORIES: List[str] = [
     "Insurance",
     "Income",
     "Fees",
+    # Entity buckets. These separate money that belongs to a business or a
+    # specific rental from household spending, so a Schedule C / Schedule E
+    # export doesn't have to be reconstructed from merchant names later.
+    #
+    # The rentals share a "Rental: " prefix so typing "rental" in the category
+    # combobox surfaces both, while typing the property name jumps straight to
+    # one. Keep these labels matching properties.name exactly — that's what
+    # makes a category total reconcilable against the Properties page.
+    #
+    # Note this is the *reporting* axis only. Per-property economics (NOI,
+    # cash flow, DSCR) read transaction.property_id, not the category, so a
+    # rental transaction still wants its property tag set as well.
+    "Tomatillo LLC",
+    "Rental: Carolina Cherry",
+    "Rental: Davie",
     "Other",
 ]
 

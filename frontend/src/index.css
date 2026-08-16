@@ -2466,6 +2466,57 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   border: 1px solid #d1fae5;
   margin-bottom: 12px;
 }
+
+/* Debts split into two tables: the queued unsecured rows, and secured rows
+   that are tracked but never simulated. */
+.ov-debt-section { margin-bottom: 18px; }
+.ov-debt-section-head {
+  display: flex; align-items: baseline; gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.ov-debt-section-title {
+  font-size: 13px; font-weight: 700; color: #0f2417;
+}
+.ov-debt-section-total {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 12px; color: #6b7280;
+}
+.ov-debt-section-tag {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 8px; border-radius: 99px;
+  background: #f3f4f6; color: #6b7280;
+}
+.ov-debt-section-note {
+  margin: 0 0 10px;
+  font-size: 11.5px; line-height: 1.55; color: #6b7280;
+  max-width: 68ch;
+}
+/* Sits below the "+ Add debt" button, so it needs its own breathing room. */
+.ov-debt-section--secured { margin-top: 22px; }
+.ov-debt-section--secured .ov-debt-table-wrap {
+  border-style: dashed;
+  background: #fafafa;
+}
+
+.ov-secured-mark { font-size: 13px; line-height: 1; }
+
+/* Equity read-out on a collapsed secured row. */
+.ov-equity-chip {
+  display: inline-block;
+  margin: 3px 0 0 8px;
+  font-size: 10.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: 99px;
+}
+.ov-equity-hint {
+  display: inline-block;
+  margin: 3px 0 0 8px;
+  padding: 0; border: none; background: none;
+  font-family: inherit; font-size: 10.5px;
+  color: #9ca3af; cursor: pointer;
+}
+.ov-equity-hint:hover { color: #059669; text-decoration: underline; }
 .ov-debt-table {
   width: 100%;
   border-collapse: collapse;
@@ -2647,6 +2698,13 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 }
 .ov-debt-detail-field { display: flex; flex-direction: column; gap: 5px; min-width: 150px; }
 .ov-debt-detail-field--wide { min-width: 220px; }
+/* Forces its own row in the wrapping panel — the payment list needs the width
+   and reads as a separate section from the rate/date fields above it. */
+.ov-debt-detail-field--full {
+  flex-basis: 100%;
+  border-top: 1px solid #d1fae5;
+  padding-top: 12px; margin-top: 4px;
+}
 .ov-debt-detail-label {
   font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.06em; color: #9ca3af;
@@ -2698,6 +2756,60 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 .ov-promo-plan-line strong { color: #111827; }
 .ov-promo-plan-figure { color: #059669; font-size: 13px; }
 .ov-promo-plan-line--warn { color: #b45309; font-weight: 600; }
+
+/* Payoff progress — starting balance vs today, and the payments in between. */
+.ov-payoff-progress {
+  margin-top: 10px;
+  display: flex; flex-direction: column; gap: 7px;
+  font-size: 12px; color: #374151;
+  max-width: 520px;
+}
+.ov-payoff-progress-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 12px; flex-wrap: wrap;
+}
+.ov-payoff-progress-from { color: #9ca3af; text-decoration: line-through; }
+.ov-payoff-progress-head strong { color: #111827; font-size: 13px; }
+.ov-payoff-progress-paid { color: #059669; font-weight: 700; }
+.ov-payoff-progress-flat { color: #9ca3af; font-weight: 600; }
+.ov-payoff-progress-bar {
+  height: 6px; border-radius: 99px; background: #e5e7eb; overflow: hidden;
+}
+.ov-payoff-progress-fill {
+  height: 100%; background: #059669; border-radius: 99px;
+  transition: width .3s ease;
+}
+.ov-payoff-progress-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #9ca3af; margin-top: 2px;
+}
+.ov-payoff-progress-empty { font-size: 12px; color: #9ca3af; }
+.ov-payoff-progress-note {
+  font-size: 11px; color: #b45309; line-height: 1.45;
+}
+
+.ov-payment-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ov-payment-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 0; border-bottom: 1px solid #ecfdf5;
+}
+.ov-payment-row:last-child { border-bottom: none; }
+.ov-payment-date { color: #6b7280; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ov-payment-desc {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ov-payment-badge {
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 2px 6px; border-radius: 99px; white-space: nowrap;
+}
+.ov-payment-badge--both    { background: #d1fae5; color: #059669; }
+.ov-payment-badge--funding { background: #dbeafe; color: #1d4ed8; }
+.ov-payment-badge--account { background: #f3f4f6; color: #6b7280; }
+.ov-payment-amount {
+  font-weight: 700; color: #059669; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 
 .ov-promo-warning {
   margin-top: 10px;
@@ -3449,6 +3561,14 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 [data-theme='dark'] .ov-debt-table td { border-bottom-color: var(--border); }
 [data-theme='dark'] .ov-debt-table tbody tr:hover { background: var(--bg-secondary); }
 
+[data-theme='dark'] .ov-debt-section-title { color: var(--text); }
+[data-theme='dark'] .ov-debt-section-total,
+[data-theme='dark'] .ov-debt-section-note { color: var(--text-muted); }
+[data-theme='dark'] .ov-debt-section-tag { background: var(--bg-secondary); color: var(--text-faint); }
+[data-theme='dark'] .ov-debt-section--secured .ov-debt-table-wrap { background: var(--bg-secondary); }
+[data-theme='dark'] .ov-equity-hint { color: var(--text-faint); }
+[data-theme='dark'] .ov-equity-hint:hover { color: var(--accent); }
+
 [data-theme='dark'] .ov-expand-toggle { color: var(--text-faint); }
 [data-theme='dark'] .ov-expand-toggle:hover,
 [data-theme='dark'] .ov-expand-toggle--open { color: var(--accent); }
@@ -3468,6 +3588,24 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 [data-theme='dark'] .ov-promo-plan-line strong { color: var(--text-primary); }
 [data-theme='dark'] .ov-promo-plan-figure { color: var(--accent); }
 [data-theme='dark'] .ov-promo-plan-line--warn { color: #fbbf24; }
+
+[data-theme='dark'] .ov-debt-detail-field--full { border-top-color: var(--border); }
+[data-theme='dark'] .ov-payoff-progress { color: var(--text-muted); }
+[data-theme='dark'] .ov-payoff-progress-from { color: var(--text-faint); }
+[data-theme='dark'] .ov-payoff-progress-head strong { color: var(--text-primary); }
+[data-theme='dark'] .ov-payoff-progress-paid { color: var(--accent); }
+[data-theme='dark'] .ov-payoff-progress-flat,
+[data-theme='dark'] .ov-payoff-progress-label,
+[data-theme='dark'] .ov-payoff-progress-empty { color: var(--text-faint); }
+[data-theme='dark'] .ov-payoff-progress-bar { background: var(--bg-secondary); }
+[data-theme='dark'] .ov-payoff-progress-fill { background: var(--accent); }
+[data-theme='dark'] .ov-payoff-progress-note { color: #fbbf24; }
+[data-theme='dark'] .ov-payment-row { border-bottom-color: var(--border); }
+[data-theme='dark'] .ov-payment-date { color: var(--text-faint); }
+[data-theme='dark'] .ov-payment-amount { color: var(--accent); }
+[data-theme='dark'] .ov-payment-badge--both    { background: var(--accent-light); color: var(--accent); }
+[data-theme='dark'] .ov-payment-badge--funding { background: #16283f; color: #93c5fd; }
+[data-theme='dark'] .ov-payment-badge--account { background: var(--bg-secondary); color: var(--text-faint); }
 
 [data-theme='dark'] .ov-debt-input { color: var(--text-primary); }
 [data-theme='dark'] .ov-debt-input:focus { background: var(--bg-card); border-color: var(--border-mid); }
@@ -3940,4 +4078,120 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   font-size: 13px; color: var(--text-secondary); font-style: italic;
   line-height: 1.5; padding: 10px 12px; margin-bottom: 12px;
   background: var(--bg-secondary); border-radius: var(--radius-sm);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EQUITY & DEALS
+   The layout rule here is editorial: every extractable figure is followed
+   immediately by what it costs, and warnings render above the attractive
+   numbers rather than below them.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.eq-preamble {
+  font-size: 13px; color: var(--text-muted); line-height: 1.5;
+  margin: 16px 0 12px; max-width: 640px;
+}
+
+.eq-scenarios {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;
+}
+.eq-scenario {
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px;
+}
+.eq-scenario--warn { border-color: var(--amber); background: var(--amber-light); }
+.eq-scenario-head { display: flex; flex-direction: column; gap: 2px; }
+.eq-scenario-title { font-weight: 700; color: var(--text-primary); font-size: 14px; }
+.eq-scenario-sub { font-size: 11px; color: var(--text-muted); }
+
+.eq-proceeds {
+  display: flex; align-items: baseline; gap: 8px; margin: 12px 0 10px;
+}
+.eq-proceeds-amount {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 26px; font-weight: 700; color: var(--text-primary);
+}
+.eq-proceeds-label { font-size: 12px; color: var(--text-muted); }
+
+.eq-rows { margin: 0; }
+.eq-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 5px 0; font-size: 12px; border-bottom: 1px solid var(--border);
+}
+.eq-row:last-child { border-bottom: none; }
+.eq-row dt { color: var(--text-secondary); margin: 0; }
+.eq-row dd {
+  margin: 0; font-family: 'DM Mono', ui-monospace, monospace;
+  color: var(--text-primary);
+}
+
+.eq-warn {
+  margin-top: 10px; font-size: 12px; font-weight: 600;
+  color: var(--amber); line-height: 1.4;
+}
+.eq-note {
+  margin-top: 10px; font-size: 11px; color: var(--text-faint); line-height: 1.45;
+}
+
+/* ── deal analyzer ──────────────────────────────────────────────────────── */
+.eq-result { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+
+.eq-warnings {
+  background: var(--red-light); border: 1px solid var(--red);
+  border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 16px;
+  font-size: 13px; color: var(--red); line-height: 1.5;
+}
+.eq-warnings > div + div { margin-top: 6px; }
+
+.eq-headline {
+  text-align: center; padding: 16px;
+  background: var(--bg-secondary); border-radius: var(--radius); margin-bottom: 16px;
+}
+.eq-headline-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-muted); font-weight: 600;
+}
+.eq-headline-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 32px; font-weight: 700; margin: 4px 0;
+}
+.eq-headline-note {
+  font-size: 12px; color: var(--text-muted); line-height: 1.45;
+  max-width: 460px; margin: 0 auto;
+}
+
+.eq-metrics {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px; margin-bottom: 16px;
+}
+.eq-metric {
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.eq-metric-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-faint);
+}
+.eq-metric-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 16px; font-weight: 700; color: var(--text-primary); margin-top: 2px;
+}
+
+.eq-sensitivity {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px 14px; margin-bottom: 12px;
+}
+.eq-sensitivity-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-muted); font-weight: 700; margin-bottom: 8px;
+}
+.eq-sensitivity-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 12px; padding: 4px 0;
+}
+.eq-sensitivity-row span:last-child {
+  font-family: 'DM Mono', ui-monospace, monospace; font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .eq-headline-value { font-size: 24px; }
+  .eq-proceeds-amount { font-size: 22px; }
 }

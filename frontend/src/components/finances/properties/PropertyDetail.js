@@ -91,7 +91,7 @@ export default function PropertyDetail({ property, onBack, onEdit, onDelete, onC
             <Row label="Vacancy allowance" value={`− ${fmt$(proForma.vacancy_loss)}`} />
             <Row label="Effective gross income" value={fmt$(proForma.effective_gross_income)} />
             <Row label="Operating expenses" value={`− ${fmt$(proForma.operating_expenses)}`}
-                 hint="Taxes, insurance, HOA, utilities, management, maintenance and CapEx reserves." />
+                 hint="Taxes, insurance, HOA, utilities, landscaping, management, maintenance and CapEx reserves." />
             <Row label="Net operating income" value={fmt$(proForma.noi)} emphasis
                  hint="Excludes the mortgage — that's what makes cap rate comparable across properties." />
             <Row label="Debt service" value={`− ${fmt$(proForma.debt_service)}`}

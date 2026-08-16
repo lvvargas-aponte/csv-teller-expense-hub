@@ -5,7 +5,7 @@ import PayoffForm from './payoff/PayoffForm';
 import PayoffResults from './payoff/PayoffResults';
 import PayoffAdvice from './payoff/PayoffAdvice';
 
-export default function PayoffPlanner({ creditAccounts = [] }) {
+export default function PayoffPlanner({ creditAccounts = [], allAccounts = [] }) {
   const planner = usePayoffPlanner(creditAccounts);
 
   return (
@@ -19,7 +19,7 @@ export default function PayoffPlanner({ creditAccounts = [] }) {
           type="button"
           className="ov-btn ov-btn-secondary ov-btn-sm"
           onClick={planner.handleGetAdvice}
-          disabled={planner.adviceLoading || planner.rows.length === 0}
+          disabled={planner.adviceLoading || planner.revolvingRows.length === 0}
           title="Ask Fin for personalised advice on this plan"
         >
           {planner.adviceLoading ? <><Spin /> Thinking…</> : '🤖 Ask Fin'}
@@ -28,7 +28,10 @@ export default function PayoffPlanner({ creditAccounts = [] }) {
 
       <div className="ov-card-body">
         <PayoffForm
-          rows={planner.rows}
+          revolvingRows={planner.revolvingRows}
+          securedRows={planner.securedRows}
+          allAccounts={allAccounts}
+          detailsVersion={planner.detailsVersion}
           strategy={planner.strategy}
           extra={planner.extra}
           error={planner.error}
@@ -50,7 +53,8 @@ export default function PayoffPlanner({ creditAccounts = [] }) {
           strategy={planner.strategy}
           totalMonths={planner.totalMonths}
           totalPaid={planner.totalPaid}
-          rows={planner.rows}
+          rows={planner.revolvingRows}
+          hasSecured={planner.securedRows.length > 0}
         />
 
         <PayoffAdvice advice={planner.advice} adviceError={planner.adviceError} />

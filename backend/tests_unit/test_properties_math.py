@@ -31,6 +31,7 @@ def _property(repo, pid="prop_1", **overrides):
         "insurance_annual": 1200,          # $100/mo
         "hoa_monthly": 0,
         "utilities_monthly": 0,
+        "landscaping_monthly": 0,
         "other_monthly_expense": 0,
         "mgmt_fee_pct": 0,
         "maintenance_pct_of_rent": 0,
@@ -118,6 +119,13 @@ class TestProForma:
         _property(repo, maintenance_pct_of_rent=5, capex_reserve_pct_of_rent=5)
         result = properties.compute_pro_forma(repo.get_property("prop_1"), [])
         assert result["operating_expenses"] == pytest.approx(900.0)  # 600 + 300
+
+    def test_flat_monthly_expenses_add_at_face_value(self, repo):
+        """HOA, utilities and landscaping are already monthly — they go in as
+        given, unlike the annual tax/insurance figures."""
+        _property(repo, hoa_monthly=45, utilities_monthly=80, landscaping_monthly=120)
+        result = properties.compute_pro_forma(repo.get_property("prop_1"), [])
+        assert result["operating_expenses"] == pytest.approx(600.0 + 245.0)
 
     def test_management_fee_is_taken_on_effective_gross_income(self, repo):
         """Managers charge on rent collected, not rent scheduled."""

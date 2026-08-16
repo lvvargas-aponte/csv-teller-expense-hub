@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import Spin from '../../ui/Spin';
 import { AprCell, AprLegend } from './AprCell';
 import { fmt$, fmtDate, fmtSigned } from '../../../utils/formatting';
-import { deferredPlan, fmtMonths } from './helpers';
+import { deferredPlan, fmtMonths, hasAssetValue, rowEquity } from './helpers';
+import PayoffProgress from './PayoffProgress';
 
 const DEBT_CLASSES = [
   { id: 'credit_card', label: '💳 Credit Card' },
@@ -11,7 +12,8 @@ const DEBT_CLASSES = [
 ];
 
 export default function PayoffForm({
-  rows, strategy, extra, error, loading, orderById,
+  revolvingRows = [], securedRows = [],
+  allAccounts = [], detailsVersion = 0, strategy, extra, error, loading, orderById,
   onSetRow, onPersistApr, onPersistMinPayment, onPersistDetail, onAddRow, onRemoveRow,
   onStrategyChange, onExtraChange, onCalculate,
 }) {
@@ -21,6 +23,12 @@ export default function PayoffForm({
     next.has(id) ? next.delete(id) : next.add(id);
     return next;
   });
+
+  // Everything a section needs to render a row identically in either table.
+  const rowProps = {
+    allAccounts, detailsVersion, strategy, orderById, expanded, toggleExpanded,
+    onSetRow, onPersistApr, onPersistMinPayment, onPersistDetail, onRemoveRow,
+  };
 
   return (
     <>
@@ -40,6 +48,80 @@ export default function PayoffForm({
         </div>
       </div>
 
+      <DebtSection
+        title="💳 Cards & unsecured debt"
+        note="Ranked by the strategy above — this is the queue your extra payment feeds."
+        rows={revolvingRows}
+        showAprLegend
+        emptyMessage={<>No unsecured debt yet. Click <strong>+ Add debt</strong> below to get started.</>}
+        {...rowProps}
+      />
+
+      <button type="button" className="ov-btn ov-btn-ghost ov-btn-sm" onClick={onAddRow}>
+        + Add debt
+      </button>
+
+      {securedRows.length > 0 && (
+        <DebtSection
+          title="🏠 Loans & secured debt"
+          note="Backed by an asset, so these sit out of the payoff queue — ranking on APR alone would send your extra payment to a mortgage ahead of a 29% card. Edits here still save."
+          rows={securedRows}
+          secured
+          {...rowProps}
+        />
+      )}
+
+      <div className="ov-extra-row">
+        <label className="ov-extra-label" htmlFor="payoff-extra-input">
+          Extra monthly payment toward cards
+        </label>
+        <div className="ov-extra-input-wrap">
+          <span>$</span>
+          <input
+            id="payoff-extra-input"
+            type="number" min="0" step="10" placeholder="0"
+            value={extra}
+            onChange={(e) => onExtraChange(e.target.value)}
+            aria-label="Extra monthly payment"
+          />
+        </div>
+      </div>
+
+      {error && <div className="ov-error">{error}</div>}
+
+      <div className="ov-action-row">
+        <button
+          type="button"
+          className="ov-btn ov-btn-primary"
+          onClick={onCalculate}
+          disabled={loading || revolvingRows.length === 0}
+        >
+          {loading ? <><Spin /> Calculating…</> : 'Calculate payoff timeline →'}
+        </button>
+      </div>
+    </>
+  );
+}
+
+// One table of debts. Rendered twice — once for the queued unsecured rows,
+// once for secured ones. `secured` only changes the trimmings: no order badge
+// (those rows aren't in the queue to be numbered), plus an equity read-out.
+function DebtSection({
+  title, note, rows, secured = false, showAprLegend = false, emptyMessage,
+  allAccounts, detailsVersion, strategy, orderById, expanded, toggleExpanded,
+  onSetRow, onPersistApr, onPersistMinPayment, onPersistDetail, onRemoveRow,
+}) {
+  const total = rows.reduce((s, r) => s + (parseFloat(r.balance) || 0), 0);
+
+  return (
+    <section className={`ov-debt-section${secured ? ' ov-debt-section--secured' : ''}`}>
+      <div className="ov-debt-section-head">
+        <span className="ov-debt-section-title">{title}</span>
+        <span className="ov-debt-section-total">{fmt$(total)}</span>
+        {secured && <span className="ov-debt-section-tag">Not in the payoff queue</span>}
+      </div>
+      {note && <p className="ov-debt-section-note">{note}</p>}
+
       <div className="ov-debt-table-wrap">
         <table className="ov-debt-table">
           <thead>
@@ -51,7 +133,7 @@ export default function PayoffForm({
               <th style={{ width: 120 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
                   APR %
-                  <AprLegend />
+                  {showAprLegend && <AprLegend />}
                 </div>
               </th>
               <th style={{ width: 140 }}>Min Payment</th>
@@ -62,7 +144,7 @@ export default function PayoffForm({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ padding: '24px 14px', color: '#6b7280', fontSize: 13, textAlign: 'center' }}>
-                  No debts yet. Click <strong>+ Add debt</strong> below to get started.
+                  {emptyMessage}
                 </td>
               </tr>
             ) : rows.map((r, idx) => {
@@ -75,7 +157,13 @@ export default function PayoffForm({
                 <React.Fragment key={`${strategy}-${r._id}`}>
                   <tr className="ov-row-animate" style={{ animationDelay: `${idx * 0.04}s` }}>
                     <td style={{ textAlign: 'center', paddingRight: 4 }}>
-                      {order ? <span className="ov-order-badge">{order}</span> : <span style={{ display: 'inline-block', width: 20 }} />}
+                      {secured ? (
+                        <span className="ov-secured-mark" title="Secured by an asset — outside the payoff queue">🏠</span>
+                      ) : order ? (
+                        <span className="ov-order-badge">{order}</span>
+                      ) : (
+                        <span style={{ display: 'inline-block', width: 20 }} />
+                      )}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <button
@@ -95,6 +183,7 @@ export default function PayoffForm({
                         value={r.name}
                         onChange={(e) => onSetRow(r._id, 'name', e.target.value)}
                       />
+                      {secured && <EquityChip row={r} onAddValue={() => toggleExpanded(r._id)} />}
                     </td>
                     <td>
                       <div className="ov-debt-input-wrap">
@@ -140,6 +229,8 @@ export default function PayoffForm({
                       <td colSpan={7}>
                         <DebtDetailPanel
                           row={r}
+                          allAccounts={allAccounts}
+                          detailsVersion={detailsVersion}
                           onSetRow={onSetRow}
                           onPersistDetail={onPersistDetail}
                         />
@@ -152,49 +243,36 @@ export default function PayoffForm({
           </tbody>
         </table>
       </div>
-
-      <button type="button" className="ov-btn ov-btn-ghost ov-btn-sm" onClick={onAddRow}>
-        + Add debt
-      </button>
-
-      <div className="ov-extra-row">
-        <label className="ov-extra-label" htmlFor="payoff-extra-input">Extra monthly payment toward debt</label>
-        <div className="ov-extra-input-wrap">
-          <span>$</span>
-          <input
-            id="payoff-extra-input"
-            type="number" min="0" step="10" placeholder="0"
-            value={extra}
-            onChange={(e) => onExtraChange(e.target.value)}
-            aria-label="Extra monthly payment"
-          />
-        </div>
-      </div>
-
-      {error && <div className="ov-error">{error}</div>}
-
-      <div className="ov-action-row">
-        <button
-          type="button"
-          className="ov-btn ov-btn-primary"
-          onClick={onCalculate}
-          disabled={loading || rows.length === 0}
-        >
-          {loading ? <><Spin /> Calculating…</> : 'Calculate payoff timeline →'}
-        </button>
-      </div>
-    </>
+    </section>
   );
 }
 
-function DebtDetailPanel({ row, onSetRow, onPersistDetail }) {
+// Equity on the collapsed row, so a secured debt shows what it's actually
+// worth without expanding. With no market value on file there's nothing to
+// compute, so it points at the field that supplies one.
+function EquityChip({ row, onAddValue }) {
+  if (!hasAssetValue(row)) {
+    return (
+      <button type="button" className="ov-equity-hint" onClick={onAddValue}>
+        + add asset value for equity
+      </button>
+    );
+  }
+  const equity = rowEquity(row);
+  return (
+    <span className={`ov-equity-chip ${equity >= 0 ? 'ov-equity-badge--pos' : 'ov-equity-badge--neg'}`}>
+      Equity {fmtSigned(equity)}
+    </span>
+  );
+}
+
+function DebtDetailPanel({ row, allAccounts = [], detailsVersion = 0, onSetRow, onPersistDetail }) {
   const update = (key, backendKey, val) => {
     onSetRow(row._id, key, val);
     onPersistDetail?.(row._id, { [backendKey]: val });
   };
 
-  const equity = (parseFloat(row.assetValue) || 0) - (parseFloat(row.balance) || 0);
-  const hasAssetValue = row.assetValue !== '' && row.assetValue !== null && row.assetValue !== undefined;
+  const equity = rowEquity(row);
 
   return (
     <div className="ov-debt-detail-panel">
@@ -225,7 +303,7 @@ function DebtDetailPanel({ row, onSetRow, onPersistDetail }) {
               onBlur={(e) => onPersistDetail?.(row._id, { asset_value: e.target.value === '' ? null : parseFloat(e.target.value) })}
             />
           </div>
-          {hasAssetValue && (
+          {hasAssetValue(row) && (
             <span className={`ov-equity-badge ${equity >= 0 ? 'ov-equity-badge--pos' : 'ov-equity-badge--neg'}`}>
               Equity {fmtSigned(equity)}
             </span>
@@ -305,6 +383,61 @@ function DebtDetailPanel({ row, onSetRow, onPersistDetail }) {
           </>
         )}
       </div>
+
+      {row.accountId && (
+        <div className="ov-debt-detail-field ov-debt-detail-field--full">
+          <span className="ov-debt-detail-label">Payoff tracking</span>
+          <div className="ov-promo-fields">
+            <div>
+              <span className="ov-debt-detail-label">Starting balance</span>
+              <div className="ov-debt-input-wrap">
+                <span className="ov-debt-input-prefix">$</span>
+                <input
+                  className="ov-debt-input ov-num"
+                  type="number" min="0" step="0.01" placeholder="What you owed at the start"
+                  value={row.payoffStartBalance}
+                  onChange={(e) => onSetRow(row._id, 'payoffStartBalance', e.target.value)}
+                  onBlur={(e) => onPersistDetail?.(row._id, {
+                    payoff_start_balance: e.target.value === '' ? null : parseFloat(e.target.value),
+                  })}
+                />
+              </div>
+            </div>
+            <div>
+              <span className="ov-debt-detail-label" title="Payments before this date are left out of the totals">
+                Tracking since
+              </span>
+              <input
+                className="ov-debt-input"
+                type="date"
+                value={row.payoffStartDate}
+                onChange={(e) => update('payoffStartDate', 'payoff_start_date', e.target.value)}
+              />
+            </div>
+            <div>
+              <span className="ov-debt-detail-label" title="Used to find the outgoing side of each payment">
+                Paying from
+              </span>
+              <select
+                className="ov-debt-input"
+                value={row.paymentAccountId}
+                onChange={(e) => update('paymentAccountId', 'payment_account_id', e.target.value)}
+              >
+                <option value="">— pick an account —</option>
+                {allAccounts
+                  .filter((a) => a.id !== row.accountId)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {`${a.institution || ''} ${a.name || ''}`.trim() || a.id}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
+
+          <PayoffProgress row={row} detailsVersion={detailsVersion} />
+        </div>
+      )}
     </div>
   );
 }

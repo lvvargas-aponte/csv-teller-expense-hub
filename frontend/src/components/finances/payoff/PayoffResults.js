@@ -2,7 +2,7 @@ import React from 'react';
 import { fmt$, fmtDate } from '../../../utils/formatting';
 import { fmtMonths } from './helpers';
 
-export default function PayoffResults({ results, strategy, totalMonths, totalPaid, rows = [] }) {
+export default function PayoffResults({ results, strategy, totalMonths, totalPaid, rows = [], hasSecured = false }) {
   if (!results || !results.accounts || results.accounts.length === 0) return null;
 
   const promoWarnings = results.accounts.filter((a) => a.promo_expired_before_payoff);
@@ -11,9 +11,13 @@ export default function PayoffResults({ results, strategy, totalMonths, totalPai
     <div className="ov-payoff-result">
       <div className="ov-payoff-grid">
         <div>
-          <div className="ov-payoff-stat-label">Debt-free in</div>
+          {/* Only the unsecured queue is simulated, so claiming "debt-free"
+              would be wrong for anyone still carrying a mortgage. */}
+          <div className="ov-payoff-stat-label">{hasSecured ? 'Cards clear in' : 'Debt-free in'}</div>
           <div className="ov-payoff-stat-value">{fmtMonths(totalMonths)}</div>
-          <div className="ov-payoff-stat-sub">{totalMonths} monthly payments</div>
+          <div className="ov-payoff-stat-sub">
+            {totalMonths} monthly payments{hasSecured ? ' · loans excluded' : ''}
+          </div>
         </div>
         <div>
           <div className="ov-payoff-stat-label">Total interest</div>

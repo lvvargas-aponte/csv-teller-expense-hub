@@ -24,7 +24,7 @@ def _validate(req: PropertyIn) -> None:
         "purchase_price", "closing_costs", "capital_improvements",
         "monthly_rent", "other_monthly_income", "property_tax_annual",
         "insurance_annual", "hoa_monthly", "utilities_monthly",
-        "other_monthly_expense",
+        "landscaping_monthly", "other_monthly_expense",
     ):
         value = getattr(req, field)
         if value is not None and value < 0:

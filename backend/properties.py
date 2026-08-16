@@ -262,6 +262,7 @@ def compute_pro_forma(prop: Dict[str, Any], loans: List[Dict[str, Any]]) -> Dict
         + float(prop.get("insurance_annual") or 0) / 12.0
         + float(prop.get("hoa_monthly") or 0)
         + float(prop.get("utilities_monthly") or 0)
+        + float(prop.get("landscaping_monthly") or 0)
         + float(prop.get("other_monthly_expense") or 0)
         + egi * _pct(prop.get("mgmt_fee_pct")) / 100.0
         + monthly_rent * _pct(prop.get("maintenance_pct_of_rent")) / 100.0
@@ -550,6 +551,343 @@ def classify_property_performance(econ: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append("Covering its costs with no warning signals.")
 
     return {"rating": rating, "reasons": reasons, "notes": notes}
+
+
+# ---------------------------------------------------------------------------
+# Equity capacity
+# ---------------------------------------------------------------------------
+#
+# Lenders cap what you can borrow against a property as a percentage of its
+# value. Cash-out refinances typically stop at 75% LTV on an investment
+# property; a HELOC sitting behind a first mortgage typically reaches 85%
+# CLTV. Both are conventions, not laws, so both are parameters.
+#
+# The important thing this module does is refuse to show the extractable
+# figure alone. Pulling equity out raises the payment, and on a property
+# with thin margins that can flip cash flow negative — turning an asset that
+# pays you into one you subsidize. The new payment and the resulting cash
+# flow are computed alongside the proceeds, and the UI is expected to show
+# them together.
+
+_DEFAULT_CASH_OUT_LTV = 75.0
+_DEFAULT_HELOC_CLTV = 85.0
+# Refinance closing costs as a share of the new loan. Surfaced in the payload
+# rather than silently netted off, so the figure can be argued with.
+_REFI_COST_PCT = 2.0
+# Used when the caller doesn't supply a rate for the new money.
+_ASSUMED_REFI_RATE_PCT = 7.0
+_ASSUMED_HELOC_RATE_PCT = 8.5
+
+
+def compute_usable_equity(
+    property_id: str,
+    *,
+    max_ltv_pct: float = _DEFAULT_CASH_OUT_LTV,
+    max_cltv_pct: float = _DEFAULT_HELOC_CLTV,
+    refi_rate_pct: float = _ASSUMED_REFI_RATE_PCT,
+    heloc_rate_pct: float = _ASSUMED_HELOC_RATE_PCT,
+    refi_term_months: int = 360,
+    as_of: Optional[date] = None,
+) -> Dict[str, Any]:
+    """What could be borrowed against one property, and what it would cost.
+
+    Returns two scenarios. Neither is a recommendation: both report the
+    payment increase and the cash flow that survives it, because the
+    extractable number on its own is the most misleading figure in real
+    estate.
+    """
+    repo = properties_repo.get_repo()
+    prop = repo.get_property(property_id)
+    if prop is None:
+        return {"available": False, "reason": "not_found"}
+
+    value = prop.get("current_value")
+    if not value:
+        return {
+            "available": False,
+            "reason": "no_valuation",
+            "property_id": property_id,
+            "name": prop.get("name"),
+            "detail": (
+                "Record a current value for this property and its borrowing "
+                "capacity can be calculated."
+            ),
+        }
+
+    value = float(value)
+    loans = repo.list_loans(property_id)
+    total_debt = sum(resolve_loan_balance(loan, as_of) or 0.0 for loan in loans)
+    existing_payment = sum(loan_payment(loan) for loan in loans)
+
+    econ = compute_property_economics(property_id, as_of=as_of) or {}
+    noi = (econ.get("pro_forma") or {}).get("noi", 0.0)
+    current_cash_flow = (econ.get("pro_forma") or {}).get("cash_flow", 0.0)
+
+    # --- cash-out refinance: the whole balance is replaced -------------------
+    refi_ceiling = value * max_ltv_pct / 100.0
+    gross_proceeds = max(0.0, refi_ceiling - total_debt)
+    closing_costs = refi_ceiling * _REFI_COST_PCT / 100.0 if gross_proceeds > 0 else 0.0
+    net_proceeds = max(0.0, gross_proceeds - closing_costs)
+
+    if gross_proceeds > 0:
+        new_payment = float(amortization.pmt(refi_ceiling, refi_rate_pct, refi_term_months))
+    else:
+        new_payment = existing_payment
+    payment_delta = new_payment - existing_payment
+    cash_flow_after = current_cash_flow - payment_delta
+    dscr_after = (
+        round(noi * 12 / (new_payment * 12), 2) if new_payment > 0 else None
+    )
+
+    # --- HELOC: sits behind the existing debt, drawn interest-only ----------
+    heloc_ceiling = value * max_cltv_pct / 100.0
+    heloc_line = max(0.0, heloc_ceiling - total_debt)
+    heloc_interest_only = heloc_line * heloc_rate_pct / 100.0 / 12.0
+    heloc_cash_flow_after = current_cash_flow - heloc_interest_only
+
+    return {
+        "available": True,
+        "property_id": property_id,
+        "name": prop.get("name"),
+        "current_value": round(value, 2),
+        "total_debt": round(total_debt, 2),
+        "equity": round(value - total_debt, 2),
+        "current_ltv": round(total_debt / value * 100.0, 2),
+        "current_cash_flow": round(current_cash_flow, 2),
+        "cash_out_refi": {
+            "max_ltv_pct": max_ltv_pct,
+            "rate_pct": refi_rate_pct,
+            "term_months": refi_term_months,
+            "new_loan_amount": round(refi_ceiling, 2),
+            "gross_proceeds": round(gross_proceeds, 2),
+            "estimated_closing_costs": round(closing_costs, 2),
+            "closing_cost_pct": _REFI_COST_PCT,
+            "net_proceeds": round(net_proceeds, 2),
+            "current_payment": round(existing_payment, 2),
+            "new_payment": round(new_payment, 2),
+            "payment_delta": round(payment_delta, 2),
+            "cash_flow_after": round(cash_flow_after, 2),
+            "dscr_after": dscr_after,
+            "kills_cash_flow": cash_flow_after < 0 <= current_cash_flow,
+        },
+        "heloc": {
+            "max_cltv_pct": max_cltv_pct,
+            "rate_pct": heloc_rate_pct,
+            "max_line": round(heloc_line, 2),
+            "interest_only_payment": round(heloc_interest_only, 2),
+            "cash_flow_after_full_draw": round(heloc_cash_flow_after, 2),
+            "kills_cash_flow": heloc_cash_flow_after < 0 <= current_cash_flow,
+            "rate_type": "variable",
+            "note": (
+                "HELOC rates float. The payment shown is interest-only on a "
+                "full draw at today's rate; both can rise."
+            ),
+        },
+    }
+
+
+def compute_portfolio_equity(
+    *, max_ltv_pct: float = _DEFAULT_CASH_OUT_LTV,
+    max_cltv_pct: float = _DEFAULT_HELOC_CLTV,
+    as_of: Optional[date] = None,
+) -> Dict[str, Any]:
+    """Borrowing capacity across every property."""
+    repo = properties_repo.get_repo()
+    rows: List[Dict[str, Any]] = []
+    unavailable: List[Dict[str, Any]] = []
+
+    for prop in repo.list_properties():
+        capacity = compute_usable_equity(
+            prop["id"], max_ltv_pct=max_ltv_pct,
+            max_cltv_pct=max_cltv_pct, as_of=as_of,
+        )
+        if capacity.get("available"):
+            rows.append(capacity)
+        else:
+            unavailable.append({
+                "property_id": prop["id"],
+                "name": prop.get("name"),
+                "reason": capacity.get("reason"),
+            })
+
+    return {
+        "count": len(rows),
+        "total_equity": round(sum(r["equity"] for r in rows), 2),
+        "total_cash_out_available": round(
+            sum(r["cash_out_refi"]["net_proceeds"] for r in rows), 2
+        ),
+        "total_heloc_available": round(
+            sum(r["heloc"]["max_line"] for r in rows), 2
+        ),
+        "properties": rows,
+        # Named rather than silently dropped — a property missing a valuation
+        # would otherwise just reduce the total with no explanation.
+        "needs_valuation": unavailable,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Deal analyzer
+# ---------------------------------------------------------------------------
+
+def analyze_deal(inputs: Dict[str, Any], as_of: Optional[date] = None) -> Dict[str, Any]:
+    """Model a hypothetical purchase.
+
+    The headline figure is ``net_effect.portfolio_cash_flow_delta``, not the
+    deal's own cash flow. When the down payment comes from a HELOC or
+    cash-out refinance on a property you already own, that borrowing has a
+    carrying cost — and a deal that looks positive standalone can still
+    reduce total monthly income. Portfolio-level is the honest frame for a
+    leverage question.
+    """
+    price = float(inputs.get("purchase_price") or 0)
+    if price <= 0:
+        return {"available": False, "reason": "purchase_price_required"}
+
+    down_pct = float(inputs.get("down_pct") or 25.0)
+    rate = float(inputs.get("rate_pct") or _ASSUMED_REFI_RATE_PCT)
+    term = int(inputs.get("term_months") or 360)
+    rent = float(inputs.get("monthly_rent") or 0)
+    vacancy_pct = float(inputs.get("vacancy_pct") or 5.0)
+    opex_pct = float(inputs.get("opex_pct") or 35.0)
+    closing_pct = float(inputs.get("closing_pct") or 3.0)
+    rehab = float(inputs.get("rehab") or 0)
+
+    down = price * down_pct / 100.0
+    financed = price - down
+    closing = price * closing_pct / 100.0
+    cash_needed = down + closing + rehab
+
+    payment = float(amortization.pmt(financed, rate, term)) if financed > 0 else 0.0
+
+    egi = rent * (1 - vacancy_pct / 100.0)
+    opex = egi * opex_pct / 100.0
+    noi = egi - opex
+    cash_flow = noi - payment
+
+    cap_rate = round(noi * 12 / price * 100.0, 2) if price > 0 else None
+    coc = round(cash_flow * 12 / cash_needed * 100.0, 2) if cash_needed > 0 else None
+    dscr = round(noi * 12 / (payment * 12), 2) if payment > 0 else None
+
+    # Rent at which the deal exactly covers itself.
+    denominator = (1 - vacancy_pct / 100.0) * (1 - opex_pct / 100.0)
+    break_even_rent = round(payment / denominator, 2) if denominator > 0 else None
+
+    # --- funding, and what it costs elsewhere -------------------------------
+    funded_from = (inputs.get("funded_from") or "cash").lower()
+    source_property_id = inputs.get("source_property_id")
+    borrowing_cost = 0.0
+    funding_note = "Assumes the cash is already on hand."
+
+    if funded_from in ("heloc", "cash_out_refi") and source_property_id:
+        capacity = compute_usable_equity(source_property_id, as_of=as_of)
+        if capacity.get("available"):
+            if funded_from == "heloc":
+                line_rate = capacity["heloc"]["rate_pct"]
+                borrowing_cost = cash_needed * line_rate / 100.0 / 12.0
+                funding_note = (
+                    f"Drawing ${cash_needed:,.0f} on the HELOC against "
+                    f"{capacity['name']} costs about ${borrowing_cost:,.0f}/mo "
+                    f"in interest at {line_rate:.2f}%."
+                )
+            else:
+                borrowing_cost = capacity["cash_out_refi"]["payment_delta"]
+                funding_note = (
+                    f"Refinancing {capacity['name']} raises its payment by "
+                    f"${borrowing_cost:,.0f}/mo."
+                )
+
+    portfolio_delta = cash_flow - borrowing_cost
+
+    # --- sensitivity: three deterministic knocks ----------------------------
+    def _cash_flow_with(rent_v, vacancy_v, rate_v) -> float:
+        egi_v = rent_v * (1 - vacancy_v / 100.0)
+        noi_v = egi_v - egi_v * opex_pct / 100.0
+        pay_v = float(amortization.pmt(financed, rate_v, term)) if financed > 0 else 0.0
+        return round(noi_v - pay_v, 2)
+
+    sensitivity = [
+        {
+            "label": "Rent 10% below plan",
+            "cash_flow": _cash_flow_with(rent * 0.9, vacancy_pct, rate),
+        },
+        {
+            "label": "Vacancy 5 points worse",
+            "cash_flow": _cash_flow_with(rent, vacancy_pct + 5, rate),
+        },
+        {
+            "label": "Rate 1 point higher",
+            "cash_flow": _cash_flow_with(rent, vacancy_pct, rate + 1),
+        },
+    ]
+
+    # --- guardrails, rendered above the attractive numbers ------------------
+    warnings: List[str] = []
+    if cash_flow < 0:
+        warnings.append(
+            f"This property loses ${abs(cash_flow):,.0f} a month on its own."
+        )
+    if portfolio_delta < 0 <= cash_flow:
+        warnings.append(
+            f"The deal is positive standalone, but the borrowing behind it "
+            f"costs more than it earns — portfolio cash flow drops "
+            f"${abs(portfolio_delta):,.0f} a month."
+        )
+    if dscr is not None and dscr < 1.25:
+        warnings.append(
+            f"DSCR of {dscr:.2f} is under the 1.25 most lenders want to see."
+        )
+    if any(s["cash_flow"] < 0 for s in sensitivity):
+        broken = [s["label"].lower() for s in sensitivity if s["cash_flow"] < 0]
+        warnings.append(
+            f"Cash flow turns negative if {', or '.join(broken)}."
+        )
+
+    return {
+        "available": True,
+        "inputs": {
+            "purchase_price": price, "down_pct": down_pct, "rate_pct": rate,
+            "term_months": term, "monthly_rent": rent, "vacancy_pct": vacancy_pct,
+            "opex_pct": opex_pct, "closing_pct": closing_pct, "rehab": rehab,
+            "funded_from": funded_from, "source_property_id": source_property_id,
+        },
+        "financing": {
+            "down_payment": round(down, 2),
+            "financed": round(financed, 2),
+            "closing_costs": round(closing, 2),
+            "rehab": round(rehab, 2),
+            "total_cash_needed": round(cash_needed, 2),
+            "monthly_payment": round(payment, 2),
+        },
+        "economics": {
+            "effective_gross_income": round(egi, 2),
+            "operating_expenses": round(opex, 2),
+            "noi": round(noi, 2),
+            "cash_flow": round(cash_flow, 2),
+        },
+        "returns": {
+            "cap_rate": cap_rate,
+            "cash_on_cash": coc,
+            "dscr": dscr,
+            "break_even_rent": break_even_rent,
+        },
+        "net_effect": {
+            "deal_cash_flow": round(cash_flow, 2),
+            "borrowing_cost": round(borrowing_cost, 2),
+            "portfolio_cash_flow_delta": round(portfolio_delta, 2),
+            "funding_note": funding_note,
+        },
+        "sensitivity": sensitivity,
+        "warnings": warnings,
+        "assumptions": {
+            "opex_pct_of_egi": opex_pct,
+            "note": (
+                "Operating expenses are modeled as a share of collected rent. "
+                "Once you own it, the property's own expense model replaces "
+                "this estimate."
+            ),
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

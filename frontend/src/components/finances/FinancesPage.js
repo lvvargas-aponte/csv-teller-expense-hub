@@ -14,6 +14,7 @@ import AdvisorChat from './AdvisorChat';
 import KnowledgeSection from './KnowledgeSection';
 import PropertiesPage from './PropertiesPage';
 import LoansPage from './LoansPage';
+import EquityPage from './EquityPage';
 import TodayPage from './TodayPage';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
@@ -146,6 +147,8 @@ export default function FinancesPage() {
 
         {activeId === 'loans' && <LoansPage />}
 
+        {activeId === 'equity' && <EquityPage />}
+
         {activeId === 'budgets' && (
           <SimplePage title="Budgets"><BudgetsSection /></SimplePage>
         )}
@@ -165,7 +168,10 @@ export default function FinancesPage() {
 
         {activeId === 'debt-payoff' && (
           <SimplePage title="Debt Payoff">
-            <PayoffPlanner creditAccounts={creditAccounts} />
+            <PayoffPlanner
+              creditAccounts={creditAccounts}
+              allAccounts={summary?.accounts ?? []}
+            />
           </SimplePage>
         )}
 

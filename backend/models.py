@@ -119,6 +119,14 @@ class AccountDetailsIn(BaseModel):
     # Both ISO YYYY-MM-DD; either may be None (open-ended on that side).
     min_payment_from: Optional[str] = None
     min_payment_until: Optional[str] = None
+    # Payoff progress tracking. `payoff_start_balance` is what was owed when
+    # the user started working this debt down — the live balance alone can't
+    # show progress, since it only ever reports "now".
+    payoff_start_balance: Optional[float] = None
+    payoff_start_date: Optional[str] = None   # ISO YYYY-MM-DD
+    # Account the payments come from, so the funding-side transactions can be
+    # matched back to this debt (e.g. a Truist debit paying a Synchrony card).
+    payment_account_id: Optional[str] = None
 
 
 class AccountDetails(AccountDetailsIn):
@@ -168,6 +176,7 @@ class PropertyIn(BaseModel):
     insurance_annual: float = 0.0
     hoa_monthly: float = 0.0
     utilities_monthly: float = 0.0
+    landscaping_monthly: float = 0.0
     other_monthly_expense: float = 0.0
     mgmt_fee_pct: float = 0.0
     maintenance_pct_of_rent: float = 5.0
@@ -224,6 +233,30 @@ class LoanIn(BaseModel):
     io_months: int = 0
     balloon_date: Optional[str] = None
     notes: str = ""
+
+
+class DealInputs(BaseModel):
+    """A hypothetical property purchase.
+
+    ``funded_from`` matters more than it looks: when the down payment is
+    borrowed against a property you already own, that borrowing has a
+    carrying cost, and the analyzer reports portfolio-level cash flow rather
+    than the deal's own. A deal can be positive standalone and still reduce
+    total monthly income.
+    """
+    purchase_price: float
+    down_pct: float = 25.0
+    rate_pct: float = 7.0
+    term_months: int = 360
+    monthly_rent: float = 0.0
+    vacancy_pct: float = 5.0
+    # Operating expenses as a share of collected rent — a planning estimate,
+    # replaced by the property's own expense model once it is owned.
+    opex_pct: float = 35.0
+    closing_pct: float = 3.0
+    rehab: float = 0.0
+    funded_from: Literal["cash", "heloc", "cash_out_refi"] = "cash"
+    source_property_id: Optional[str] = None
 
 
 class LoanWhatIfRequest(BaseModel):

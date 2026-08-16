@@ -8,7 +8,7 @@ const EMPTY = {
   purchase_date: '', purchase_price: '', closing_costs: '', capital_improvements: '',
   monthly_rent: '', other_monthly_income: '', vacancy_rate_pct: 5,
   property_tax_annual: '', insurance_annual: '', hoa_monthly: '',
-  utilities_monthly: '', other_monthly_expense: '',
+  utilities_monthly: '', landscaping_monthly: '', other_monthly_expense: '',
   mgmt_fee_pct: 0, maintenance_pct_of_rent: 5, capex_reserve_pct_of_rent: 5,
   notes: '',
 };
@@ -55,6 +55,7 @@ export default function PropertyForm({ initial, onSubmit, onClose, saving }) {
       insurance_annual: num(draft.insurance_annual) ?? 0,
       hoa_monthly: num(draft.hoa_monthly) ?? 0,
       utilities_monthly: num(draft.utilities_monthly) ?? 0,
+      landscaping_monthly: num(draft.landscaping_monthly) ?? 0,
       other_monthly_expense: num(draft.other_monthly_expense) ?? 0,
       mgmt_fee_pct: num(draft.mgmt_fee_pct) ?? 0,
       maintenance_pct_of_rent: num(draft.maintenance_pct_of_rent) ?? 0,
@@ -123,6 +124,7 @@ export default function PropertyForm({ initial, onSubmit, onClose, saving }) {
           {field('insurance_annual', 'Insurance (annual)')}
           {field('hoa_monthly', 'HOA (monthly)')}
           {field('utilities_monthly', 'Utilities (monthly)')}
+          {field('landscaping_monthly', 'Landscaping (monthly)')}
           {field('other_monthly_expense', 'Other (monthly)')}
           {field('mgmt_fee_pct', 'Management % of rent collected')}
           {field('maintenance_pct_of_rent', 'Maintenance % of rent')}

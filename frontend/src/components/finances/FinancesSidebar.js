@@ -31,6 +31,7 @@ const NAV_SECTIONS = [
     label: 'Wealth',
     items: [
       { id: 'properties',  icon: '🏠', label: 'Properties' },
+      { id: 'equity',      icon: '🔑', label: 'Equity & Deals' },
       { id: 'investments', icon: '📈', label: 'Investments' },
       { id: 'goals',       icon: '⭐', label: 'Goals' },
     ],

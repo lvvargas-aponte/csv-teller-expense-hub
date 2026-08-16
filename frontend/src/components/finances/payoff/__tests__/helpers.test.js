@@ -109,6 +109,11 @@ describe('deferredPlan', () => {
     expect(p.requiredMonthly).toBeCloseTo(15465, 2);
   });
 
+  test('an absurd deadline is clamped instead of spinning the simulation', () => {
+    const p = deferredPlan(careCredit({ promoExpires: '9999-01-01' }), TODAY);
+    expect(p.monthsToDeadline).toBe(1200);
+  });
+
   test('a non-zero promo rate pushes the catch-up above straight division', () => {
     const p = deferredPlan(careCredit({ promoApr: '9.99' }), TODAY);
     expect(p.requiredMonthly).toBeGreaterThan(15465 / 22);

@@ -3,7 +3,24 @@ export const blankRow = () => ({
   debtClass: 'credit_card', assetValue: '', dueDate: '',
   deferredInterest: false, promoApr: '', promoExpires: '',
   minPaymentFrom: '', minPaymentUntil: '',
+  payoffStartBalance: '', payoffStartDate: '', paymentAccountId: '',
 });
+
+// A secured debt is one backed by an asset — a mortgage or auto loan. These
+// sit out of the payoff queue on purpose: an avalanche ranks purely on APR, so
+// a 7.6% mortgage would take the extra payment ahead of a 29% card, and a
+// 30-year term would swamp the "paid off in" figure. They stay on the page for
+// balance, APR, and equity tracking; they just don't get simulated.
+export const isSecured = (row) => row.debtClass === 'loan';
+
+// Equity only means anything once a market value is on file — an empty field
+// would otherwise read as "your house is worth $0" and report the whole
+// mortgage as negative equity.
+export const hasAssetValue = (row) =>
+  row.assetValue !== '' && row.assetValue !== null && row.assetValue !== undefined;
+
+export const rowEquity = (row) =>
+  (parseFloat(row.assetValue) || 0) - (parseFloat(row.balance) || 0);
 
 export function aprBadgeClass(apr) {
   const v = parseFloat(apr) || 0;
@@ -36,6 +53,11 @@ export function parseISODate(s) {
 export function monthsBetween(from, to) {
   return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
 }
+
+// Ceiling on how far a promo simulation will walk. 100 years — far past any
+// real promo, but it bounds the work when a half-typed date field yields a
+// nonsense deadline.
+const MAX_HORIZON_MONTHS = 1200;
 
 // Level payment that clears `principal` in `months` at `monthlyRate`.
 function annuityPayment(principal, monthlyRate, months) {
@@ -70,7 +92,11 @@ export function deferredPlan(row, today = new Date()) {
   const promoRate  = (parseFloat(row.promoApr) || 0) / 100 / 12;
   const minPayment = parseFloat(row.min_payment) || 0;
 
-  const monthsToDeadline = monthsBetween(today, deadline);
+  // Clamped because this runs on every keystroke in the date field: typing a
+  // year leaves "0002-06-01" and then "2028-06-01" in transit, and an
+  // unclamped horizon would spin tens of thousands of iterations per render.
+  // A deferred-interest promo never runs past a century.
+  const monthsToDeadline = Math.min(monthsBetween(today, deadline), MAX_HORIZON_MONTHS);
   if (monthsToDeadline <= 0) {
     return {
       balance, deadline, monthsToDeadline: 0, expired: true,
