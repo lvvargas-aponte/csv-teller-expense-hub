@@ -87,6 +87,7 @@ All endpoints are mounted under `/api`. The static help site lives at `/help/`. 
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/budgets` | List with current-month spend |
+| `GET` | `/api/budgets/safe-to-spend` | Today's / this week's discretionary allowance (`?as_of=`) |
 | `PUT` | `/api/budgets/{category}` | Upsert |
 | `DELETE` | `/api/budgets/{category}` | Remove |
 | `GET` | `/api/goals` | List |

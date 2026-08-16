@@ -71,6 +71,7 @@ nav:
       - Environment variables: getting-started/env-vars.md
   - Tabs & Pages:
       - Transactions: tabs/transactions.md
+      - Finances → Today: tabs/finances-today.md
       - Finances → Dashboard: tabs/finances-dashboard.md
       - Finances → Overview: tabs/finances-overview.md
       - Finances → Accounts: tabs/finances-accounts.md
