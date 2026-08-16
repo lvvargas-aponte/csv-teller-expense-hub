@@ -311,13 +311,17 @@ class TestSendToGSheet:
         assert res.status_code == 200
         assert res.json()["count"] == 0
 
-    def test_success_removes_shared_from_storage(self, client, sample_discover_csv):
-        """Shared transactions must be removed from in-memory storage after a successful send."""
+    def test_success_keeps_shared_in_storage(self, client, sample_discover_csv):
+        """Sending to the sheet must NOT delete the transaction.
+
+        History is documented as the full record of every transaction ever
+        synced or uploaded; deleting on send silently destroyed it. Sync in
+        sub-project B also requires rows to persist after a push.
+        """
         _upload_csv(client, sample_discover_csv, "Discover-Statement.csv")
         txns = client.get("/api/transactions/all").json()
         txn_id = txns[0]["id"]
 
-        # Mark one transaction as shared
         client.put(f"/api/transactions/{txn_id}", json={"is_shared": True})
 
         with patch("routers.sheets.append_to_sheet", return_value=1) as mock_append:
@@ -329,7 +333,7 @@ class TestSendToGSheet:
 
         remaining = client.get("/api/transactions/all").json()
         remaining_ids = {t["id"] for t in remaining}
-        assert txn_id not in remaining_ids, "Sent transaction should be removed from queue"
+        assert txn_id in remaining_ids, "Sent transaction must remain in storage"
 
     def test_gsheet_failure_does_not_delete_transactions(self, client, sample_discover_csv):
         """If append_to_sheet raises, the transaction must NOT be removed from storage."""

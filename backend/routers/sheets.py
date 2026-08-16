@@ -47,7 +47,7 @@ async def export_to_google_sheet():
 
 @router.post("/send-to-gsheet")
 async def send_to_google_sheet(req: Optional[SendToSheetRequest] = None):
-    """Send shared transactions directly to Google Sheet and clear them from the queue.
+    """Send shared transactions to the Google Sheet. Local records are kept.
 
     Optional body fields:
     - sheet_name:   target worksheet name (overrides SHEET_NAME env var)
@@ -74,16 +74,8 @@ async def send_to_google_sheet(req: Optional[SendToSheetRequest] = None):
     if not shared_transactions:
         return {"message": "No shared transactions to send", "count": 0, "sheet_name": effective_sheet}
 
-    # Collect IDs before writing — only delete AFTER confirmed success to avoid data loss
-    ids_to_delete = [t["id"] for t in shared_transactions]
-
     try:
         count = append_to_sheet(SPREADSHEET_ID, shared_transactions, effective_sheet)
-
-        for tid in ids_to_delete:
-            state.stored_transactions.pop(tid, None)
-        state._transactions_store.save()
-
         return {
             "message": f"Successfully sent {count} transactions to Google Sheet",
             "count": count,
