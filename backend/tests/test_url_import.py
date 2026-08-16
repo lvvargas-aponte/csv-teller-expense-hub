@@ -33,6 +33,19 @@ def _patch_resolves_public_ok():
     return patch.object(url_fetcher, "_check_resolves_public", lambda host: None)
 
 
+def _patch_allowlist(*hosts):
+    """Force the effective allowlist for a test.
+
+    Must patch ``get_allowed_hosts``, NOT the ``ALLOWED_HOSTS`` constant.
+    The allowlist became dynamic (base set union runtime additions from the
+    ``allowlist_hosts`` table) and ``ALLOWED_HOSTS`` was left behind as a
+    backwards-compat alias that ``_check_url`` no longer reads. Patching the
+    alias silently does nothing, so the host guard rejects the request and
+    whatever the test meant to exercise never runs.
+    """
+    return patch.object(url_fetcher, "get_allowed_hosts", lambda: set(hosts))
+
+
 # ---------------------------------------------------------------------------
 # url_fetcher unit tests — exercise each guard in isolation.
 # ---------------------------------------------------------------------------
@@ -82,14 +95,14 @@ class TestPrivateIpGuard:
         with patch("socket.getaddrinfo", return_value=fake_addrinfo):
             # Inject the host into the allowlist so we hit the IP guard,
             # not the host guard.
-            with patch.object(url_fetcher, "ALLOWED_HOSTS", {"rebound.example.com"}):
+            with _patch_allowlist("rebound.example.com"):
                 with pytest.raises(url_fetcher.FetchError, match="loopback|private|reserved"):
                     url_fetcher.fetch("https://rebound.example.com/x")
 
     def test_rejects_private_range(self):
         fake_addrinfo = [(2, 1, 6, "", ("10.0.0.5", 0))]
         with patch("socket.getaddrinfo", return_value=fake_addrinfo):
-            with patch.object(url_fetcher, "ALLOWED_HOSTS", {"rebound.example.com"}):
+            with _patch_allowlist("rebound.example.com"):
                 with pytest.raises(url_fetcher.FetchError, match="loopback|private|reserved"):
                     url_fetcher.fetch("https://rebound.example.com/x")
 
@@ -97,9 +110,22 @@ class TestPrivateIpGuard:
         # 169.254.169.254 — cloud metadata endpoint.
         fake_addrinfo = [(2, 1, 6, "", ("169.254.169.254", 0))]
         with patch("socket.getaddrinfo", return_value=fake_addrinfo):
-            with patch.object(url_fetcher, "ALLOWED_HOSTS", {"rebound.example.com"}):
+            with _patch_allowlist("rebound.example.com"):
                 with pytest.raises(url_fetcher.FetchError, match="loopback|private|reserved|link"):
                     url_fetcher.fetch("https://rebound.example.com/x")
+
+    def test_allowlisted_public_host_passes_the_ip_guard(self):
+        """Negative control.
+
+        Without this, all three tests above would still pass if the guard
+        rejected every host indiscriminately — which is exactly the failure
+        that hid here for so long.
+        """
+        fake_addrinfo = [(2, 1, 6, "", ("93.184.216.34", 0))]
+        with patch("socket.getaddrinfo", return_value=fake_addrinfo):
+            with _patch_allowlist("rebound.example.com"):
+                # Reaches the HTTP layer, so the IP guard let it through.
+                url_fetcher._check_resolves_public("rebound.example.com")
 
 
 class TestRedirectHandling:
@@ -172,7 +198,15 @@ class TestImportEndpoint:
         assert resp.status_code == 200
         hosts = resp.json()
         assert "www.irs.gov" in hosts
-        assert "www.bogleheads.org" in hosts
+
+    def test_bogleheads_is_deliberately_absent(self, client):
+        """Not an oversight — its wiki sits behind Cloudflare TLS-fingerprint
+        protection that 403s plain httpx whatever headers we send. Users save
+        the page from their browser and upload the PDF instead. Pinned so
+        re-adding it is a conscious decision rather than a silent one that
+        fails at fetch time. See BASE_ALLOWED_HOSTS in url_fetcher.py."""
+        hosts = client.get("/api/documents/allowed-hosts").json()
+        assert "www.bogleheads.org" not in hosts
 
 
 class TestReimportVersioning:
