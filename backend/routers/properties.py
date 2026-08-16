@@ -68,6 +68,20 @@ async def get_portfolio() -> Dict[str, Any]:
     return properties_domain.compute_portfolio()
 
 
+@router.get("/properties/suggest-transactions")
+async def suggest_transactions(limit: int = 200) -> List[Dict[str, Any]]:
+    """Untagged transactions that look like they belong to a property.
+
+    Suggestions only — the caller confirms before anything is written. A
+    mis-attributed rent payment distorts NOI, cash flow and the retirement
+    projection downstream, so this never auto-applies.
+
+    Declared above ``/properties/{property_id}`` so the literal path isn't
+    captured as an id.
+    """
+    return properties_domain.suggest_property_for_transactions(limit=limit)
+
+
 @router.get("/properties/{property_id}")
 async def get_property(property_id: str) -> Dict[str, Any]:
     economics = properties_domain.compute_property_economics(property_id)

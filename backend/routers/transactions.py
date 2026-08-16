@@ -20,6 +20,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _validated_property_id(raw: str) -> Optional[str]:
+    """Normalize and validate a property tag.
+
+    Follows the ``category`` / ``transfer_to_account_id`` convention already
+    used here: the caller passing ``""`` means "clear it", which returns
+    None. Anything else must name a real property — a typo'd id would
+    silently vanish from every rollup otherwise.
+    """
+    target = (raw or "").strip()
+    if not target:
+        return None
+
+    from db import properties_repo
+    if properties_repo.get_repo().get_property(target) is None:
+        raise HTTPException(
+            status_code=422, detail=f"property_id '{target}' does not exist"
+        )
+    return target
+
+
 def _resolve_upload_account(
     *,
     account_id: Optional[str],
@@ -364,6 +384,11 @@ async def bulk_update_transactions(update: BulkTransactionUpdate):
             )
         transfer_target = target or ""  # "" sentinel = clear
 
+    # Validated once for the whole batch rather than per row.
+    property_target: Optional[str] = None
+    if update.property_id is not None:
+        property_target = _validated_property_id(update.property_id) or ""
+
     for tid in update.transaction_ids:
         if tid not in state.stored_transactions:
             not_found.append(tid)
@@ -391,6 +416,9 @@ async def bulk_update_transactions(update: BulkTransactionUpdate):
 
         if transfer_target is not None:
             t["transfer_to_account_id"] = transfer_target or None
+
+        if property_target is not None:
+            t["property_id"] = property_target or None
 
         state.stored_transactions[tid] = t
         updated.append(t)
@@ -588,6 +616,9 @@ async def update_transaction(transaction_id: str, update: TransactionUpdate):
                 detail=f"transfer_to_account_id '{target}' is not a manual account",
             )
         transaction["transfer_to_account_id"] = target or None
+
+    if update.property_id is not None:
+        transaction["property_id"] = _validated_property_id(update.property_id)
 
     state.stored_transactions[transaction_id] = transaction
     state._transactions_store.save()

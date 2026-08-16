@@ -553,6 +553,102 @@ def classify_property_performance(econ: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Transaction attribution
+# ---------------------------------------------------------------------------
+
+def suggest_property_for_transactions(
+    limit: int = 200,
+) -> List[Dict[str, Any]]:
+    """Propose property tags for untagged transactions.
+
+    Three matchers, in precedence order:
+
+      1. ``operating_account_id`` — everything on a property's dedicated
+         account belongs to it.
+      2. ``rules[]`` with ``match: "merchant_key"`` — compared through
+         ``analytics._normalize_merchant``, which is what collapses
+         ``ZELLE FROM TENANT J SMITH 0421`` into one stable key across
+         months. Reusing that pipeline rather than writing a second matcher
+         means tenant payments group the same way recurring charges do.
+      3. ``rules[]`` with ``match: "description_contains"`` — a plain
+         case-insensitive substring, for the cases the normalizer can't
+         generalize.
+
+    Returns suggestions only. Nothing here writes ``property_id``: a
+    mis-attributed rent payment silently distorts NOI, cash flow and
+    ultimately the retirement projection, so a human confirms each one.
+    """
+    from analytics import _normalize_merchant
+
+    repo = properties_repo.get_repo()
+    properties = repo.list_properties()
+    if not properties:
+        return []
+
+    by_account: Dict[str, str] = {}
+    merchant_rules: List[tuple] = []
+    substring_rules: List[tuple] = []
+    for prop in properties:
+        if prop.get("operating_account_id"):
+            by_account[prop["operating_account_id"]] = prop["id"]
+        for rule in prop.get("rules") or []:
+            match_type = (rule.get("match") or "").strip()
+            value = (rule.get("value") or "").strip()
+            if not value:
+                continue
+            if match_type == "merchant_key":
+                merchant_rules.append((_normalize_merchant(value), prop["id"], value))
+            elif match_type == "description_contains":
+                substring_rules.append((value.lower(), prop["id"], value))
+            elif match_type == "account_id":
+                by_account[value] = prop["id"]
+
+    names = {p["id"]: p.get("name") for p in properties}
+    suggestions: List[Dict[str, Any]] = []
+
+    for txn in state.stored_transactions.values():
+        if txn.get("property_id"):
+            continue
+
+        description = txn.get("description", "") or ""
+        matched: Optional[tuple] = None
+
+        account_id = txn.get("account_id")
+        if account_id and account_id in by_account:
+            matched = (by_account[account_id], "operating account")
+        if matched is None and merchant_rules:
+            key = _normalize_merchant(description)
+            for rule_key, prop_id, original in merchant_rules:
+                if key and key == rule_key:
+                    matched = (prop_id, f"merchant matches '{original}'")
+                    break
+        if matched is None and substring_rules:
+            lowered = description.lower()
+            for needle, prop_id, original in substring_rules:
+                if needle in lowered:
+                    matched = (prop_id, f"description contains '{original}'")
+                    break
+
+        if matched is None:
+            continue
+
+        prop_id, reason = matched
+        suggestions.append({
+            "transaction_id": txn.get("id") or txn.get("transaction_id"),
+            "date": txn.get("date"),
+            "description": description,
+            "amount": txn.get("amount"),
+            "property_id": prop_id,
+            "property_name": names.get(prop_id),
+            "reason": reason,
+        })
+        if len(suggestions) >= limit:
+            break
+
+    return suggestions
+
+
+# ---------------------------------------------------------------------------
 # Portfolio rollup
 # ---------------------------------------------------------------------------
 

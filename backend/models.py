@@ -27,6 +27,9 @@ class TransactionUpdate(BaseModel):
     # balance picks it up via the live txn-delta computation in balances.py;
     # spending/recurring aggregates exclude it. None=no-op, ""=clear, "id"=set.
     transfer_to_account_id: Optional[str] = None
+    # Attribute this transaction to a property, so rent and repairs land in
+    # that property's actuals. None=no-op, ""=clear, "prop_x"=set.
+    property_id: Optional[str] = None
 
 
 class BulkTransactionUpdate(BaseModel):
@@ -39,6 +42,7 @@ class BulkTransactionUpdate(BaseModel):
     reviewed: Optional[bool] = None  # server defaults to True on any user edit
     category: Optional[str] = None   # None=no-op, ""=clear, "X"=set to X
     transfer_to_account_id: Optional[str] = None  # None=no-op, ""=clear, "id"=set
+    property_id: Optional[str] = None             # None=no-op, ""=clear, "prop_x"=set
 
 
 class BulkSuggestRequest(BaseModel):
