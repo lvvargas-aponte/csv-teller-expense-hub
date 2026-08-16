@@ -49,6 +49,8 @@ export function usePayoffPlanner(creditAccounts) {
           deferredInterest: !!details?.deferred_interest,
           promoApr:         (details?.promo_apr !== null && details?.promo_apr !== undefined) ? String(details.promo_apr) : '',
           promoExpires:     details?.promo_expires || '',
+          minPaymentFrom:   details?.min_payment_from  || '',
+          minPaymentUntil:  details?.min_payment_until || '',
         };
       });
       if (!cancelled) {
@@ -89,6 +91,8 @@ export function usePayoffPlanner(creditAccounts) {
       deferred_interest:  !!merged.deferred_interest,
       promo_apr:          merged.promo_apr ?? null,
       promo_expires:      merged.promo_expires ?? null,
+      min_payment_from:   merged.min_payment_from ?? null,
+      min_payment_until:  merged.min_payment_until ?? null,
     };
     try {
       await upsertAccountDetails(row.accountId, payload);
@@ -102,6 +106,17 @@ export function usePayoffPlanner(creditAccounts) {
     const value = apr === '' || apr === null || apr === undefined ? null : parseFloat(apr);
     if (value !== null && Number.isNaN(value)) return;
     return persistDetail(id, { apr: value });
+  }, [persistDetail]);
+
+  // Fired on blur rather than on every keystroke: the field is free-typed, so
+  // per-character PUTs would persist half-typed amounts ("3" on the way to
+  // "350") and hammer the endpoint.
+  const persistMinPayment = useCallback((id, minPayment) => {
+    const value = minPayment === '' || minPayment === null || minPayment === undefined
+      ? null
+      : parseFloat(minPayment);
+    if (value !== null && Number.isNaN(value)) return;
+    return persistDetail(id, { minimum_payment: value });
   }, [persistDetail]);
 
   const addRow = useCallback(() => setRows((prev) => [...prev, blankRow()]), []);
@@ -205,7 +220,7 @@ export function usePayoffPlanner(creditAccounts) {
     loading, error,
     advice, adviceLoading, adviceError,
     orderById, totalMonths, totalPaid,
-    setRow, persistApr, persistDetail, addRow, removeRow,
+    setRow, persistApr, persistMinPayment, persistDetail, addRow, removeRow,
     handleStrategyChange, setExtraPayment,
     handleCalculate, handleGetAdvice,
   };

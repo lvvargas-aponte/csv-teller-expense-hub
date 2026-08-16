@@ -1,7 +1,7 @@
 """Account routes: list accounts, delete account, and per-account
 user-supplied details (APR, due day, etc.)."""
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote, unquote
 
@@ -235,6 +235,25 @@ def _validate_day(label: str, value: Optional[int]) -> None:
         raise HTTPException(status_code=422, detail=f"{label} must be between 1 and 31")
 
 
+def _validate_iso_date(label: str, value: Optional[str]) -> None:
+    """Reject unparseable dates on the minimum-payment window.
+
+    Only the window fields are checked: the planner does date arithmetic on
+    them to work out the catch-up payment, so a garbage value there produces a
+    silently wrong number rather than a missing one. The older date fields
+    (due_date, promo_expires) stay unvalidated so existing stored records keep
+    round-tripping.
+    """
+    if not value:
+        return
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail=f"{label} must be an ISO date (YYYY-MM-DD)"
+        )
+
+
 @router.get("/accounts/details", response_model=Dict[str, Optional[AccountDetails]])
 async def get_all_account_details():
     """Return details for every known account in one call.
@@ -279,6 +298,8 @@ async def upsert_account_details(account_id: str, req: AccountDetailsIn):
         raise HTTPException(status_code=422, detail="asset_value must be >= 0")
     if req.promo_apr is not None and req.promo_apr < 0:
         raise HTTPException(status_code=422, detail="promo_apr must be >= 0")
+    _validate_iso_date("min_payment_from", req.min_payment_from)
+    _validate_iso_date("min_payment_until", req.min_payment_until)
 
     existing = state.account_details.get(account_id)
     record: Dict = {
@@ -295,6 +316,8 @@ async def upsert_account_details(account_id: str, req: AccountDetailsIn):
         "deferred_interest": req.deferred_interest,
         "promo_apr":         req.promo_apr,
         "promo_expires":     req.promo_expires,
+        "min_payment_from":  req.min_payment_from,
+        "min_payment_until": req.min_payment_until,
         "created":           existing.get("created", _now_iso()) if existing else _now_iso(),
         "updated":           _now_iso(),
     }

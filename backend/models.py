@@ -114,6 +114,11 @@ class AccountDetailsIn(BaseModel):
     deferred_interest: bool = False
     promo_apr: Optional[float] = None         # rate that applies until promo_expires
     promo_expires: Optional[str] = None       # ISO YYYY-MM-DD
+    # Minimum-only stretch: the user is deliberately paying just the minimum
+    # between these dates, then has to clear the rest before promo_expires.
+    # Both ISO YYYY-MM-DD; either may be None (open-ended on that side).
+    min_payment_from: Optional[str] = None
+    min_payment_until: Optional[str] = None
 
 
 class AccountDetails(AccountDetailsIn):

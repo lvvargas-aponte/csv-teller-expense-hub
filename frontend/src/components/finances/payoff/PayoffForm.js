@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import Spin from '../../ui/Spin';
 import { AprCell, AprLegend } from './AprCell';
-import { fmtSigned } from '../../../utils/formatting';
+import { fmt$, fmtDate, fmtSigned } from '../../../utils/formatting';
+import { deferredPlan, fmtMonths } from './helpers';
 
 const DEBT_CLASSES = [
   { id: 'credit_card', label: '💳 Credit Card' },
@@ -11,7 +12,7 @@ const DEBT_CLASSES = [
 
 export default function PayoffForm({
   rows, strategy, extra, error, loading, orderById,
-  onSetRow, onPersistApr, onPersistDetail, onAddRow, onRemoveRow,
+  onSetRow, onPersistApr, onPersistMinPayment, onPersistDetail, onAddRow, onRemoveRow,
   onStrategyChange, onExtraChange, onCalculate,
 }) {
   const [expanded, setExpanded] = useState(() => new Set());
@@ -120,6 +121,7 @@ export default function PayoffForm({
                           type="number" min="0" step="0.01" placeholder="0.00"
                           value={r.min_payment}
                           onChange={(e) => onSetRow(r._id, 'min_payment', e.target.value)}
+                          onBlur={(e) => onPersistMinPayment?.(r._id, e.target.value)}
                         />
                       </div>
                     </td>
@@ -251,29 +253,117 @@ function DebtDetailPanel({ row, onSetRow, onPersistDetail }) {
           Deferred interest promo
         </label>
         {row.deferredInterest && (
-          <div className="ov-promo-fields">
-            <div>
-              <span className="ov-debt-detail-label">Promo APR %</span>
-              <input
-                className="ov-debt-input ov-num"
-                type="number" min="0" step="0.01" placeholder="0"
-                value={row.promoApr}
-                onChange={(e) => onSetRow(row._id, 'promoApr', e.target.value)}
-                onBlur={(e) => onPersistDetail?.(row._id, { promo_apr: e.target.value === '' ? null : parseFloat(e.target.value) })}
-              />
+          <>
+            <div className="ov-promo-fields">
+              <div>
+                <span className="ov-debt-detail-label">Promo APR %</span>
+                <input
+                  className="ov-debt-input ov-num"
+                  type="number" min="0" step="0.01" placeholder="0"
+                  value={row.promoApr}
+                  onChange={(e) => onSetRow(row._id, 'promoApr', e.target.value)}
+                  onBlur={(e) => onPersistDetail?.(row._id, { promo_apr: e.target.value === '' ? null : parseFloat(e.target.value) })}
+                />
+              </div>
+              <div>
+                <span className="ov-debt-detail-label" title="Any balance left on this date triggers the deferred interest charge">
+                  Pay in full by
+                </span>
+                <input
+                  className="ov-debt-input"
+                  type="date"
+                  value={row.promoExpires}
+                  onChange={(e) => update('promoExpires', 'promo_expires', e.target.value)}
+                />
+              </div>
             </div>
-            <div>
-              <span className="ov-debt-detail-label">Promo expires</span>
-              <input
-                className="ov-debt-input"
-                type="date"
-                value={row.promoExpires}
-                onChange={(e) => update('promoExpires', 'promo_expires', e.target.value)}
-              />
+
+            <div className="ov-promo-fields">
+              <div>
+                <span className="ov-debt-detail-label">Paying minimum from</span>
+                <input
+                  className="ov-debt-input"
+                  type="date"
+                  value={row.minPaymentFrom}
+                  onChange={(e) => update('minPaymentFrom', 'min_payment_from', e.target.value)}
+                />
+              </div>
+              <div>
+                <span className="ov-debt-detail-label" title="After this date you switch to the catch-up payment below">
+                  Through
+                </span>
+                <input
+                  className="ov-debt-input"
+                  type="date"
+                  value={row.minPaymentUntil}
+                  onChange={(e) => update('minPaymentUntil', 'min_payment_until', e.target.value)}
+                />
+              </div>
             </div>
-          </div>
+
+            <DeferredPlanCallout row={row} />
+          </>
         )}
       </div>
+    </div>
+  );
+}
+
+// What the deadline actually costs per month, given the minimum-only stretch
+// the user described. Silent until there's a balance and a deadline to work
+// with — a half-filled promo shouldn't shout numbers.
+function DeferredPlanCallout({ row }) {
+  const plan = deferredPlan(row);
+  if (!plan) return null;
+
+  if (plan.expired) {
+    return (
+      <div className="ov-promo-warning">
+        ⚠️ The {fmtDate(row.promoExpires)} deadline has passed with {fmt$(plan.balance)} still
+        owing — deferred interest at {row.apr || '—'}% has likely already been billed.
+      </div>
+    );
+  }
+
+  return (
+    <div className="ov-promo-plan">
+      <div className="ov-promo-plan-line">
+        {plan.minMonths > 0 ? (
+          <>
+            Paying the {fmt$(parseFloat(row.min_payment) || 0)} minimum for {fmtMonths(plan.minMonths)} leaves{' '}
+            <strong>{fmt$(plan.balanceAtWindowEnd)}</strong> against a {fmtDate(row.promoExpires)} deadline.
+          </>
+        ) : (
+          <>
+            <strong>{fmt$(plan.balance)}</strong> has to reach zero by {fmtDate(row.promoExpires)}.
+          </>
+        )}
+      </div>
+
+      {plan.balanceAtWindowEnd > 0 && (
+        <div className="ov-promo-plan-line">
+          {plan.lumpSum ? (
+            <>That whole <strong>{fmt$(plan.balanceAtWindowEnd)}</strong> falls due as one payment —
+            the minimum-payment window runs right up to the deadline, leaving no months to catch up.</>
+          ) : (
+            <>Clearing it needs <strong className="ov-promo-plan-figure">{fmt$(plan.requiredMonthly)}/mo</strong>{' '}
+            for the final {fmtMonths(plan.catchUpMonths)}.</>
+          )}
+        </div>
+      )}
+
+      {!plan.minCoversInterest && (
+        <div className="ov-promo-plan-line ov-promo-plan-line--warn">
+          The minimum doesn't cover the monthly interest, so the balance grows while you pay it.
+        </div>
+      )}
+
+      {!plan.clearedByMinimums && plan.retroInterest > 0 && (
+        <div className="ov-promo-plan-line ov-promo-plan-line--warn">
+          Miss it and roughly {fmt$(plan.retroInterest)} of deferred interest is billed back at
+          once — that estimate only counts from today forward, so the real charge reaches further back.
+        </div>
+      )}
     </div>
   );
 }

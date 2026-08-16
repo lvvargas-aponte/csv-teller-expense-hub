@@ -36,6 +36,7 @@ export default function PayoffPlanner({ creditAccounts = [] }) {
           orderById={planner.orderById}
           onSetRow={planner.setRow}
           onPersistApr={planner.persistApr}
+          onPersistMinPayment={planner.persistMinPayment}
           onPersistDetail={planner.persistDetail}
           onAddRow={planner.addRow}
           onRemoveRow={planner.removeRow}

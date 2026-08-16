@@ -49,6 +49,37 @@ class TestAccountDetails:
     def test_negative_apr_rejected(self, client):
         assert client.put(self._endpoint, json={"apr": -1.0}).status_code == 422
 
+    def test_min_payment_window_round_trips(self, client):
+        r = client.put(self._endpoint, json={
+            "minimum_payment": 350.0,
+            "deferred_interest": True,
+            "promo_apr": 0.0,
+            "promo_expires": "2028-06-01",
+            "min_payment_from": "2026-08-01",
+            "min_payment_until": "2027-08-01",
+        })
+        assert r.status_code == 200
+
+        got = client.get(self._endpoint).json()
+        assert got["minimum_payment"] == 350.0
+        assert got["min_payment_from"] == "2026-08-01"
+        assert got["min_payment_until"] == "2027-08-01"
+        assert got["promo_expires"] == "2028-06-01"
+
+    def test_malformed_min_payment_window_rejected(self, client):
+        assert client.put(
+            self._endpoint, json={"min_payment_from": "08/01/2026"}
+        ).status_code == 422
+        assert client.put(
+            self._endpoint, json={"min_payment_until": "not-a-date"}
+        ).status_code == 422
+
+    def test_min_payment_window_optional(self, client):
+        r = client.put(self._endpoint, json={"minimum_payment": 35.0})
+        assert r.status_code == 200
+        assert r.json()["min_payment_from"] is None
+        assert r.json()["min_payment_until"] is None
+
     def test_delete_removes(self, client):
         client.put(self._endpoint, json={"apr": 20.0})
         r = client.delete(self._endpoint)

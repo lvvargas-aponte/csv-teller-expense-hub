@@ -2682,6 +2682,23 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 .ov-promo-fields { display: flex; gap: 14px; margin-top: 8px; }
 .ov-promo-fields > div { display: flex; flex-direction: column; gap: 5px; }
 
+/* Deferred-interest deadline maths, shown under the promo date fields. */
+.ov-promo-plan {
+  margin-top: 10px;
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 12px; line-height: 1.5;
+  color: #374151;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-left: 3px solid #059669;
+  border-radius: 8px;
+  padding: 9px 12px;
+  max-width: 460px;
+}
+.ov-promo-plan-line strong { color: #111827; }
+.ov-promo-plan-figure { color: #059669; font-size: 13px; }
+.ov-promo-plan-line--warn { color: #b45309; font-weight: 600; }
+
 .ov-promo-warning {
   margin-top: 10px;
   font-size: 12px; font-weight: 600; line-height: 1.5;
@@ -3444,6 +3461,13 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 [data-theme='dark'] .ov-equity-badge--neg { background: #3b1414; color: #fca5a5; }
 [data-theme='dark'] .ov-debt-detail-checkbox { color: var(--text-primary); }
 [data-theme='dark'] .ov-promo-warning { background: #3b2a08; border-color: #92400e; color: #fbbf24; }
+[data-theme='dark'] .ov-promo-plan {
+  background: var(--bg-card); border-color: var(--border);
+  border-left-color: var(--accent); color: var(--text-muted);
+}
+[data-theme='dark'] .ov-promo-plan-line strong { color: var(--text-primary); }
+[data-theme='dark'] .ov-promo-plan-figure { color: var(--accent); }
+[data-theme='dark'] .ov-promo-plan-line--warn { color: #fbbf24; }
 
 [data-theme='dark'] .ov-debt-input { color: var(--text-primary); }
 [data-theme='dark'] .ov-debt-input:focus { background: var(--bg-card); border-color: var(--border-mid); }
