@@ -127,6 +127,101 @@ class ManualAccountIn(BaseModel):
     ledger: float = 0.0
 
 
+class PropertyIn(BaseModel):
+    """Create/update payload for a real-estate holding.
+
+    The full operating-expense model is present so a rental has an honest
+    pro forma from the moment it is created, before any transaction has been
+    tagged to it. Percentage fields are whole percents (5 == 5%).
+    """
+    name: str
+    address: str = ""
+    property_type: Literal[
+        "single_family", "multi_family", "condo", "townhouse", "land", "commercial"
+    ] = "single_family"
+    # Gates whether the property contributes rent to cash flow / retirement.
+    status: Literal[
+        "rental", "primary_residence", "vacation", "held_for_sale", "under_renovation"
+    ] = "rental"
+    units: int = 1
+
+    purchase_date: Optional[str] = None       # ISO YYYY-MM-DD
+    purchase_price: Optional[float] = None
+    closing_costs: float = 0.0
+    capital_improvements: float = 0.0
+
+    # Scheduled rent per the lease; actuals come from tagged transactions.
+    monthly_rent: float = 0.0
+    other_monthly_income: float = 0.0
+    vacancy_rate_pct: float = 5.0
+
+    property_tax_annual: float = 0.0
+    insurance_annual: float = 0.0
+    hoa_monthly: float = 0.0
+    utilities_monthly: float = 0.0
+    other_monthly_expense: float = 0.0
+    mgmt_fee_pct: float = 0.0
+    maintenance_pct_of_rent: float = 5.0
+    capex_reserve_pct_of_rent: float = 5.0
+
+    # None = fall back to the household retirement assumption.
+    appreciation_pct: Optional[float] = None
+    rent_growth_pct: Optional[float] = None
+
+    # Transaction auto-SUGGEST rules; matches never write property_id directly.
+    rules: List[Dict[str, Any]] = []
+    operating_account_id: Optional[str] = None
+    notes: str = ""
+
+
+class ValuationIn(BaseModel):
+    """A point-in-time property value. One per property per day — re-valuing
+    the same day overwrites rather than accumulating near-duplicates."""
+    value: float
+    as_of: Optional[str] = None               # ISO YYYY-MM-DD; defaults to today
+    source: Literal["manual", "appraisal", "avm", "purchase"] = "manual"
+    notes: str = ""
+
+
+class LoanIn(BaseModel):
+    """Create/update payload for amortizing debt.
+
+    ``escrow_monthly`` is deliberately separate from ``payment_amount``:
+    escrowed taxes and insurance don't pay down principal, and property
+    economics already counts them as operating expenses.
+    """
+    name: str
+    loan_type: Literal[
+        "mortgage", "heloc", "auto", "student", "personal", "business", "other"
+    ] = "mortgage"
+    property_id: Optional[str] = None
+    account_id: Optional[str] = None
+    lender: str = ""
+    lien_position: int = 1                    # 1 = first, 2 = HELOC/second
+
+    original_principal: float
+    current_principal: Optional[float] = None
+    interest_rate_pct: float
+    rate_type: Literal["fixed", "arm", "io"] = "fixed"
+    term_months: int
+    origination_date: str                     # ISO YYYY-MM-DD
+    first_payment_date: Optional[str] = None
+    payment_day: Optional[int] = None
+
+    payment_amount: Optional[float] = None    # P&I only; derived when omitted
+    escrow_monthly: float = 0.0
+    pmi_monthly: float = 0.0
+    extra_monthly: float = 0.0
+    io_months: int = 0
+    balloon_date: Optional[str] = None
+    notes: str = ""
+
+
+class LoanWhatIfRequest(BaseModel):
+    """"What if I paid $X more each month?" for a single loan."""
+    extra_monthly: float = 0.0
+
+
 class UserProfileIn(BaseModel):
     """Editable household preferences. All fields optional — partial PUTs
     are merged into the stored row so the UI can update one field at a time."""
