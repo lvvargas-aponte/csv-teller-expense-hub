@@ -11,7 +11,7 @@ import state
 from config import SPREADSHEET_ID, CREDENTIALS_FILE, SIMPLEFIN_ACCESS_URLS
 
 from routers import (
-    accounts, advisor, alerts, balances, bills, budgets, credit_health, dashboard,
+    accounts, advisor, alerts, balances, bills, budgets, coach, credit_health, dashboard,
     documents, goals, insights, investments, layout, loans, profile,
     properties as properties_router, seeds, sheets, snaptrade, tools, user_facts,
 )
@@ -96,6 +96,7 @@ app.include_router(investments.router,  prefix="/api")
 app.include_router(user_facts.router,   prefix="/api")
 app.include_router(properties_router.router, prefix="/api")
 app.include_router(loans.router,        prefix="/api")
+app.include_router(coach.router,        prefix="/api")
 
 
 # Static help site — built from /docs by mkdocs into /docs/site.

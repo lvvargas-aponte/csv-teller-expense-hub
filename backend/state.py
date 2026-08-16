@@ -63,6 +63,7 @@ _budgets_store         = PgStore("budgets",         "budgets")
 _goals_store           = PgStore("goals",           "goals")
 _account_details_store = PgStore("account_details", "account-details")
 _snaptrade_creds_store = PgStore("snaptrade_creds", "snaptrade-creds")
+_coach_dismissals_store = PgStore("coach_dismissals", "coach-dismissals")
 
 
 def _migrate_reviewed_field() -> None:
@@ -113,6 +114,10 @@ goals:               MutableMapping[str, Any]  = _goals_store.data
 account_details:     MutableMapping[str, Any]  = _account_details_store.data
 # Single-key store ('household') holding the SnapTrade user_id / user_secret.
 snaptrade_creds:     MutableMapping[str, Any]  = _snaptrade_creds_store.data
+# Keyed by coach action id, which embeds the period it belongs to
+# (e.g. 'over_budget:Dining:2026-08'). Because the period is part of the
+# key, dismissing an August warning correctly lets September's reappear.
+coach_dismissals:    MutableMapping[str, Any]  = _coach_dismissals_store.data
 
 # ---------------------------------------------------------------------------
 # SnapTradeClient instance
@@ -148,6 +153,7 @@ _STORE_NAMES = (
     ("_goals_store",           "goals",           "goals"),
     ("_account_details_store", "account_details", "account-details"),
     ("_snaptrade_creds_store", "snaptrade_creds", "snaptrade-creds"),
+    ("_coach_dismissals_store", "coach_dismissals", "coach-dismissals"),
 )
 
 _LIVE_REFS = (
@@ -159,6 +165,7 @@ _LIVE_REFS = (
     ("goals",               "_goals_store"),
     ("account_details",     "_account_details_store"),
     ("snaptrade_creds",     "_snaptrade_creds_store"),
+    ("coach_dismissals",    "_coach_dismissals_store"),
 )
 
 

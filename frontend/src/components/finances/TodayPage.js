@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Spin from '../ui/Spin';
 import Num, { BlurContext } from './Num';
 import SafeToSpendCard from './cards/SafeToSpendCard';
+import NextActionsCard from './cards/NextActionsCard';
 import { getSafeToSpend } from '../../api/budgets';
 import { getUpcomingBills } from '../../api/dashboard';
 import { getPortfolio } from '../../api/properties';
@@ -134,7 +135,7 @@ function ProgressStrip({ portfolio }) {
   );
 }
 
-export default function TodayPage() {
+export default function TodayPage({ onNavigate }) {
   const [data, setData] = useState(null);
   const [yesterday, setYesterday] = useState(null);
   const [bills, setBills] = useState([]);
@@ -184,6 +185,7 @@ export default function TodayPage() {
         {loading && !data ? <Spin /> : (
           <BlurContext.Provider value={false}>
             <SafeToSpendCard data={data} yesterday={yesterday} />
+            <NextActionsCard onNavigate={onNavigate} />
             <MonthFlow data={data} />
             <WeekAhead bills={bills} remaining={data?.remaining_pool ?? 0} />
             <ProgressStrip portfolio={portfolio} />

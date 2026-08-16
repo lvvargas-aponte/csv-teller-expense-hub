@@ -103,7 +103,7 @@ export default function FinancesPage() {
       />
 
       <div className="eh-main">
-        {activeId === 'today' && <TodayPage />}
+        {activeId === 'today' && <TodayPage onNavigate={handleNavigate} />}
 
         {activeId === 'dashboard' && (
           <DashboardTab healthScore={healthScore} />
