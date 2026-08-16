@@ -117,6 +117,30 @@ All endpoints are mounted under `/api`. The static help site lives at `/help/`. 
 | `GET` | `/api/loans/{id}/schedule` | Amortization schedule (`from_period`, `limit`; 60 default) |
 | `POST` | `/api/loans/{id}/what-if` | Months and interest saved by paying extra |
 
+## Equity & deals
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/equity/capacity` | Borrowing capacity across every property |
+| `GET` | `/api/equity/capacity/{id}` | One property; `?max_ltv_pct=` / `?max_cltv_pct=` |
+| `POST` | `/api/equity/analyze-deal` | Model a purchase; reports portfolio-level cash-flow delta |
+
+## Retirement
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET/PUT` | `/api/retirement/assumptions` | Projection assumptions, merged over defaults |
+| `GET` | `/api/retirement/projection` | Year-by-year projection + earliest sustainable year |
+| `POST` | `/api/retirement/projection` | What-if against supplied assumptions, not saved |
+
+## Coach
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/coach/actions` | Ranked next actions with amounts and deadlines |
+| `POST` | `/api/coach/narrate` | Optional LLM voice-over; numbers verified against the rules |
+| `POST/DELETE` | `/api/coach/actions/{id}/dismiss` | Hide / restore one action |
+
 ## Tools (debt payoff)
 
 | Method | Path | Purpose |
