@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import FinancesSidebar from './FinancesSidebar';
+import { useNavigate, useParams } from 'react-router-dom';
+import FinancesSidebar, { normalizeTabId } from './FinancesSidebar';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
 import InvestmentsTab from './InvestmentsTab';
@@ -12,28 +12,50 @@ import GoalsSection from './GoalsSection';
 import ProfileSection from './ProfileSection';
 import AdvisorChat from './AdvisorChat';
 import KnowledgeSection from './KnowledgeSection';
+import PropertiesPage from './PropertiesPage';
+import LoansPage from './LoansPage';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
 import { getDashboard, getCreditHealth } from '../../api/dashboard';
 import { getBalancesSummary } from '../../api/balances';
+import { computeHealthScore } from '../../utils/healthScore';
 
 const ACTIVE_TAB_KEY = 'finances.activeTab';
 
 export default function FinancesPage() {
-  const [activeId, setActiveIdState] = useState(
-    () => localStorage.getItem(ACTIVE_TAB_KEY) || 'dashboard',
-  );
-  const setActiveId = useCallback((id) => {
-    setActiveIdState(id);
-    try { localStorage.setItem(ACTIVE_TAB_KEY, id); } catch { /* quota / private mode */ }
-  }, []);
+  // The active tab now lives in the URL (/finances/:tab) so screens are
+  // linkable and the back button works. localStorage is demoted to a hint
+  // for a bare /finances, and is remapped through normalizeTabId so a
+  // stored legacy id doesn't strand a returning user on a blank shell.
+  const { tab } = useParams();
   const navigate = useNavigate();
+
+  const activeId = useMemo(() => {
+    if (tab) return normalizeTabId(tab);
+    let stored = null;
+    try { stored = localStorage.getItem(ACTIVE_TAB_KEY); } catch { /* private mode */ }
+    return normalizeTabId(stored);
+  }, [tab]);
+
+  // Keep the URL canonical: a bare /finances, an unknown tab, or a legacy id
+  // all resolve to a real path rather than lingering as-is.
+  useEffect(() => {
+    if (tab !== activeId) navigate(`/finances/${activeId}`, { replace: true });
+  }, [tab, activeId, navigate]);
+
+  useEffect(() => {
+    try { localStorage.setItem(ACTIVE_TAB_KEY, activeId); } catch { /* quota */ }
+  }, [activeId]);
+
+  const handleNavigate = useCallback((id) => {
+    navigate(`/finances/${id}`);
+  }, [navigate]);
 
   const handleInsightAction = useCallback((target) => {
     if (!target) return;
-    if (target.financesTab) setActiveId(target.financesTab);
-    if (target.route)       navigate(target.route);
-  }, [navigate, setActiveId]);
+    if (target.financesTab) navigate(`/finances/${normalizeTabId(target.financesTab)}`);
+    else if (target.route)  navigate(target.route);
+  }, [navigate]);
 
   // Shared signals used by the sidebar's Financial Health footer.
   const [summary, setSummary] = useState(null);
@@ -71,10 +93,6 @@ export default function FinancesPage() {
     [summary],
   );
 
-  const handleNavigate = useCallback((id) => {
-    setActiveId(id);
-  }, [setActiveId]);
-
   return (
     <div className="eh-app">
       <FinancesSidebar
@@ -88,23 +106,6 @@ export default function FinancesPage() {
           <DashboardTab healthScore={healthScore} />
         )}
 
-        {activeId === 'overview' && (
-          <SimplePage title="Overview">
-            <BalancesSection
-              summary={summary}
-              loading={summaryLoading}
-              error={summaryError}
-              onRefresh={() => loadBalances(true)}
-              onMutate={() => loadBalances(false)}
-            />
-            <SpendingInsights
-              summary={summary}
-              dashboard={dashboard}
-              onNavigate={handleInsightAction}
-            />
-          </SimplePage>
-        )}
-
         {activeId === 'accounts' && (
           <SimplePage title="Accounts">
             <AccountsTab
@@ -113,13 +114,34 @@ export default function FinancesPage() {
               summaryError={summaryError}
               onRefresh={() => loadBalances(true)}
             />
+            <BalancesSection
+              summary={summary}
+              loading={summaryLoading}
+              error={summaryError}
+              onRefresh={() => loadBalances(true)}
+              onMutate={() => loadBalances(false)}
+            />
             <ProfileSection />
+          </SimplePage>
+        )}
+
+        {activeId === 'spending' && (
+          <SimplePage title="Spending">
+            <SpendingInsights
+              summary={summary}
+              dashboard={dashboard}
+              onNavigate={handleInsightAction}
+            />
           </SimplePage>
         )}
 
         {activeId === 'investments' && (
           <SimplePage title="Investments"><InvestmentsTab /></SimplePage>
         )}
+
+        {activeId === 'properties' && <PropertiesPage />}
+
+        {activeId === 'loans' && <LoansPage />}
 
         {activeId === 'budgets' && (
           <SimplePage title="Budgets"><BudgetsSection /></SimplePage>
@@ -132,7 +154,7 @@ export default function FinancesPage() {
         {activeId === 'bills' && (
           <SimplePage title="Bills">
             <div style={{ display: 'grid', gap: 16 }}>
-              <UpcomingBillsCard onNavigateToAccounts={() => setActiveId('accounts')} />
+              <UpcomingBillsCard onNavigateToAccounts={() => handleNavigate('accounts')} />
               <RecurringChargesCard variant="detail" />
             </div>
           </SimplePage>
@@ -165,47 +187,4 @@ function SimplePage({ title, children }) {
       <div className="eh-content">{children}</div>
     </>
   );
-}
-
-// Shared health score calc — also exported via DashboardTab.
-function computeHealthScore({ netWorth, trend, creditHealth, monthlyTotals }) {
-  let score = 0;
-  let weight = 0;
-
-  // Net worth signal (30%)
-  const nw = trend?.current_net_worth ?? netWorth;
-  if (nw !== null && nw !== undefined) {
-    if (trend?.delta_30d !== null && trend?.delta_30d !== undefined) {
-      const base = Math.abs(nw) || 1;
-      const ratio = trend.delta_30d / base;
-      const sub = Math.max(0, Math.min(1, 0.5 + ratio * 5));
-      score += sub * 30; weight += 30;
-    } else {
-      // We have a position but no trend — neutral signal
-      const sub = nw >= 0 ? 0.6 : 0.4;
-      score += sub * 30; weight += 30;
-    }
-  }
-
-  // Credit utilization (30%) — only if user has credit cards
-  if (creditHealth?.accounts?.length > 0) {
-    const u = creditHealth.overall_utilization_pct ?? 0;
-    const sub = Math.max(0, 1 - u / 100);
-    score += sub * 30; weight += 30;
-  }
-
-  // Monthly totals as a savings/expense proxy when income data unavailable.
-  // If we have at least one month of spending data, score lower spending higher.
-  if (monthlyTotals && monthlyTotals.length >= 2) {
-    const last = monthlyTotals[monthlyTotals.length - 1].total || 0;
-    const prev = monthlyTotals[monthlyTotals.length - 2].total || 0;
-    if (prev > 0) {
-      const change = (last - prev) / prev;
-      const sub = Math.max(0, Math.min(1, 0.5 - change));
-      score += sub * 40; weight += 40;
-    }
-  }
-
-  if (weight === 0) return null;
-  return Math.round((score / weight) * 100);
 }

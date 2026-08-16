@@ -1,33 +1,63 @@
 import React from 'react';
 import { useSidebarCollapsed } from '../../hooks/useSidebarCollapsed';
 
+// Grouped by what the user is trying to do, not by data type. "Wealth"
+// holds the things that compound; "Debt" holds the things being retired.
 const NAV_SECTIONS = [
   {
     label: 'Overview',
     items: [
       { id: 'dashboard',   icon: '📊', label: 'Dashboard' },
-      { id: 'overview',    icon: '📋', label: 'Overview' },
       { id: 'accounts',    icon: '🏦', label: 'Accounts' },
-      { id: 'investments', icon: '📈', label: 'Investments' },
     ],
   },
   {
-    label: 'Plan',
+    label: 'Spending',
     items: [
+      { id: 'spending',    icon: '💸', label: 'Spending' },
       { id: 'budgets',     icon: '🎯', label: 'Budgets' },
-      { id: 'goals',       icon: '⭐', label: 'Goals' },
       { id: 'bills',       icon: '📅', label: 'Bills' },
-      { id: 'debt-payoff', icon: '💳', label: 'Debt Payoff' },
+    ],
+  },
+  {
+    label: 'Debt',
+    items: [
+      { id: 'debt-payoff', icon: '💳', label: 'Payoff Plan' },
+      { id: 'loans',       icon: '🏛️', label: 'Loans' },
+    ],
+  },
+  {
+    label: 'Wealth',
+    items: [
+      { id: 'properties',  icon: '🏠', label: 'Properties' },
+      { id: 'investments', icon: '📈', label: 'Investments' },
+      { id: 'goals',       icon: '⭐', label: 'Goals' },
     ],
   },
   {
     label: 'Tools',
     items: [
-      { id: 'knowledge', icon: '📚', label: 'Knowledge' },
-      { id: 'advisor',   icon: '🤖', label: 'Ask Fin' },
+      { id: 'knowledge',   icon: '📚', label: 'Knowledge' },
+      { id: 'advisor',     icon: '🤖', label: 'Ask Fin' },
     ],
   },
 ];
+
+// Every tab id the sidebar can reach — used to validate a :tab URL segment
+// before rendering, so a bad path falls back instead of blanking the shell.
+export const VALID_TAB_IDS = new Set(
+  NAV_SECTIONS.flatMap((section) => section.items.map((item) => item.id)),
+);
+
+// The 'overview' tab was split: balances moved to Accounts, spending
+// insights to Spending. Without this remap a returning user whose
+// localStorage still says 'overview' lands on an empty shell.
+export const LEGACY_TAB_IDS = { overview: 'accounts' };
+
+export function normalizeTabId(id, fallback = 'dashboard') {
+  const remapped = LEGACY_TAB_IDS[id] || id;
+  return VALID_TAB_IDS.has(remapped) ? remapped : fallback;
+}
 
 export default function FinancesSidebar({ activeId, onNavigate, healthScore }) {
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
@@ -59,6 +89,7 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore }) {
                 onClick={() => onNavigate(item.id)}
                 title={collapsed ? item.label : undefined}
                 aria-label={item.label}
+                aria-current={activeId === item.id ? 'page' : undefined}
               >
                 <span className="eh-nav-icon">{item.icon}</span>
                 <span className="eh-nav-text">{item.label}</span>

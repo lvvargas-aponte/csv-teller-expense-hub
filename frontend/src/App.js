@@ -356,7 +356,10 @@ export default function App() {
       <AppHeader isDark={isDark} onToggleTheme={() => setIsDark((d) => !d)} />
 
       <Routes>
+        {/* :tab makes every finances screen linkable and back-button
+            friendly; a bare /finances resolves to the stored last tab. */}
         <Route path="/finances" element={<FinancesPage />} />
+        <Route path="/finances/:tab" element={<FinancesPage />} />
         <Route path="/" element={
           <div className="eh-app">
             <TransactionsSidebar activeId={txnView} onNavigate={setTxnView} />
