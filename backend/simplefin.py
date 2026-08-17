@@ -95,6 +95,27 @@ def infer_account_bucket(
     return "depository", "checking"
 
 
+def is_revolving_credit(acct: Dict[str, Any]) -> bool:
+    """True only for revolving credit (cards) — not installment debt.
+
+    ``infer_account_bucket`` files mortgages and loans under ``type='credit'``
+    because they are liabilities, so a bare ``type == 'credit'`` check sweeps
+    a 30-year mortgage into anything card-specific. Installment debt has a
+    fixed principal rather than a credit limit, and utilization ratios don't
+    apply to it.
+
+    Manual accounts can be saved with an empty subtype, so fall back to the
+    same name keywords ``infer_account_bucket`` matches on.
+    """
+    if (acct.get("type") or "").lower() != "credit":
+        return False
+    subtype = (acct.get("subtype") or "").lower()
+    if subtype:
+        return not any(kw in subtype for kw in _LOAN_KEYWORDS)
+    name = (acct.get("name") or "").lower().replace("credit union", "")
+    return not any(kw in name for kw in _LOAN_KEYWORDS)
+
+
 class SimpleFinClient:
     """Encapsulates all SimpleFIN Bridge API calls.
 

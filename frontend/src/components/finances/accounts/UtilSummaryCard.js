@@ -1,11 +1,20 @@
 import React, { useMemo } from 'react';
 import UtilBar, { utilColor } from './UtilBar';
 
-// Per-card utilization plus an overall headline. Filters out cards with no
-// limit set (otherwise we can't compute a percentage).
+// Mortgages and installment loans are typed 'credit' (they're liabilities)
+// but have a principal, not a credit limit — utilization doesn't apply.
+const LOAN_KEYWORDS = ['loan', 'mortgage'];
+const isLoan = (a) => {
+  const text = (a.subtype || a.name || '').toLowerCase().replace('credit union', '');
+  return LOAN_KEYWORDS.some((kw) => text.includes(kw));
+};
+
+// Per-card utilization plus an overall headline. Filters out loans, and cards
+// with no limit set (otherwise we can't compute a percentage).
 export default function UtilSummaryCard({ creditAccounts, detailsMap }) {
   const rows = useMemo(() => {
     return creditAccounts
+      .filter((a) => !isLoan(a))
       .map((a) => {
         const d = detailsMap[a.id] || {};
         const limit = (d.credit_limit !== null && d.credit_limit !== undefined) ? parseFloat(d.credit_limit) : null;

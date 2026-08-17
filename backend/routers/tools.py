@@ -1,15 +1,18 @@
-"""Tools routes: payoff plan calculator and AI advice.
+"""Tools routes: payoff plan calculator, allocation waterfall, AI advice.
 
-Thin HTTP layer only — the simulation itself lives in ``amortization`` so
-it can be unit-tested without a client and reused outside a request.
+Thin HTTP layer only — the simulation lives in ``amortization`` and the
+waterfall in ``allocation``, so both can be unit-tested without a client
+and reused outside a request.
 """
 import logging
+from datetime import date
 
 from fastapi import APIRouter
 
+import allocation
 import amortization
 from llm_client import ask_ollama
-from models import PayoffRequest, PayoffAdviceRequest
+from models import AllocateRequest, AllocationSettingsIn, PayoffRequest, PayoffAdviceRequest
 import state
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,40 @@ async def payoff_plan(req: PayoffRequest):
         strategy=req.strategy,
         max_periods=state.PAYOFF_MAX_MONTHS,
     )
+
+
+@router.post("/tools/allocate")
+async def allocate_extra(req: AllocateRequest):
+    """Split spare money across the tiers, in order, with both sides shown."""
+    as_of = None
+    if req.as_of:
+        try:
+            as_of = date.fromisoformat(req.as_of[:10])
+        except ValueError:
+            as_of = None
+    return allocation.allocate_from_stores(
+        req.amount, cadence=req.cadence, as_of=as_of,
+    )
+
+
+@router.get("/tools/allocation-settings")
+async def get_allocation_settings():
+    """Stored settings merged over the defaults, so the UI sees real values.
+
+    ``employer_match_known`` is deliberately ``None`` until answered — that
+    absence is what makes the waterfall ask instead of assuming.
+    """
+    stored = dict(state.allocation_settings.get("household") or {})
+    return {**allocation.DEFAULT_SETTINGS, **stored}
+
+
+@router.put("/tools/allocation-settings")
+async def put_allocation_settings(payload: AllocationSettingsIn):
+    """Merge-then-write, so a partial update can't null a sibling field."""
+    stored = dict(state.allocation_settings.get("household") or {})
+    stored.update(payload.model_dump(exclude_none=True))
+    state.allocation_settings["household"] = stored
+    return {**allocation.DEFAULT_SETTINGS, **stored}
 
 
 @router.post("/tools/payoff-advice")

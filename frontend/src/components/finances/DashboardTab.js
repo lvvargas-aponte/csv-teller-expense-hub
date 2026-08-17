@@ -1,4 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Responsive, WidthProvider } from 'react-grid-layout';
+
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 
 import {
   getDashboard,
@@ -15,10 +19,14 @@ import RecurringChargesCard from './cards/RecurringChargesCard';
 import BalancesCard from './cards/BalancesCard';
 import PortfolioCard from './cards/PortfolioCard';
 import BudgetsCard from './cards/BudgetsCard';
+import GoalsCard from './cards/GoalsCard';
 import CreditUtilizationCard from './cards/CreditUtilizationCard';
 import AlertsCard from './cards/AlertsCard';
 import IncomeVsExpensesCard from './cards/IncomeVsExpensesCard';
+import useDashboardLayout, { DEFAULT_LAYOUT } from './dashboard/useDashboardLayout';
 import { BlurContext } from './Num';
+
+const ResponsiveGridLayout = WidthProvider(Responsive);
 
 const RANGE_OPTIONS = [
   { label: '3M', months: 3 },
@@ -26,7 +34,30 @@ const RANGE_OPTIONS = [
   { label: '12M', months: 12 },
 ];
 
+// The narrative arc, as data. `kicker` and `index` render as the card's
+// eyebrow so the argument survives being rearranged — a user who moves
+// Budgets above Balances still sees which chapter each card belongs to.
+const CARD_META = {
+  net_worth:       { index: 1,  kicker: 'Position',    title: 'Net worth' },
+  cash_flow:       { index: 2,  kicker: 'Flow',        title: 'Cash flow' },
+  spending:        { index: 3,  kicker: 'Flow',        title: 'Spending' },
+  income_expenses: { index: 4,  kicker: 'Trend',       title: 'Income vs. expenses' },
+  balances:        { index: 5,  kicker: 'Assets',      title: 'Balances' },
+  portfolio:       { index: 6,  kicker: 'Assets',      title: 'Portfolio' },
+  credit:          { index: 7,  kicker: 'Constraints', title: 'Credit' },
+  budgets:         { index: 8,  kicker: 'Commitments', title: 'Budgets' },
+  goals:           { index: 9,  kicker: 'Commitments', title: 'Goals' },
+  recurring:       { index: 10, kicker: 'Commitments', title: 'Recurring' },
+  alerts:          { index: 11, kicker: 'Signals',     title: 'Alerts' },
+};
+
+const CARD_ORDER = DEFAULT_LAYOUT.map((item) => item.i);
+
 export default function DashboardTab({ healthScore }) {
+  const {
+    layout, hidden, editing, dirty,
+    setEditing, handleLayoutChange, hide, show, persist, restoreDefaults,
+  } = useDashboardLayout();
   const [months, setMonths] = useState(6);
   const [dashboard, setDashboard] = useState(null);
   const [dashboardErr, setDashboardErr] = useState(null);
@@ -106,6 +137,49 @@ export default function DashboardTab({ healthScore }) {
         ? 'Small adjustments now compound over time.'
         : 'A few gentle nudges could move the needle.';
 
+  // ── Grid ─────────────────────────────────────────────────────────
+  const visibleLayout = useMemo(
+    () => layout.filter((item) => !hidden.includes(item.i)),
+    [layout, hidden],
+  );
+  const hiddenCards = useMemo(
+    () => CARD_ORDER.filter((id) => hidden.includes(id)),
+    [hidden],
+  );
+
+  // `onHide` is passed only while arranging, so the × appears exactly when
+  // it does something. Every card already forwards these three props.
+  const renderCard = (id) => {
+    const meta = CARD_META[id] || {};
+    const shell = { ...meta, onHide: editing ? () => hide(id) : undefined };
+    switch (id) {
+      case 'net_worth':
+        return <NetWorthCard {...shell} dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />;
+      case 'cash_flow':
+        return <CashFlowCard {...shell} dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />;
+      case 'spending':
+        return <SpendingByCategoryCard {...shell} dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />;
+      case 'income_expenses':
+        return <IncomeVsExpensesCard {...shell} months={months} />;
+      case 'balances':
+        return <BalancesCard {...shell} summary={summary} loading={summaryLoading} error={summaryErr} />;
+      case 'portfolio':
+        return <PortfolioCard {...shell} />;
+      case 'credit':
+        return <CreditUtilizationCard {...shell} />;
+      case 'budgets':
+        return <BudgetsCard {...shell} />;
+      case 'goals':
+        return <GoalsCard {...shell} />;
+      case 'recurring':
+        return <RecurringChargesCard {...shell} dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />;
+      case 'alerts':
+        return <AlertsCard {...shell} />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <>
       <div className="eh-topbar">
@@ -138,6 +212,16 @@ export default function DashboardTab({ healthScore }) {
               <button type="button" className="eh-banner-btn"
                       onClick={() => setBlurSensitive((b) => !b)}>
                 {blurSensitive ? '👁 Show numbers' : '🙈 Hide numbers'}
+              </button>
+              {/* Dragging is off by default. The cards hold charts, buttons
+                  and scrollable lists, and a grid that's always live turns
+                  every stray drag into an accidental rearrangement. */}
+              <button
+                type="button"
+                className="eh-banner-btn"
+                onClick={() => { if (editing && dirty) persist(); setEditing(!editing); }}
+              >
+                {editing ? '✓ Done arranging' : '⠿ Arrange cards'}
               </button>
             </div>
           </div>
@@ -203,30 +287,59 @@ export default function DashboardTab({ healthScore }) {
           />
         </section>
 
-        {/* Cards grid — narrative arc: Position → Flow → Trend → Assets →
-            Constraints → Commitments → Signals. Each card carries a section
-            number; some span both columns for editorial rhythm. */}
-        <BlurContext.Provider value={blurSensitive}>
-          <section className={`eh-cards-grid${blurSensitive ? ' eh-blur-numbers' : ''}`}>
-            <div className="eh-card-full">
-              <NetWorthCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-            </div>
-            <CashFlowCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-            <SpendingByCategoryCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-            <div className="eh-card-full">
-              <IncomeVsExpensesCard months={months} />
-            </div>
-            <BalancesCard summary={summary} loading={summaryLoading} error={summaryErr} />
-            <PortfolioCard />
-            <CreditUtilizationCard />
-            <BudgetsCard />
-            <div className="eh-card-full">
-              <RecurringChargesCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-            </div>
-            <div className="eh-card-full">
-              <AlertsCard />
+        {editing && (
+          <section className="eh-arrange-bar">
+            <span className="eh-arrange-hint">
+              Drag to move, pull the bottom-right corner to resize, × to remove.
+            </span>
+            <div className="eh-arrange-actions">
+              {hiddenCards.length > 0 && (
+                <div className="eh-arrange-hidden">
+                  {hiddenCards.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className="eh-arrange-restore"
+                      onClick={() => show(id)}
+                    >
+                      + {CARD_META[id]?.title || id}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button type="button" className="eh-banner-btn" onClick={restoreDefaults}>
+                Reset to default
+              </button>
             </div>
           </section>
+        )}
+
+        {/* The narrative arc — Position → Flow → Trend → Assets →
+            Constraints → Commitments → Signals — is the default arrangement,
+            not a constraint. Each card keeps its chapter label wherever it
+            lands. */}
+        <BlurContext.Provider value={blurSensitive}>
+          <div className={blurSensitive ? 'eh-blur-numbers' : undefined}>
+            <ResponsiveGridLayout
+              className="eh-grid"
+              layouts={{ lg: visibleLayout, md: visibleLayout, sm: visibleLayout }}
+              breakpoints={{ lg: 1200, md: 900, sm: 640, xs: 480, xxs: 0 }}
+              cols={{ lg: 12, md: 12, sm: 6, xs: 4, xxs: 2 }}
+              rowHeight={40}
+              margin={[16, 16]}
+              containerPadding={[0, 0]}
+              isDraggable={editing}
+              isResizable={editing}
+              onLayoutChange={handleLayoutChange}
+              draggableCancel="button, a, input, select, textarea"
+            >
+              {visibleLayout.map((item) => (
+                <div key={item.i} className="eh-grid-item">
+                  {renderCard(item.i)}
+                </div>
+              ))}
+            </ResponsiveGridLayout>
+          </div>
         </BlurContext.Provider>
       </div>
     </>

@@ -33,6 +33,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   --blue:           #3b82f6;
   --blue-light:     #dbeafe;
   --purple:         #8b5cf6;
+  /* Chart marks. Stepped per theme against the card surface they sit on
+     (#ffffff light / #0e2218 dark) so both clear 3:1 — --accent is tuned for
+     text and runs too bright for a filled mark on the dark card. */
+  --viz-bar:        #059669;
+  --viz-bar-muted:  #6b7280;
   --shadow-sm:      0 1px 3px rgba(5,150,105,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow:         0 4px 16px rgba(5,150,105,0.08), 0 1px 4px rgba(0,0,0,0.04);
   --radius:         14px;
@@ -57,6 +62,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   --accent:         #34d399;
   --accent-light:   #163d26;
   --accent-mid:     #34d399;
+  --viz-bar:        #12a77c;
+  --viz-bar-muted:  #94a3b8;
   --shadow-sm:      0 1px 3px rgba(0,0,0,0.4);
   --shadow:         0 4px 16px rgba(0,0,0,0.5);
 }
@@ -1455,6 +1462,53 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 .eh-dcard-filter-item:hover { background: var(--bg-hover, rgba(255,255,255,0.04)); }
 .eh-dcard-filter-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eh-dcard-filter-amt { color: var(--text-muted, #64748b); font-variant-numeric: tabular-nums; }
+
+/* Chart summary line — the window total the bars below break down. */
+.eh-viz-summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.eh-viz-summary strong {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.eh-viz-summary span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Chart hover tooltip. Recharts' default is styled globally further down; this
+   is the custom content used where a mark needs more than one value. */
+.eh-viz-tooltip {
+  background: var(--bg-card);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 8px 10px;
+  font-size: 12px;
+  min-width: 150px;
+}
+.eh-viz-tooltip-title {
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.eh-viz-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.eh-viz-tooltip-row strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
 
 /* KPI hover lifts above the banner so the info tooltip isn't clipped by it. */
 .eh-kpi { z-index: 1; }
@@ -3117,6 +3171,22 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 .ifield.due-urgent { color: var(--red); font-weight: 700; }
 .ifield.due-soon   { color: var(--amber); font-weight: 700; }
 .ifield-empty-static { color: var(--text-muted); font-size: 12px; }
+/* "Hide numbers" blurs the field at rest, but never while it's being typed
+   into — an unreadable input the user is editing is just broken. */
+.ifield.eh-blur:focus { filter: none; }
+
+/* Button that reads as inline text (e.g. the dashboard's "set limit →"). */
+.eh-linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.eh-linkish:hover { color: var(--accent); text-decoration: underline; }
 
 /* Sync chip (per-account live/stale/manual) */
 .sync-chip {
@@ -4244,4 +4314,200 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 @media (max-width: 640px) {
   .ret-hero-value { font-size: 38px; }
   .ret-hero { padding: 22px 18px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SPARE MONEY — the allocation waterfall
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.alloc-input { margin-bottom: 16px; }
+
+.alloc-controls {
+  display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
+}
+.alloc-amount, .alloc-cadence {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.alloc-amount input {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 20px; width: 160px;
+}
+.alloc-cadence select { min-width: 200px; }
+
+.alloc-presets { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.alloc-preset {
+  background: var(--bg-secondary); border: 1px solid var(--border-mid);
+  color: var(--text-primary); border-radius: 999px;
+  padding: 4px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.alloc-preset:hover { background: var(--accent-light); }
+
+.alloc-hero {
+  background: linear-gradient(135deg, #059669 0%, #065f46 100%);
+  color: #fff; border-radius: var(--radius);
+  padding: 24px; text-align: center; margin-bottom: 16px;
+}
+.alloc-hero-label {
+  font-size: 12px; text-transform: uppercase;
+  letter-spacing: .06em; opacity: .85; font-weight: 600;
+}
+.alloc-hero-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 44px; font-weight: 700; line-height: 1.1; margin: 4px 0;
+}
+.alloc-hero-sub { font-size: 13px; opacity: .9; }
+
+.alloc-list { list-style: none; margin: 0; padding: 0; }
+.alloc-row {
+  padding: 14px 0; border-bottom: 1px solid var(--border);
+}
+.alloc-row:last-child { border-bottom: none; }
+
+.alloc-row-head {
+  display: flex; align-items: baseline; gap: 8px;
+}
+.alloc-row-icon { font-size: 16px; }
+.alloc-row-label { font-weight: 600; flex: 1; }
+.alloc-row-amount {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-weight: 700; font-size: 17px;
+}
+
+/* Width encodes share of the total, so the shape of the split reads at a
+   glance without a chart library. */
+.alloc-bar {
+  height: 5px; background: var(--bg-secondary);
+  border-radius: 999px; overflow: hidden; margin: 8px 0;
+}
+.alloc-bar-fill { height: 100%; background: var(--accent); }
+
+.alloc-row-why {
+  font-size: 13px; color: var(--text-secondary);
+  line-height: 1.5; margin: 4px 0 0;
+}
+
+/* A guaranteed return and an expected one are different kinds of claim.
+   Colour and wording keep them apart rather than rendering both as numbers. */
+.alloc-benefit {
+  font-size: 12px; color: var(--text-muted); margin: 6px 0 0;
+}
+.alloc-benefit--sure { color: var(--accent); }
+
+.alloc-skip {
+  display: flex; gap: 12px; padding: 8px 0;
+  border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.alloc-skip:last-child { border-bottom: none; }
+.alloc-skip-label {
+  font-weight: 600; min-width: 180px; color: var(--text-secondary);
+}
+.alloc-skip-reason { color: var(--text-muted); line-height: 1.5; }
+
+.alloc-questions { border-left: 3px solid var(--amber); }
+.alloc-question { padding: 8px 0; }
+.alloc-question-text { font-weight: 600; font-size: 14px; }
+.alloc-question-why {
+  font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-top: 2px;
+}
+
+.alloc-caveats ul { margin: 0; padding-left: 18px; }
+.alloc-caveats li {
+  font-size: 12px; color: var(--text-muted);
+  line-height: 1.6; margin-bottom: 6px;
+}
+
+.alloc-fieldset {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 10px 14px; margin: 12px 0;
+}
+.alloc-fieldset legend {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary); padding: 0 6px;
+}
+.alloc-radio {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-right: 16px; font-size: 13px; cursor: pointer;
+}
+.alloc-subhead { margin-top: 16px; }
+
+@media (max-width: 640px) {
+  .alloc-hero-value { font-size: 34px; }
+  .alloc-controls { flex-direction: column; align-items: stretch; }
+  .alloc-amount input, .alloc-cadence select { width: 100%; }
+  .alloc-skip { flex-direction: column; gap: 2px; }
+  .alloc-skip-label { min-width: 0; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DASHBOARD GRID — draggable card layout
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Each grid cell is a fixed box, so the card inside must fill it and manage
+   its own overflow — otherwise a long list pushes past the cell and overlaps
+   whatever sits below it. */
+.eh-grid-item { overflow: hidden; }
+.eh-grid-item > .dashboard-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.eh-grid-item .eh-dcard-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.eh-dcard-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 8px; user-select: none; margin-bottom: 8px;
+}
+.eh-dcard-head-right { display: flex; align-items: center; gap: 6px; }
+
+.eh-dcard-kicker {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-faint); margin-bottom: 2px;
+}
+.eh-dcard-index {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  color: var(--accent); font-weight: 700;
+}
+
+.eh-dcard-hide {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-faint); font-size: 18px; line-height: 1;
+  padding: 0 4px; border-radius: var(--radius-sm);
+}
+.eh-dcard-hide:hover { color: var(--red); background: var(--red-light); }
+
+.eh-arrange-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  background: var(--amber-light); border: 1px solid var(--amber);
+  border-radius: var(--radius-sm); padding: 8px 14px; margin-bottom: 12px;
+  font-size: 12px; color: var(--text-primary);
+}
+.eh-arrange-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.eh-arrange-hidden { display: flex; gap: 6px; flex-wrap: wrap; }
+.eh-arrange-restore {
+  background: var(--bg-card); border: 1px solid var(--border-mid);
+  color: var(--text-primary); border-radius: 999px;
+  padding: 3px 10px; font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.eh-arrange-restore:hover { background: var(--accent-light); }
+
+/* react-grid-layout's own chrome, themed. The placeholder is the drop
+   target that follows the card being dragged. */
+.react-grid-item.react-grid-placeholder {
+  background: var(--accent);
+  opacity: .18;
+  border-radius: var(--radius);
+}
+.react-grid-item > .react-resizable-handle::after {
+  border-right-color: var(--text-faint);
+  border-bottom-color: var(--text-faint);
+}
+.eh-grid .react-grid-item.react-draggable-dragging {
+  z-index: 3;
+  box-shadow: var(--shadow);
 }

@@ -38,13 +38,24 @@ from agent.schemas import (
     GetDebtArgs,
     GetGoalStatusArgs,
     GetInvestmentsArgs,
+    GetNextActionsArgs,
+    GetPropertiesArgs,
+    GetSafeToSpendArgs,
+    GetUsableEquityArgs,
     ProjectCashflowArgs,
+    ProjectRetirementArgs,
     RecallAboutUserArgs,
     RecallPastConversationArgs,
     RememberAboutUserArgs,
     SearchDocumentsArgs,
     SearchTransactionsArgs,
 )
+
+# How many projection rows a retirement answer carries into the model's
+# context. Fifty years of rows is thousands of tokens of arithmetic the
+# model will not read carefully and may well misquote; five evenly spaced
+# ones plus the retirement year is enough to describe the shape.
+_RETIREMENT_SAMPLE_ROWS = 5
 
 
 Handler = Callable[[BaseModel], Awaitable[Any]]
@@ -304,6 +315,164 @@ async def _recall_about_user(args: RecallAboutUserArgs) -> Dict[str, Any]:
     }
 
 
+async def _get_safe_to_spend(args: GetSafeToSpendArgs) -> Dict[str, Any]:
+    """Today's allowance and everything that produced it.
+
+    Returns the full payload — commitments, pace, excluded categories — so
+    Fin can explain *why* the number is what it is rather than just reciting
+    it. That explanation is the whole value of asking a chat instead of
+    reading the Today page.
+    """
+    from datetime import date as _date
+    from analytics import compute_safe_to_spend
+
+    as_of = None
+    if args.as_of:
+        try:
+            as_of = _date.fromisoformat(args.as_of[:10])
+        except ValueError:
+            as_of = None
+    return compute_safe_to_spend(as_of=as_of)
+
+
+async def _get_properties(args: GetPropertiesArgs) -> Dict[str, Any]:
+    """Rental portfolio economics: NOI, cash flow, DSCR, equity, performance."""
+    import properties as properties_domain
+
+    if args.property_id:
+        econ = properties_domain.compute_property_economics(args.property_id)
+        if econ is None:
+            return {
+                "available": False,
+                "note": f"No property with id {args.property_id}.",
+            }
+        return {"available": True, "property": econ}
+
+    portfolio = properties_domain.compute_portfolio()
+    if not portfolio.get("count"):
+        return {
+            "available": False,
+            "note": (
+                "No properties on file. The user tracks rentals under the "
+                "Properties tab; suggest adding one if the question needs it."
+            ),
+            "properties": [],
+        }
+    return {"available": True, **portfolio}
+
+
+async def _get_usable_equity(args: GetUsableEquityArgs) -> Dict[str, Any]:
+    """Borrowing capacity — always paired with what the borrowing would cost.
+
+    Both scenarios carry the new payment, the delta, and the cash flow that
+    survives it. Never quote the extractable amount on its own.
+    """
+    import properties as properties_domain
+
+    kwargs: Dict[str, Any] = {}
+    if args.max_ltv_pct is not None:
+        kwargs["max_ltv_pct"] = args.max_ltv_pct
+    if args.max_cltv_pct is not None:
+        kwargs["max_cltv_pct"] = args.max_cltv_pct
+
+    if args.property_id:
+        return properties_domain.compute_usable_equity(args.property_id, **kwargs)
+
+    portfolio = properties_domain.compute_portfolio_equity(**kwargs)
+    # Drop the per-property detail; the totals plus anything blocked is what
+    # a conversational answer needs.
+    return {
+        "count": portfolio["count"],
+        "total_equity": portfolio["total_equity"],
+        "total_cash_out_available": portfolio["total_cash_out_available"],
+        "total_heloc_available": portfolio["total_heloc_available"],
+        "needs_valuation": portfolio["needs_valuation"],
+        "note": (
+            "Extractable amounts are gross of their carrying cost. Call this "
+            "with a property_id for the payment increase and post-borrow cash "
+            "flow before recommending anything."
+        ),
+    }
+
+
+async def _project_retirement(args: ProjectRetirementArgs) -> Dict[str, Any]:
+    """When the rentals and the portfolio can carry the household.
+
+    Sampled, not dumped: the retirement year plus a handful of evenly spaced
+    rows. The mortgage-payoff milestones are included because they are the
+    mechanic the whole plan rests on.
+    """
+    import retirement as retirement_domain
+
+    inputs = retirement_domain.build_retirement_inputs()
+    overrides = {
+        k: v for k, v in args.model_dump().items() if v is not None
+    }
+    if overrides:
+        inputs.assumptions = {**inputs.assumptions, **overrides}
+
+    projection = retirement_domain.project_retirement(inputs)
+    rows = projection["rows"]
+    step = max(1, len(rows) // _RETIREMENT_SAMPLE_ROWS)
+    sampled = rows[::step][:_RETIREMENT_SAMPLE_ROWS]
+
+    return {
+        "model": projection["model"],
+        "monte_carlo": projection["monte_carlo"],
+        "feasible": projection["feasible"],
+        "earliest_retirement_year": projection["earliest_retirement_year"],
+        "earliest_retirement_age": projection["earliest_retirement_age"],
+        "years_away": projection["years_away"],
+        "at_retirement": projection["at_retirement"],
+        "required_monthly_contribution": projection.get("required_monthly_contribution"),
+        "mortgage_payoff_milestones": projection["milestones"],
+        "sampled_rows": sampled,
+        "assumptions_used": projection["assumptions"],
+        "warnings": projection["warnings"],
+        "sensitivity": retirement_domain.build_sensitivity(inputs),
+        "note": (
+            "Deterministic, not a simulation. The sensitivity rows are the "
+            "honest substitute for a probability figure — quote them alongside "
+            "any retirement year."
+        ),
+    }
+
+
+async def _get_next_actions(args: GetNextActionsArgs) -> Dict[str, Any]:
+    """The Today page's ranked action list, verbatim.
+
+    Same rules, same ranking, same numbers — so "what should I do?" in chat
+    and "what should I do?" on the Today page cannot disagree. That
+    consistency is worth more than a cleverer chat-specific answer.
+    """
+    import coach
+
+    result = coach.build_actions(limit=args.limit)
+    return {
+        "generated_at": result["generated_at"],
+        "count": len(result["actions"]),
+        "total_available": result["total"],
+        "actions": [
+            {
+                "rank": a["rank"],
+                "urgency": a["urgency"],
+                "kind": a["kind"],
+                "title": a["title"],
+                "detail": a["detail"],
+                "amount": a["amount"],
+                "impact": a["impact"],
+                "due_date": a["due_date"],
+                "why": a["why"],
+            }
+            for a in result["actions"]
+        ],
+        "note": (
+            "These are rule-derived and already quantified. Use their figures "
+            "as given — do not recompute or round them."
+        ),
+    }
+
+
 def default_tool_registry(
     *, current_conversation_id: Optional[str] = None,
 ) -> ToolRegistry:
@@ -482,5 +651,76 @@ def default_tool_registry(
             ),
             args_model=RecallAboutUserArgs,
             handler=_recall_about_user,
+        ),
+        Tool(
+            name="get_safe_to_spend",
+            description=(
+                "Return today's spending allowance and the whole envelope "
+                "behind it: income, fixed bills, debt minimums, required goal "
+                "contributions, spend so far this month, days remaining, and "
+                "pace. Use for 'can I afford X', 'how much can I spend "
+                "today/this week', 'am I over budget'. Returns "
+                "available=false when no income has been detected — say so "
+                "rather than estimating."
+            ),
+            args_model=GetSafeToSpendArgs,
+            handler=_get_safe_to_spend,
+        ),
+        Tool(
+            name="get_properties",
+            description=(
+                "Return rental-property economics: NOI, operating expenses, "
+                "debt service, monthly cash flow, cap rate, cash-on-cash, "
+                "DSCR, equity, LTV, and a performance rating with quantified "
+                "reasons. Omit property_id for portfolio totals. Use for any "
+                "question about rentals, tenants, landlording, or whether a "
+                "property is worth keeping. NEVER recommend selling — surface "
+                "the reasons and let the user decide."
+            ),
+            args_model=GetPropertiesArgs,
+            handler=_get_properties,
+        ),
+        Tool(
+            name="get_usable_equity",
+            description=(
+                "Return how much could be borrowed against property equity — "
+                "cash-out refinance and HELOC — together with the new payment, "
+                "the payment increase, the DSCR that survives it, and the "
+                "resulting cash flow. Use for 'can I pull money out', 'how do "
+                "I fund the next property', 'should I refinance'. ALWAYS quote "
+                "the payment increase alongside the amount; the extractable "
+                "figure on its own is the most misleading number in real "
+                "estate."
+            ),
+            args_model=GetUsableEquityArgs,
+            handler=_get_usable_equity,
+        ),
+        Tool(
+            name="project_retirement",
+            description=(
+                "Project when the household can retire and on what. Returns "
+                "the earliest sustainable year, the income mix at that point "
+                "(rental net, portfolio withdrawals, Social Security), the "
+                "years each mortgage is paid off, sensitivity rows, and a few "
+                "sampled projection years. Pass any argument to run a what-if "
+                "without saving it. Deterministic — there is no probability "
+                "figure, so quote the sensitivity rows instead of implying "
+                "one."
+            ),
+            args_model=ProjectRetirementArgs,
+            handler=_project_retirement,
+        ),
+        Tool(
+            name="get_next_actions",
+            description=(
+                "Return the ranked, dollar-quantified next actions from the "
+                "Today page — the same rules, ranking and figures the UI "
+                "shows. Use for open-ended 'what should I do', 'what should I "
+                "focus on', 'what am I missing'. Quote the amounts exactly as "
+                "returned; they are rule-derived, and recomputing them makes "
+                "chat disagree with the app."
+            ),
+            args_model=GetNextActionsArgs,
+            handler=_get_next_actions,
         ),
     ])

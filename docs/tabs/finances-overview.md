@@ -27,7 +27,7 @@ Plan how to pay down credit-card debt.
 1. Credit accounts from SimpleFIN pre-fill automatically; add more rows manually if needed.
 2. Debts are split into two tables by the **Debt type** set in each row's detail panel:
    - **Cards & unsecured debt** — the payoff queue. Ranked by strategy, numbered, and fed by the extra payment.
-   - **Loans & secured debt** (`debt_class = loan`) — tracked and editable, but excluded from the
+   - **Mortgages** (`debt_class = loan`) — tracked and editable, but excluded from the
      simulation. Ranking on APR alone would send the extra payment to a mortgage ahead of a 29% card,
      and a 30-year term would swamp the payoff timeline. Each row shows equity once an asset value is set.
 3. Pick a strategy:

@@ -16,6 +16,7 @@ import PropertiesPage from './PropertiesPage';
 import LoansPage from './LoansPage';
 import EquityPage from './EquityPage';
 import RetirementPage from './RetirementPage';
+import AllocatePage from './AllocatePage';
 import TodayPage from './TodayPage';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
@@ -149,6 +150,8 @@ export default function FinancesPage() {
         {activeId === 'loans' && <LoansPage />}
 
         {activeId === 'equity' && <EquityPage />}
+
+        {activeId === 'allocate' && <AllocatePage />}
 
         {activeId === 'retirement' && <RetirementPage />}
 

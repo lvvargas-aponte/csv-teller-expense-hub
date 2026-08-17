@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter
 
 import state
+from simplefin import is_revolving_credit
 
 router = APIRouter()
 
@@ -32,7 +33,8 @@ async def credit_health() -> Dict[str, Any]:
     total_limit = 0.0
 
     for acct in list(linked_accounts) + manual_accounts:
-        if (acct.get("type") or "").lower() != "credit":
+        # Cards only — mortgages and installment loans carry no credit limit.
+        if not is_revolving_credit(acct):
             continue
         acct_id = acct.get("id") or ""
         details = state.account_details.get(acct_id) or {}

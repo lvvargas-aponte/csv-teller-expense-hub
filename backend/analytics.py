@@ -242,12 +242,14 @@ def _balances_snapshot() -> Dict[str, Any]:
     total_cash = 0.0
     total_credit = 0.0
     total_investments = 0.0
+    credit_account_ids = set()
     for acct in list(linked_accounts) + list(snaptrade_accounts) + manual_accounts:
         bucket = _classify_account_bucket(acct.get("type", ""), acct.get("subtype", ""))
         if bucket == "cash":
             total_cash += float(acct.get("available", 0.0) or 0.0)
         elif bucket == "credit":
             total_credit += float(acct.get("ledger", 0.0) or 0.0)
+            credit_account_ids.add(acct.get("id"))
         elif bucket == "investment":
             # Investments report value via ``available`` (the convention for
             # non-depository accounts is to put the position value there);
@@ -257,11 +259,25 @@ def _balances_snapshot() -> Dict[str, Any]:
                 value = float(acct.get("ledger", 0.0) or 0.0)
             total_investments += value
 
+    # Imported in-body to keep the module dependency direction one-way
+    # (properties -> analytics), matching how db.accounts_repo is reached.
+    import properties as properties_domain
+    real_estate = properties_domain.compute_real_estate_position(
+        counted_account_ids=credit_account_ids
+    )
+
+    net_worth = (
+        total_cash + total_investments - total_credit
+        + real_estate["total_value"] - real_estate["unlinked_debt"]
+    )
     return {
-        "net_worth": round(total_cash + total_investments - total_credit, 2),
+        "net_worth": round(net_worth, 2),
         "total_cash": round(total_cash, 2),
         "total_credit_debt": round(total_credit, 2),
         "total_investments": round(total_investments, 2),
+        "total_property_value": real_estate["total_value"],
+        "total_property_debt": real_estate["total_debt"],
+        "total_property_equity": real_estate["total_equity"],
         "linked_accounts": linked_accounts,
         "snaptrade_accounts": snaptrade_accounts,
         "manual_accounts": manual_accounts,
@@ -700,7 +716,8 @@ def _net_worth_at(
         return None
 
     total = 0.0
-    for snap in chosen.values():
+    credit_account_ids = set()
+    for aid, snap in chosen.items():
         bucket = _classify_account_bucket(
             snap.get("type") or "", snap.get("subtype") or ""
         )
@@ -709,6 +726,7 @@ def _net_worth_at(
         elif bucket == "credit":
             # ``ledger`` on a credit card is the balance owed — counts as debt.
             total -= float(snap.get("ledger") or 0.0)
+            credit_account_ids.add(aid)
         elif bucket == "investment":
             # SnapTrade snapshots write the account's total value to both
             # ``available`` and ``ledger``; prefer ``available`` for parity
@@ -717,6 +735,14 @@ def _net_worth_at(
             if val is None:
                 val = snap.get("ledger")
             total += float(val or 0.0)
+
+    # Real estate, on the same basis as the headline figure — otherwise the
+    # trend line and the net-worth number on the same screen disagree by the
+    # value of the house.
+    import properties as properties_domain
+    total += properties_domain.real_estate_at(
+        target_ts.date(), counted_account_ids=credit_account_ids
+    )["net_contribution"]
     return total
 
 
@@ -1590,6 +1616,100 @@ def _investments_snapshot() -> Optional[Dict[str, Any]]:
     }
 
 
+def _wealth_rollups() -> Dict[str, Any]:
+    """Roll-up-only blocks for the advisor's grounding context.
+
+    Deliberately thin. Every one of these has a dedicated tool that returns
+    the full detail on request, so the snapshot carries just enough for the
+    model to know the capability exists and is worth reaching for — putting
+    fifty projection rows in front of it on every turn would crowd out the
+    conversation and get misquoted besides.
+
+    Each block is omitted entirely when there's nothing to say, matching how
+    ``investments`` already behaves.
+    """
+    out: Dict[str, Any] = {}
+
+    try:
+        sts = compute_safe_to_spend()
+        if sts.get("available"):
+            out["safe_to_spend"] = {
+                "daily": sts["daily_safe_to_spend"],
+                "weekly": sts["weekly_safe_to_spend"],
+                "remaining_pool": sts["remaining_pool"],
+                "days_remaining": sts["period"]["days_remaining"],
+                "over_budget": sts["over_budget"],
+                "pace": sts["pace"],
+            }
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[analytics] safe-to-spend rollup skipped: {e}")
+
+    try:
+        import properties as properties_domain
+        portfolio = properties_domain.compute_portfolio()
+        if portfolio.get("count"):
+            out["properties"] = {
+                "count": portfolio["count"],
+                "total_value": portfolio["total_value"],
+                "total_debt": portfolio["total_debt"],
+                "total_equity": portfolio["total_equity"],
+                "monthly_cash_flow": portfolio["monthly_cash_flow"],
+                "ytd_principal_paid": portfolio["ytd_principal_paid"],
+                "underperforming": [p["name"] for p in portfolio["underperforming"]],
+                "watch": [p["name"] for p in portfolio["watch"]],
+            }
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[analytics] properties rollup skipped: {e}")
+
+    try:
+        from db import properties_repo
+        loans = properties_repo.get_repo().list_loans()
+        if loans:
+            out["loans"] = [
+                {
+                    "name": loan.get("name"),
+                    "type": loan.get("loan_type"),
+                    "rate_pct": loan.get("interest_rate_pct"),
+                    "payment": loan.get("payment_amount"),
+                }
+                for loan in loans
+            ]
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[analytics] loans rollup skipped: {e}")
+
+    try:
+        import retirement as retirement_domain
+        inputs = retirement_domain.build_retirement_inputs()
+        if inputs.properties or inputs.investment_balance > 0:
+            projection = retirement_domain.project_retirement(inputs)
+            out["retirement"] = {
+                "feasible": projection["feasible"],
+                "earliest_retirement_year": projection["earliest_retirement_year"],
+                "earliest_retirement_age": projection["earliest_retirement_age"],
+                "model": "deterministic",
+                "warnings": projection["warnings"],
+            }
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[analytics] retirement rollup skipped: {e}")
+
+    try:
+        import coach
+        actions = coach.build_actions(limit=3)
+        if actions["actions"]:
+            out["next_actions"] = [
+                {
+                    "urgency": a["urgency"],
+                    "title": a["title"],
+                    "amount": a["amount"],
+                }
+                for a in actions["actions"]
+            ]
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[analytics] next-actions rollup skipped: {e}")
+
+    return out
+
+
 def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
     """Return a compact dict describing the household's financial state.
 
@@ -1641,4 +1761,5 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
         snapshot["user_profile"] = user_profile
     if investments:
         snapshot["investments"] = investments
+    snapshot.update(_wealth_rollups())
     return snapshot

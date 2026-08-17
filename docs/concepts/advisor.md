@@ -102,6 +102,8 @@ In practice: keep RAG as default until you've upgraded `OLLAMA_CHAT_MODEL` and r
 
 ### Tools
 
+**Money and position**
+
 | Tool | Wraps | When Fin uses it |
 |---|---|---|
 | `search_transactions` | `embeddings.retrieve_similar_transactions` + date/category filters | "what was that $300 charge", "find subscription-like hits" |
@@ -109,7 +111,38 @@ In practice: keep RAG as default until you've upgraded `OLLAMA_CHAT_MODEL` and r
 | `get_debt` | balances + `state.account_details` side-car | "how much do I owe on Chase", "show me all my cards" |
 | `get_budget_status` | `analytics.compute_budget_statuses` | "am I over on dining" |
 | `get_goal_status` | `analytics.compute_goal_statuses` | "am I on pace with my emergency fund" |
-| `project_cashflow` | new analytic composing recurring outflow + income estimate + inbound transfers | "what does the next 30 days look like" |
+| `get_category_spending` | `analytics.category_spending_summary` | any roll-up: "average X", "total Y last month" |
+| `get_investments` | `analytics._investments_snapshot` | holdings, allocation, concentration, one ticker |
+| `project_cashflow` | recurring outflow + income estimate + inbound transfers | "what does the next 30 days look like" |
+
+**Wealth, property and the plan**
+
+| Tool | Wraps | When Fin uses it |
+|---|---|---|
+| `get_safe_to_spend` | `analytics.compute_safe_to_spend` | "can I afford this", "how much can I spend today" |
+| `get_properties` | `properties.compute_portfolio` / `compute_property_economics` | rentals, tenants, "is this one worth keeping" |
+| `get_usable_equity` | `properties.compute_usable_equity` | "can I pull money out", "how do I fund the next one" |
+| `project_retirement` | `retirement.project_retirement` | "when can I retire", what-ifs on spending or return |
+| `get_next_actions` | `coach.build_actions` | "what should I do", "what am I missing" |
+
+**Memory and reference**
+
+| Tool | Wraps | When Fin uses it |
+|---|---|---|
+| `search_documents` | `documents_repo.retrieve_similar_docs` | "what does the IRS say about…", "per my tax return" |
+| `recall_past_conversation` | `embeddings.retrieve_similar` | "like we discussed last time" |
+| `remember_about_user` / `recall_about_user` | `db.user_facts_repo` | durable preferences and constraints |
+
+#### Why seventeen and not twenty-five
+
+Tool *selection* is where a local 14B model degrades first, and it degrades well before the context window becomes the binding constraint. The wealth build could easily have justified another eight — loan schedules, the deal analyzer, the allocation waterfall — and deliberately did not register them. They are UI features. A unit test pins the ceiling at 17 so raising it is a decision someone makes on purpose, after measuring selection accuracy, rather than a thing that drifts.
+
+Two design rules the new tools follow:
+
+- **`project_retirement` samples, it doesn't dump.** Fifty rows of year-by-year arithmetic is thousands of tokens the model won't read carefully and may well misquote. It returns the retirement year, the income mix at that point, the mortgage-payoff milestones, the sensitivity rows, and five evenly spaced sample years.
+- **`get_next_actions` returns the Today page verbatim.** Same rules, same ranking, same figures, and the payload tells the model not to recompute them. "What should I do?" giving different answers in chat and in the app is worse than either answer being slightly less clever.
+
+The snapshot that grounds every turn also carries thin roll-up blocks (`safe_to_spend`, `properties`, `loans`, `retirement`, `next_actions`), each omitted when empty. Enough for the model to know the capability exists and reach for the tool; not enough to crowd out the conversation.
 
 ### Guards
 

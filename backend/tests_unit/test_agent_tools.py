@@ -19,18 +19,29 @@ from agent.schemas import (
     GetDebtArgs,
     GetGoalStatusArgs,
     GetInvestmentsArgs,
+    GetNextActionsArgs,
+    GetPropertiesArgs,
+    GetSafeToSpendArgs,
+    GetUsableEquityArgs,
     ProjectCashflowArgs,
+    ProjectRetirementArgs,
     SearchDocumentsArgs,
     SearchTransactionsArgs,
 )
 from agent.tools import (
+    _RETIREMENT_SAMPLE_ROWS,
     _get_balance,
     _get_budget_status,
     _get_category_spending,
     _get_debt,
     _get_goal_status,
     _get_investments,
+    _get_next_actions,
+    _get_properties,
+    _get_safe_to_spend,
+    _get_usable_equity,
     _project_cashflow,
+    _project_retirement,
     _search_documents,
     _search_transactions,
     default_tool_registry,
@@ -583,7 +594,19 @@ class TestRegistry:
             "get_investments",
             "search_documents", "recall_past_conversation",
             "remember_about_user", "recall_about_user",
+            "get_safe_to_spend", "get_properties", "get_usable_equity",
+            "project_retirement", "get_next_actions",
         }
+
+    def test_registry_stays_inside_the_local_model_s_selection_budget(self):
+        """A 14B model degrades at tool *selection* well before 20 options.
+
+        The wealth features could easily have justified eight more tools —
+        loan schedules, the deal analyzer, the allocation waterfall. They are
+        UI features instead, and this ceiling is why. Raising it means
+        measuring selection accuracy first, not just adding the tool.
+        """
+        assert len(default_tool_registry().names()) <= 17
 
     def test_openai_tools_have_required_shape(self):
         reg = default_tool_registry()
@@ -594,3 +617,141 @@ class TestRegistry:
             params = fn["parameters"]
             assert params.get("type") == "object"
             assert "properties" in params
+
+
+# ---------------------------------------------------------------------------
+# The wealth tools — safe-to-spend, properties, equity, retirement, actions
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def prop_repo():
+    from db import properties_repo_memory
+    return properties_repo_memory.install_for_tests()
+
+
+def _seed_rental(repo, pid="prop_1", value=400_000):
+    repo.upsert_property({
+        "id": pid, "name": "Maple St", "status": "rental",
+        "monthly_rent": 3000, "vacancy_rate_pct": 0,
+        "property_tax_annual": 6000, "insurance_annual": 1200,
+        "maintenance_pct_of_rent": 0, "capex_reserve_pct_of_rent": 0,
+        "current_value": value,
+    })
+    repo.upsert_loan({
+        "id": "loan_1", "name": "Mortgage", "property_id": pid,
+        "original_principal": 240_000, "current_principal": 200_000,
+        "interest_rate_pct": 4.0, "term_months": 360,
+        "origination_date": date(2020, 1, 1),
+        "first_payment_date": date(2020, 2, 1),
+        "payment_amount": 1145.80, "lien_position": 1,
+    })
+
+
+class TestGetSafeToSpend:
+    def test_no_income_declines_rather_than_guessing(self):
+        out = _run(_get_safe_to_spend(GetSafeToSpendArgs()))
+        assert out["available"] is False
+        assert out["reason"] == "no_income_detected"
+
+    def test_an_unparseable_as_of_falls_back_to_today_rather_than_erroring(self):
+        out = _run(_get_safe_to_spend(GetSafeToSpendArgs(as_of="not-a-date")))
+        assert "available" in out
+
+
+class TestGetProperties:
+    def test_empty_portfolio_explains_itself(self, prop_repo):
+        out = _run(_get_properties(GetPropertiesArgs()))
+        assert out["available"] is False
+        assert "Properties tab" in out["note"]
+
+    def test_portfolio_totals(self, prop_repo):
+        _seed_rental(prop_repo)
+        out = _run(_get_properties(GetPropertiesArgs()))
+        assert out["available"] is True
+        assert out["count"] == 1
+        assert out["total_value"] == 400_000.0
+
+    def test_one_property_by_id(self, prop_repo):
+        _seed_rental(prop_repo)
+        out = _run(_get_properties(GetPropertiesArgs(property_id="prop_1")))
+        assert out["property"]["name"] == "Maple St"
+
+    def test_unknown_id_is_reported_not_raised(self, prop_repo):
+        out = _run(_get_properties(GetPropertiesArgs(property_id="nope")))
+        assert out["available"] is False
+
+
+class TestGetUsableEquity:
+    def test_portfolio_view_drops_detail_but_keeps_the_warning(self, prop_repo):
+        _seed_rental(prop_repo)
+        out = _run(_get_usable_equity(GetUsableEquityArgs()))
+        assert out["count"] == 1
+        assert "properties" not in out          # detail is per-property only
+        assert "carrying cost" in out["note"]
+
+    def test_single_property_carries_the_cost_of_borrowing(self, prop_repo):
+        """The whole point: never the extractable figure on its own."""
+        _seed_rental(prop_repo)
+        out = _run(_get_usable_equity(GetUsableEquityArgs(property_id="prop_1")))
+        assert out["cash_out_refi"]["gross_proceeds"] == 100_000.0
+        assert "payment_delta" in out["cash_out_refi"]
+        assert "cash_flow_after" in out["cash_out_refi"]
+
+    def test_ltv_override_is_passed_through(self, prop_repo):
+        _seed_rental(prop_repo)
+        out = _run(_get_usable_equity(
+            GetUsableEquityArgs(property_id="prop_1", max_ltv_pct=65.0)
+        ))
+        assert out["cash_out_refi"]["new_loan_amount"] == 260_000.0
+
+
+class TestProjectRetirement:
+    def test_rows_are_sampled_not_dumped(self, prop_repo):
+        """Fifty rows of arithmetic in context gets misquoted, not read."""
+        out = _run(_project_retirement(ProjectRetirementArgs()))
+        assert len(out["sampled_rows"]) <= _RETIREMENT_SAMPLE_ROWS
+        assert "rows" not in out
+
+    def test_what_if_overrides_apply_without_being_saved(self, prop_repo):
+        out = _run(_project_retirement(ProjectRetirementArgs(
+            retirement_spending_monthly=4000.0, investment_return_pct=6.0,
+        )))
+        assert out["assumptions_used"]["retirement_spending_monthly"] == 4000.0
+        assert out["assumptions_used"]["investment_return_pct"] == 6.0
+        assert not state.retirement_assumptions.get("household")
+
+    def test_determinism_is_stated_and_sensitivity_ships_with_it(self, prop_repo):
+        out = _run(_project_retirement(ProjectRetirementArgs()))
+        assert out["monte_carlo"] is False
+        assert len(out["sensitivity"]) == 3
+
+    def test_mortgage_payoff_years_are_included(self, prop_repo):
+        _seed_rental(prop_repo)
+        out = _run(_project_retirement(ProjectRetirementArgs(
+            retirement_spending_monthly=3000.0,
+        )))
+        assert out["mortgage_payoff_milestones"]
+
+
+class TestGetNextActions:
+    def test_returns_the_same_ranked_list_the_today_page_renders(self):
+        state.budgets["Dining"] = {"category": "Dining", "monthly_limit": 200.0}
+        today = date.today()
+        state.stored_transactions["t1"] = {
+            "id": "t1", "date": today.strftime("%m/%d/%Y"),
+            "description": "STEAKHOUSE", "amount": 600.0,
+            "transaction_type": "debit", "category": "Dining",
+        }
+        out = _run(_get_next_actions(GetNextActionsArgs(limit=5)))
+        assert out["count"] >= 1
+        titles = [a["title"] for a in out["actions"]]
+        assert any("Dining" in t for t in titles)
+        assert all("rank" in a for a in out["actions"])
+
+    def test_limit_is_respected(self):
+        out = _run(_get_next_actions(GetNextActionsArgs(limit=1)))
+        assert len(out["actions"]) <= 1
+
+    def test_the_model_is_told_not_to_recompute_the_figures(self):
+        out = _run(_get_next_actions(GetNextActionsArgs()))
+        assert "do not recompute" in out["note"]

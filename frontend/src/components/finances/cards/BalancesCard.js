@@ -26,7 +26,16 @@ export default function BalancesCard({ summary, loading, error, onHide, index, k
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
             Cash <Num value={summary.total_cash || 0} /> · Credit <Num value={summary.total_credit_debt || 0} />
             {(summary.total_investments || 0) > 0 && <> · Invest <Num value={summary.total_investments} /></>}
+            {(summary.total_property_value || 0) > 0 && (
+              <> · Property <Num value={summary.total_property_value} /></>
+            )}
           </div>
+          {(summary.unvalued_properties || []).length > 0 && (
+            <div style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>
+              Not counted — no valuation on file:{' '}
+              {summary.unvalued_properties.join(', ')}
+            </div>
+          )}
         </div>
       )}
       <div style={{ display: 'grid', gap: 6 }}>

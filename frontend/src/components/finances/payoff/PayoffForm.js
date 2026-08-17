@@ -63,10 +63,11 @@ export default function PayoffForm({
 
       {securedRows.length > 0 && (
         <DebtSection
-          title="🏠 Loans & secured debt"
+          title="🏠 Mortgages"
           note="Backed by an asset, so these sit out of the payoff queue — ranking on APR alone would send your extra payment to a mortgage ahead of a 29% card. Edits here still save."
           rows={securedRows}
           secured
+          paymentLabel="Mortgage Payment"
           {...rowProps}
         />
       )}
@@ -108,6 +109,7 @@ export default function PayoffForm({
 // (those rows aren't in the queue to be numbered), plus an equity read-out.
 function DebtSection({
   title, note, rows, secured = false, showAprLegend = false, emptyMessage,
+  paymentLabel = 'Min Payment',
   allAccounts, detailsVersion, strategy, orderById, expanded, toggleExpanded,
   onSetRow, onPersistApr, onPersistMinPayment, onPersistDetail, onRemoveRow,
 }) {
@@ -136,7 +138,7 @@ function DebtSection({
                   {showAprLegend && <AprLegend />}
                 </div>
               </th>
-              <th style={{ width: 140 }}>Min Payment</th>
+              <th style={{ width: 140 }}>{paymentLabel}</th>
               <th style={{ width: 36 }}></th>
             </tr>
           </thead>

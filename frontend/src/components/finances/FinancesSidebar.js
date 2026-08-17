@@ -30,6 +30,7 @@ const NAV_SECTIONS = [
   {
     label: 'Wealth',
     items: [
+      { id: 'allocate',    icon: '💵', label: 'Spare Money' },
       { id: 'properties',  icon: '🏠', label: 'Properties' },
       { id: 'equity',      icon: '🔑', label: 'Equity & Deals' },
       { id: 'investments', icon: '📈', label: 'Investments' },
@@ -81,8 +82,8 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore }) {
       >{collapsed ? '›' : '‹'}</button>
 
       <div className="eh-sidebar-logo">
-        <div className="eh-sidebar-logo-icon">💰</div>
-        <div className="eh-sidebar-logo-text">Financial Freedom</div>
+        <div className="eh-sidebar-logo-icon">📊</div>
+        <div className="eh-sidebar-logo-text">Finances</div>
       </div>
 
       {NAV_SECTIONS.map((section) => (

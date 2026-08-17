@@ -1,7 +1,7 @@
 """Pydantic request/response models for all route handlers."""
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Account(BaseModel):
@@ -322,6 +322,13 @@ class BalancesSummary(BaseModel):
     total_cash: float
     total_credit_debt: float
     total_investments: float = 0.0
+    # Real estate. ``total_property_debt`` is reported for display only — the
+    # portion secured by a synced account is already inside
+    # ``total_credit_debt``, so summing these two double-counts the mortgage.
+    total_property_value: float = 0.0
+    total_property_debt: float = 0.0
+    total_property_equity: float = 0.0
+    unvalued_properties: List[str] = []
     accounts: List[AccountBalance]
     from_cache: bool = False
     cache_fetched_at: Optional[str] = None
@@ -347,6 +354,36 @@ class PayoffAdviceRequest(BaseModel):
     strategy: str = "avalanche"
     extra_monthly: float = 0.0
     plan_results: Optional[Dict[str, Any]] = None  # optional — include when calc has already been run
+
+
+# ---------------------------------------------------------------------------
+# Allocation waterfall
+# ---------------------------------------------------------------------------
+
+class AllocateRequest(BaseModel):
+    amount: float = Field(..., gt=0)
+    # "monthly" = a recurring surplus; "one_time" = a bonus or refund. The
+    # tiers behave differently: an employer match can only be captured
+    # through payroll, so a lump sum skips that tier entirely.
+    cadence: Literal["monthly", "one_time"] = "monthly"
+    as_of: Optional[str] = None      # ISO YYYY-MM-DD, for reproducible tests
+
+
+class AllocationSettingsIn(BaseModel):
+    """The handful of facts the waterfall cannot derive from transactions.
+
+    Every field is optional. ``employer_match_known`` stays ``None`` until
+    the user answers, which is what makes the waterfall ask rather than
+    quietly assume there is no match.
+    """
+    emergency_fund_months: Optional[int] = Field(None, ge=0, le=24)
+    employer_match_known: Optional[bool] = None
+    employer_match_pct: Optional[float] = Field(None, ge=0, le=200)
+    employer_match_limit_pct_of_pay: Optional[float] = Field(None, ge=0, le=100)
+    annual_gross_income: Optional[float] = Field(None, ge=0)
+    annual_contribution_limits: Optional[Dict[str, float]] = None
+    contribution_limits_as_of_year: Optional[int] = None
+    contributed_ytd: Optional[Dict[str, float]] = None
 
 
 # ---------------------------------------------------------------------------

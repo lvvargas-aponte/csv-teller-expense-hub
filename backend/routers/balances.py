@@ -265,6 +265,51 @@ def _append_simplefin_accounts(
     return accounts_out, total_cash, total_credit_debt
 
 
+def _build_summary(
+    accounts: List[AccountBalance],
+    total_cash: float,
+    total_credit_debt: float,
+    *,
+    from_cache: bool,
+) -> BalancesSummary:
+    """Assemble the summary, real estate included.
+
+    Property value is added from the properties tables; the mortgage securing
+    it is already in ``total_credit_debt`` whenever the loan is linked to a
+    synced account, so only ``unlinked_debt`` — hand-entered loans backed by
+    no account — is subtracted here. See
+    ``properties.compute_real_estate_position`` for why the split exists.
+
+    Both the cached and the live path go through this so the two can't drift.
+    """
+    import properties as properties_domain
+
+    total_investments = _compute_investments(accounts)
+    real_estate = properties_domain.compute_real_estate_position(
+        counted_account_ids={a.id for a in accounts if a.type == "credit"}
+    )
+    net_worth = (
+        total_cash
+        + total_investments
+        - total_credit_debt
+        + real_estate["total_value"]
+        - real_estate["unlinked_debt"]
+    )
+    return BalancesSummary(
+        net_worth=round(net_worth, 2),
+        total_cash=round(total_cash, 2),
+        total_credit_debt=round(total_credit_debt, 2),
+        total_investments=total_investments,
+        total_property_value=real_estate["total_value"],
+        total_property_debt=real_estate["total_debt"],
+        total_property_equity=real_estate["total_equity"],
+        unvalued_properties=real_estate["unvalued_properties"],
+        accounts=accounts,
+        from_cache=from_cache,
+        cache_fetched_at=state._balances_cache.get("simplefin_fetched_at"),
+    )
+
+
 @router.get("/balances/summary", response_model=BalancesSummary)
 async def get_balances_summary(force: bool = Query(False)):
     """Aggregate balances across all accounts and compute net worth.
@@ -283,15 +328,9 @@ async def get_balances_summary(force: bool = Query(False)):
         )
         cached_accounts = _append_snaptrade_accounts(cached_accounts)
         fetched_at = state._balances_cache.get("simplefin_fetched_at")
-        total_investments = _compute_investments(cached_accounts)
-        return BalancesSummary(
-            net_worth=round(total_cash + total_investments - total_credit_debt, 2),
-            total_cash=round(total_cash, 2),
-            total_credit_debt=round(total_credit_debt, 2),
-            total_investments=total_investments,
-            accounts=cached_accounts,
+        return _build_summary(
+            cached_accounts, total_cash, total_credit_debt,
             from_cache=fetched_at is not None,
-            cache_fetched_at=fetched_at,
         )
 
     # ── force=true: fetch live from SimpleFIN ─────────────────────────────
@@ -316,15 +355,8 @@ async def get_balances_summary(force: bool = Query(False)):
         accounts_out, total_cash, total_credit_debt
     )
     accounts_out = _append_snaptrade_accounts(accounts_out)
-    total_investments = _compute_investments(accounts_out)
-    return BalancesSummary(
-        net_worth=round(total_cash + total_investments - total_credit_debt, 2),
-        total_cash=round(total_cash, 2),
-        total_credit_debt=round(total_credit_debt, 2),
-        total_investments=total_investments,
-        accounts=accounts_out,
-        from_cache=False,
-        cache_fetched_at=state._balances_cache.get("simplefin_fetched_at"),
+    return _build_summary(
+        accounts_out, total_cash, total_credit_debt, from_cache=False
     )
 
 

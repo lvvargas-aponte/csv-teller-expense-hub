@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import amortization
 import state
@@ -1033,4 +1033,152 @@ def compute_portfolio(as_of: Optional[date] = None) -> Dict[str, Any]:
         "underperforming": underperforming,
         "watch": watch,
         "properties": rows,
+    }
+
+
+def compute_real_estate_position(
+    counted_account_ids: Optional[Iterable[str]] = None,
+    as_of: Optional[date] = None,
+) -> Dict[str, Any]:
+    """Real estate's contribution to net worth, with already-counted debt split out.
+
+    Net worth is assembled from account balances, where a mortgage arrives
+    from the bank as a ``credit`` account and is subtracted like any other
+    liability — while the house securing it contributes nothing, because
+    property value lives in this module's tables and the balances code never
+    read them. That asymmetry is what makes a household with real equity read
+    as deeply negative.
+
+    Adding ``total_value`` corrects it, but only if the debt isn't then
+    subtracted twice. A loan whose ``account_id`` the caller has already
+    summed into its credit total is reported as ``linked_debt``: it is
+    included in ``total_debt`` and ``total_equity`` so this dict describes the
+    real position, but the caller must NOT subtract it again. Everything else
+    is ``unlinked_debt`` — hand-entered loans that appear in no account total,
+    which the caller does have to subtract.
+
+    So the caller's arithmetic is::
+
+        net_worth = cash + investments - credit_debt
+                    + total_value - unlinked_debt
+
+    ``counted_account_ids`` is the set of account IDs already in the caller's
+    credit total; pass None to treat every loan as unlinked. Only loans
+    secured by a property are considered — an auto or student loan is not a
+    real-estate position, and its account is already counted as credit.
+    """
+    repo = properties_repo.get_repo()
+    counted = set(counted_account_ids or ())
+
+    total_value = 0.0
+    valued_count = 0
+    unvalued: List[str] = []
+    property_ids = set()
+    for prop in repo.list_properties():
+        property_ids.add(prop.get("id"))
+        value = prop.get("current_value")
+        if value is None:
+            # Named, not silently dropped: a property with no valuation on
+            # file is a hole in net worth the user can actually go fill.
+            unvalued.append(prop.get("name") or prop.get("id") or "")
+            continue
+        total_value += float(value)
+        valued_count += 1
+
+    linked_debt = 0.0
+    unlinked_debt = 0.0
+    unlinked_loans: List[str] = []
+    for loan in repo.list_loans():
+        if loan.get("property_id") not in property_ids:
+            continue
+        balance = resolve_loan_balance(loan, as_of)
+        if balance is None:
+            continue
+        if loan.get("account_id") in counted:
+            linked_debt += balance
+        else:
+            unlinked_debt += balance
+            unlinked_loans.append(loan.get("name") or loan.get("id") or "")
+
+    return {
+        "property_count": len(property_ids),
+        "valued_count": valued_count,
+        "unvalued_properties": unvalued,
+        "total_value": round(total_value, 2),
+        "linked_debt": round(linked_debt, 2),
+        "unlinked_debt": round(unlinked_debt, 2),
+        "unlinked_loans": unlinked_loans,
+        "total_debt": round(linked_debt + unlinked_debt, 2),
+        "total_equity": round(total_value - linked_debt - unlinked_debt, 2),
+    }
+
+
+def _historical_loan_balance(loan: Dict[str, Any], as_of: date) -> Optional[float]:
+    """Balance on a past date. Unlike ``resolve_loan_balance``, a linked
+    account is useless here — it reports today's balance, not the one that
+    stood on ``as_of`` — so the schedule leads and the stored figures are the
+    fallback."""
+    scheduled = amortized_balance(loan, as_of)
+    if scheduled is not None:
+        return scheduled
+    if loan.get("current_principal") is not None:
+        return float(loan["current_principal"])
+    if loan.get("original_principal") is not None:
+        return float(loan["original_principal"])
+    return None
+
+
+def real_estate_at(
+    as_of: date,
+    counted_account_ids: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
+    """Real estate's net contribution on a past date, for the net-worth series.
+
+    The historical series is built from account snapshots, so a mortgage that
+    had a snapshot on that date is already subtracted; ``counted_account_ids``
+    is that snapshot's account set, and loans linked to it are skipped here.
+
+    Valuation lookup takes the newest valuation at or before ``as_of``, and
+    falls back to the property's current value when it has none that old.
+    Contributing zero instead would draw a cliff on the chart — net worth
+    leaping by the whole value of a house on the day its first valuation was
+    typed in — which reads as a real event and isn't one. Carrying the value
+    flat backwards understates past appreciation; that is the smaller lie, and
+    it errs toward showing less growth rather than more.
+    """
+    repo = properties_repo.get_repo()
+    counted = set(counted_account_ids or ())
+
+    total_value = 0.0
+    property_ids = set()
+    for prop in repo.list_properties():
+        property_ids.add(prop.get("id"))
+        chosen = None
+        for valuation in repo.list_valuations(prop["id"]):  # newest first
+            try:
+                captured = date.fromisoformat(str(valuation["as_of"])[:10])
+            except (ValueError, KeyError, TypeError):
+                continue
+            if captured <= as_of:
+                chosen = valuation.get("value")
+                break
+        if chosen is None:
+            chosen = prop.get("current_value")
+        if chosen is not None:
+            total_value += float(chosen)
+
+    unlinked_debt = 0.0
+    for loan in repo.list_loans():
+        if loan.get("property_id") not in property_ids:
+            continue
+        if loan.get("account_id") in counted:
+            continue
+        balance = _historical_loan_balance(loan, as_of)
+        if balance is not None:
+            unlinked_debt += balance
+
+    return {
+        "total_value": round(total_value, 2),
+        "unlinked_debt": round(unlinked_debt, 2),
+        "net_contribution": round(total_value - unlinked_debt, 2),
     }

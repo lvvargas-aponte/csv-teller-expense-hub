@@ -77,6 +77,50 @@ class GetCategorySpendingArgs(BaseModel):
     end_date: Optional[str] = Field(None, description="ISO date (YYYY-MM-DD) inclusive upper bound")
 
 
+class GetSafeToSpendArgs(BaseModel):
+    as_of: Optional[str] = Field(
+        None, description="ISO date (YYYY-MM-DD). Omit for today.",
+    )
+
+
+class GetPropertiesArgs(BaseModel):
+    property_id: Optional[str] = Field(
+        None, description="One property (prop_...). Omit for the whole portfolio.",
+    )
+
+
+class GetUsableEquityArgs(BaseModel):
+    property_id: Optional[str] = Field(
+        None, description="One property. Omit for borrowing capacity across all of them.",
+    )
+    max_ltv_pct: Optional[float] = Field(
+        None, description="Cash-out refinance ceiling as a percentage of value. Default 75.",
+    )
+    max_cltv_pct: Optional[float] = Field(
+        None, description="Combined-lien ceiling for a HELOC. Default 85.",
+    )
+
+
+class ProjectRetirementArgs(BaseModel):
+    """What-if overrides. Every field omitted runs the user's saved plan."""
+    retirement_spending_monthly: Optional[float] = Field(
+        None, description="Monthly spending target in retirement, in today's dollars.",
+    )
+    monthly_contribution: Optional[float] = Field(
+        None, description="Monthly investment contribution until retirement.",
+    )
+    investment_return_pct: Optional[float] = Field(
+        None, description="Annual return assumption, e.g. 7.0.",
+    )
+    target_retirement_age: Optional[int] = Field(
+        None, description="Fix the age instead of solving for the earliest feasible year.",
+    )
+
+
+class GetNextActionsArgs(BaseModel):
+    limit: int = Field(5, ge=1, le=10)
+
+
 _FactCategory = Literal["preference", "constraint", "goal", "life_event", "pattern"]
 
 
