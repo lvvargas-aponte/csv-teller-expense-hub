@@ -34,10 +34,53 @@ KIND_PRIORITY = {
     "emergency_fund": 2,
     "fund_goal": 3,
     "pay_extra": 4,
-    "review_property": 5,
-    "route_surplus": 6,
-    "tap_equity": 7,
+    "reduce_utilization": 5,
+    "review_property": 6,
+    "route_surplus": 7,
+    "tap_equity": 8,
+    "review_charge": 9,
 }
+
+# Urgency maps onto the three-level severity ``/api/alerts`` has always
+# spoken, so the Alerts card is a projection of this rule set rather than a
+# second one that quietly disagrees with it.
+SEVERITY_BY_URGENCY = {
+    "now": "error",
+    "this_week": "warn",
+    "this_month": "warn",
+    "fyi": "info",
+}
+
+ALERT_CATEGORY_BY_KIND = {
+    "spend_less": "budget",
+    "pay_bill": "bill",
+    "emergency_fund": "cash",
+    "fund_goal": "goal",
+    "pay_extra": "debt",
+    "reduce_utilization": "credit",
+    "review_property": "property",
+    "route_surplus": "surplus",
+    "tap_equity": "equity",
+    "review_charge": "recurring",
+}
+
+# Scoring models start penalising above roughly 30% of the limit, so that is
+# the figure a paydown suggestion should aim at rather than zero.
+_UTILIZATION_TARGET_PCT = 30.0
+_UTILIZATION_WATCH_PCT = 50.0
+_UTILIZATION_URGENT_PCT = 80.0
+
+# How far a recurring charge has to drift from its own median before it is
+# worth mentioning. Below this it is noise: subscriptions wobble.
+_RECURRING_DRIFT_PCT = 20.0
+
+# Subscriptions get a much lower dollar floor than ``_MIN_IMPACT_DOLLARS``.
+# A $4 rise on a $16 streaming plan is a real, permanent price change worth
+# a glance, and the general $25 threshold would suppress every one of them —
+# ``detect_recurring_charges`` drops a charge whose amounts spread more than
+# 60% around their mean, so by construction a still-recognised subscription
+# can never have moved by $25 unless it was expensive to begin with.
+_RECURRING_MIN_DOLLARS = 3.0
 
 # A coach that emits thirty items is a to-do list nobody reads.
 DEFAULT_LIMIT = 6
@@ -59,11 +102,21 @@ def _action(
     cta: Optional[Dict[str, str]] = None,
     why: Optional[List[str]] = None,
     source: str = "",
+    severity: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """Build one action.
+
+    ``severity`` is optional and defaults to the urgency mapping. The two are
+    different axes and mostly agree, but not always: a card at 95% of its
+    limit is *serious* without being something today's behaviour changes, so
+    it ranks as ``this_week`` on the Today page while still showing red in
+    the alerts feed. Rules only set it where the two genuinely part.
+    """
     return {
         "id": id,
         "kind": kind,
         "urgency": urgency,
+        "severity": severity or SEVERITY_BY_URGENCY.get(urgency, "info"),
         "title": title,
         "detail": detail,
         "amount": round(amount, 2) if amount is not None else None,
@@ -484,6 +537,143 @@ def rule_surplus_routing(ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
     )]
 
 
+def rule_credit_utilization(ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Cards carrying too much of their limit, and the paydown that fixes it.
+
+    Revolving credit only. ``infer_account_bucket`` files mortgages and auto
+    loans under ``type='credit'`` because they are liabilities, so a bare
+    type check would report a 30-year mortgage as 98% "utilized" — a
+    meaningless number that reads as an emergency.
+    """
+    from simplefin import is_revolving_credit
+
+    out: List[Dict[str, Any]] = []
+    period = _period_key(ctx["today"])
+    linked = state._balances_cache.get("simplefin_accounts", []) or []
+    manual = list(state._manual_accounts.values())
+
+    for acct in list(linked) + manual:
+        if not is_revolving_credit(acct):
+            continue
+        account_id = acct.get("id") or ""
+        details = state.account_details.get(account_id) or {}
+        try:
+            limit = float(details.get("credit_limit"))
+        except (TypeError, ValueError):
+            continue
+        if limit <= 0:
+            continue
+
+        balance = abs(float(acct.get("ledger") or 0.0))
+        pct = balance / limit * 100.0
+        if pct < _UTILIZATION_WATCH_PCT:
+            continue
+
+        target = limit * _UTILIZATION_TARGET_PCT / 100.0
+        paydown = round(balance - target, 2)
+        name = acct.get("name") or "Credit card"
+
+        out.append(_action(
+            id=f"utilization:{account_id}:{period}",
+            kind="reduce_utilization",
+            urgency="this_week" if pct >= _UTILIZATION_URGENT_PCT else "this_month",
+            # A near-maxed card is serious without being same-day: red in the
+            # feed, but it should not outrank "stop spending today".
+            severity="error" if pct >= _UTILIZATION_URGENT_PCT else "warn",
+            title=f"{name} is at {pct:.0f}% of its limit",
+            detail=(
+                f"${balance:,.0f} against a ${limit:,.0f} limit. Paying "
+                f"${paydown:,.0f} brings it under {_UTILIZATION_TARGET_PCT:.0f}%, "
+                f"which is where scoring models stop penalising it."
+            ),
+            amount=paydown,
+            impact={
+                "label": f"to reach {_UTILIZATION_TARGET_PCT:.0f}% utilization",
+                "value": paydown,
+                "horizon": "next statement",
+            },
+            why=[f"{pct:.0f}% of the ${limit:,.0f} limit in use"],
+            cta={"label": "Open payoff plan", "tab": "debt-payoff"},
+            source="rule:credit_utilization",
+        ))
+    return out
+
+
+def rule_recurring_anomaly(ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Subscriptions that quietly changed price.
+
+    Compared against each charge's own median rather than its average, so a
+    single outlier month doesn't move the baseline it is being judged
+    against.
+
+    **Known blind spot, inherited deliberately.** The candidate list comes
+    from ``detect_recurring_charges``, which discards a merchant whose
+    amounts spread more than 60% around their mean — so a charge that
+    *quadruples* stops looking recurring and is never considered here. The
+    alternative is a second recurrence detector that disagrees with the
+    Bills page, which is the exact failure this module was consolidated to
+    remove. Widening that gate belongs in ``analytics``, where every caller
+    would see the change.
+    """
+    import statistics
+
+    from analytics import (
+        _is_expense, _normalize_merchant, detect_recurring_charges,
+    )
+
+    by_key: Dict[str, List[Dict[str, Any]]] = {}
+    for txn in state.stored_transactions.values():
+        if not _is_expense(txn):
+            continue
+        try:
+            amount = abs(float(txn.get("amount") or 0))
+        except (TypeError, ValueError):
+            continue
+        key = _normalize_merchant(txn.get("description", ""))
+        if not key or amount <= 0:
+            continue
+        by_key.setdefault(key, []).append(
+            {"amount": amount, "date": txn.get("date", "")}
+        )
+
+    out: List[Dict[str, Any]] = []
+    for entry in detect_recurring_charges():
+        items = by_key.get(entry["merchant_key"], [])
+        if len(items) < 2:
+            continue
+        latest = max(items, key=lambda i: i["date"])
+        median = statistics.median(i["amount"] for i in items)
+        if median <= 0:
+            continue
+
+        difference = latest["amount"] - median
+        drift_pct = abs(difference) / median * 100.0
+        if drift_pct < _RECURRING_DRIFT_PCT or abs(difference) < _RECURRING_MIN_DOLLARS:
+            continue
+
+        direction = "up" if difference > 0 else "down"
+        label = (entry.get("sample_description") or entry["merchant_key"])[:40]
+        out.append(_action(
+            id=f"recurring_drift:{entry['merchant_key']}:{latest['date']}",
+            kind="review_charge",
+            urgency="fyi",
+            title=f"{label} went {direction} ${abs(difference):,.0f}",
+            detail=(
+                f"Charged ${latest['amount']:,.2f}, against a usual "
+                f"${median:,.2f} — {drift_pct:.0f}% {direction}."
+            ),
+            amount=round(abs(difference), 2),
+            impact={
+                "label": f"{direction} vs. usual",
+                "value": round(abs(difference), 2),
+                "horizon": "per charge",
+            },
+            cta={"label": "See spending", "tab": "spending"},
+            source="rule:recurring_anomaly",
+        ))
+    return out
+
+
 RULES = (
     rule_daily_allowance,
     rule_budget_overspend,
@@ -492,8 +682,10 @@ RULES = (
     rule_emergency_fund_floor,
     rule_promo_apr_expiring,
     rule_extra_payment_impact,
+    rule_credit_utilization,
     rule_property_underperforming,
     rule_surplus_routing,
+    rule_recurring_anomaly,
 )
 
 
@@ -626,3 +818,43 @@ def verify_narration(narration: str, actions: List[Dict[str, Any]]) -> bool:
     # Small integers are ordinals and counts ("the 3 things", "2 days"), not
     # claims about money.
     return all(n in allowed or n <= 31 for n in _numbers_in(narration))
+
+
+# ---------------------------------------------------------------------------
+# Alerts projection
+# ---------------------------------------------------------------------------
+
+# The Alerts card is a scannable feed rather than a ranked to-do list, so it
+# gets a higher ceiling than the six actions the Today page shows.
+ALERT_LIMIT = 20
+
+
+def build_alerts(today: Optional[date] = None) -> Dict[str, Any]:
+    """The same actions, flattened into the alert shape the dashboard speaks.
+
+    ``/api/alerts`` used to carry its own copy of the budget, goal,
+    utilization and recurring-charge rules, which had already drifted from
+    the versions here — the two screens could and did disagree about whether
+    a category was over budget. One rule set, two presentations: this
+    function is the seam, and it adds no logic of its own beyond mapping
+    urgency to severity and kind to category.
+    """
+    result = build_actions(today=today, limit=ALERT_LIMIT)
+
+    alerts: List[Dict[str, Any]] = []
+    for action in result["actions"]:
+        tab = (action.get("cta") or {}).get("tab")
+        alerts.append({
+            "severity": action["severity"],
+            "category": ALERT_CATEGORY_BY_KIND.get(action["kind"], action["kind"]),
+            "message": action["title"],
+            "detail": action["detail"],
+            "link": f"/finances/{tab}" if tab else None,
+            "action_id": action["id"],
+        })
+
+    counts = {"error": 0, "warn": 0, "info": 0}
+    for alert in alerts:
+        counts[alert["severity"]] = counts.get(alert["severity"], 0) + 1
+
+    return {"alerts": alerts, "counts": counts}

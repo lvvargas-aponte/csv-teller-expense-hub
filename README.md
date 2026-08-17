@@ -1,14 +1,27 @@
-# Bank Statement & Shared Expense Tracker
+# Personal Finance Hub
 
-## 🎯 Overview
-This app helps you:
-- Connect bank accounts via SimpleFIN and pull transactions directly from the UI
-- Auto-import CSV files from Discover & Barclays
-- Review and mark shared expenses, then send them to Google Sheets
-- Track live account balances and net worth (SimpleFIN + manually added accounts)
-- Plan debt payoff with avalanche or snowball strategy
-- Get AI-powered spending insights via a local LLM (optional)
-- Chat with a virtual finance advisor that sees your transactions, balances, and shared splits (optional)
+A self-hosted wealth engine for a household that buys and holds rental property: tenants amortize the mortgages, the mortgages finish, and the rental income carries you out of the W2 job.
+
+It started as a shared-expense tracker and still does that. What it mainly does now is answer forward-looking questions.
+
+## 🎯 What it answers
+
+| Question | Where |
+|---|---|
+| What can I spend today without derailing anything? | **Today** — a goal-funded daily envelope; overspending lowers tomorrow by construction |
+| What should I do right now? | **Today** — ranked, dated, dollar-quantified actions from eleven deterministic rules |
+| How much of that mortgage payment was principal? | **Loans** — a real amortization schedule, to the cent |
+| How is each rental actually performing? | **Properties** — NOI, DSCR, cash-on-cash, pro forma vs. tagged actuals |
+| How much equity could I borrow, and what would it cost? | **Equity & Deals** — every extractable figure paired with its payment increase |
+| Where should this spare $500 go? | **Spare Money** — a strict waterfall, with the skipped tiers explained |
+| When can I retire, and on what? | **Retirement** — deterministic projection to the first *sustainable* year |
+| Should I pay this off or invest it? | **Spare Money** — guaranteed returns and hoped-for ones, labelled apart |
+
+Plus what it always did: SimpleFIN bank sync, Discover/Barclays CSV import, shared-expense splits to Google Sheets, budgets, goals, bills, investment holdings via SnapTrade, and a local-LLM advisor.
+
+Everything runs on your own machine. No account, no cloud, no telemetry — the only outbound calls are the ones you configure (SimpleFIN, SnapTrade, Google Sheets) and a local Ollama.
+
+**Full documentation** is served in-app at `/help`, or build it with `mkdocs build`.
 
 ---
 
@@ -155,40 +168,42 @@ chmod +x run_csv_watcher.sh
 ```
 .
 ├── docker-compose.yaml
-├── run_csv_watcher.sh
+├── mkdocs.yml                   # in-app help, served at /help
+├── docs/                        # the real documentation
 ├── .env                         # ← create from .env.example (do not commit)
-├── docs/
-│   └── QUICK_START.md
 ├── backend/
-│   ├── Dockerfile
-│   ├── main.py
-│   ├── config.py
-│   ├── csv_parser.py
-│   ├── gsheet_integration.py
-│   ├── csv_watcher_script.py
-│   ├── requirements.txt
-│   ├── manual_accounts.json     # ← auto-created; stores manually-added balances
+│   ├── main.py                  # wires ~20 routers under /api
+│   ├── analytics.py             # shared business logic; routers stay thin
+│   ├── amortization.py          # pure, Decimal-internal loan math
+│   ├── properties.py            # rental economics, equity, deal analysis
+│   ├── retirement.py            # deterministic projection
+│   ├── allocation.py            # the spare-money waterfall
+│   ├── coach.py                 # the rule set behind Today and Alerts
+│   ├── bills.py  debt_payments.py  csv_parser.py  categorizer.py
+│   ├── agent/                   # Fin's tool-use harness + registry
+│   ├── db/                      # typed SQLAlchemy repos (Protocol + Pg + InMemory)
+│   ├── alembic/versions/        # migrations; run automatically on boot
+│   ├── routers/                 # HTTP only
+│   ├── tests_unit/              # no database required
+│   ├── tests/                   # integration; needs Postgres
 │   └── credentials.json         # ← add this (do not commit)
 ├── frontend/
-│   ├── Dockerfile
-│   ├── package.json
 │   └── src/
-│       ├── App.js               # shell: header, nav, routing
-│       ├── index.js
-│       ├── index.css
+│       ├── api/                 # one module per domain, all axios
 │       ├── utils/
-│       │   └── formatting.js
 │       └── components/
-│           ├── FinancesPage.js  # Balances + Payoff Planner + Insights
-│           ├── AccountsModal.js
-│           ├── SyncModal.js
-│           ├── EditModal.js
-│           ├── NoteModal.js
-│           └── ...
+│           ├── finances/        # TodayPage, PropertiesPage, LoansPage,
+│           │                    # EquityPage, AllocatePage, RetirementPage,
+│           │                    # DashboardTab, cards/, payoff/, …
+│           └── ui/              # Field, Select, Spin, KpiCard, …
 └── csv_imports/                 # created automatically
     ├── processed/
     └── failed/
 ```
+
+**Where the logic lives.** Routers are HTTP adapters and nothing else; business logic sits in `analytics.py` or a domain module beside it. `amortization.py`, `retirement.py` and `allocation.py` import no state at all — hand them a dataclass, get an answer, no database and no clock beyond the `as_of` you pass. That's why they're covered by a unit suite that runs offline.
+
+**Two persistence styles, on purpose.** Transactions, budgets, goals and account metadata are JSONB blobs behind a dict-shaped facade (`store.py`), because their shape changes constantly. Properties, valuations, loans, holdings and balance snapshots are typed tables with real foreign keys, because they have relational shape and money precision matters across a 360-month schedule.
 
 > SimpleFIN needs no certificates or app registration — connecting a bank is just pasting a Setup Token in the UI (see below).
 
@@ -196,7 +211,7 @@ chmod +x run_csv_watcher.sh
 
 ## 🔄 Workflow
 
-The app has two pages, selectable from the tabs in the header:
+Two top-level pages in the header — **Transactions** for review and splits, **Finances** for everything else. Finances has its own sidebar, grouped by what you're trying to do rather than by data type:
 
 ---
 
@@ -241,23 +256,57 @@ The Access URL from a claimed Setup Token is saved automatically to `SIMPLEFIN_A
 
 ### Finances page
 
-#### Account Balances
-- Shows live balances pulled from all connected SimpleFIN accounts
-- Displays net worth (cash + savings minus credit debt)
-- Click **+ Add Account** to manually add a bank or account not connected via SimpleFIN — these are saved to `backend/manual_accounts.json` and persist across restarts
-- Manually added accounts show a **Manual** badge and can be removed with ✕
+Deep-linkable at `/finances/<tab>`.
+
+| Section | Tabs |
+|---|---|
+| **Overview** | Today · Dashboard · Accounts |
+| **Spending** | Spending · Budgets · Bills |
+| **Debt** | Payoff Plan · Loans |
+| **Wealth** | Spare Money · Properties · Equity & Deals · Investments · Goals |
+| **Future** | Retirement |
+| **Tools** | Knowledge · Ask Fin |
+
+#### Today
+One number in large type: what you can spend today without derailing a bill, a debt minimum, or a goal contribution. Below it, the ranked next actions.
+
+The daily figure is `(income − bills − debt minimums − goal contributions − spent so far) ÷ days left`, recomputed on every load. There is deliberately no carry-over ledger — overspending lowers tomorrow because the arithmetic says so, not because a second store is tracking it.
+
+When no income can be detected, it says so instead of guessing. That refusal is the feature.
+
+#### Properties & Loans
+Add a property with its purchase price, rent, and full operating-expense model, then attach loans. You get NOI (excluding debt service — the classic error), DSCR, cap rate, cash-on-cash, LTV, equity, and a performance rating with quantified reasons.
+
+Loans produce a real amortization schedule. **`GET /api/loans/{id}/current-payment` answers "how much of this month's payment is principal"** and matches a servicer statement to the cent — `Decimal` internally, `float` at the boundary.
+
+Tag transactions to a property and the page reports pro forma and actuals side by side, never blended, each labelled with how many months of data stand behind it.
+
+#### Equity & Deals
+Cash-out refinance and HELOC scenarios per property. Every extractable amount is rendered with its new payment, the payment delta, the DSCR that survives it, and the resulting cash flow — because a number that looks like free money is actually a payment increase.
+
+The deal analyzer's headline is **portfolio** cash flow, not the deal's: a purchase funded by a HELOC on something you already own can look positive standalone and still reduce your monthly income.
+
+#### Spare Money
+A strict waterfall — employer match → emergency buffer → debt above your expected return → tax-advantaged room → property fund → brokerage or extra principal. Each tier takes what it needs and passes the rest down.
+
+Unknown inputs produce a question, not an assumption. Guaranteed returns and projected ones are labelled apart. And the **skipped** list is half the answer, because "why not just pay off the house?" is the question that actually gets asked.
+
+#### Retirement
+The mechanic it exists to show: rent drifts up with inflation, a fixed mortgage payment doesn't, and then the mortgage *ends* — and that property's cash flow jumps by the whole payment, permanently.
+
+"Earliest retirement year" means the first year that works **and keeps working**. A crossing that later reverses when inflation outruns a fixed income stream isn't a retirement date.
+
+Deterministic, with three sensitivity rows instead of a Monte Carlo probability that assumptions this soft couldn't honestly support.
 
 #### Debt Payoff Planner
 - Credit accounts from SimpleFIN are pre-filled automatically; add more rows manually
-- Choose **Avalanche** (highest APR first — minimises total interest) or **Snowball** (lowest balance first — faster early wins)
-- Enter an optional extra monthly payment to see how much interest you save
-- Click **Calculate** to see the payoff date and total interest per account
-- Click **🤖 Ask AI Advisor** for personalised advice from a local Llama model (requires Ollama)
+- **Avalanche** (highest APR first) or **Snowball** (lowest balance first)
+- A freed-up minimum payment rolls into the next debt — that cascade is the defining mechanic of both strategies
+- Mortgages are tracked but excluded from the simulation: ranking on APR alone would send the extra payment to a 3% mortgage ahead of a 29% card
+- **🤖 Ask AI Advisor** for a narrative on the plan (requires Ollama)
 
-#### Spending Insights
-- Click **✨ Show Insights** to load an AI-powered breakdown of your spending
-- Shows spending by category for the last 3 months, a next-month forecast, and an AI summary
-- Requires Ollama running locally (`ollama serve`); a nudge card is shown if it isn't available
+#### Dashboard
+Eleven cards in a narrative arc — Position → Flow → Trend → Assets → Constraints → Commitments → Signals. **⠿ Arrange cards** makes the grid draggable and resizable; it's off by default so a stray drag on a chart doesn't rearrange a screen you were only reading.
 
 #### Virtual Advisor (chat) — "Fin"
 - Switch to the **🤖 Advisor** tab on the Finances page to chat with a household-finance advisor
@@ -272,7 +321,9 @@ The Access URL from a claimed Setup Token is saved automatically to `SIMPLEFIN_A
 **Two execution modes** (controlled by `ADVISOR_AGENT_MODE`):
 
 - **RAG mode (default, `false`)** — single-shot: a full financial snapshot + similar past turns / transactions / documents are stuffed into one system prompt, then one call to Ollama.
-- **Agent mode (opt-in, `true`)** — bounded tool-use loop: Fin sees a lean facts header plus a typed tool registry and decides what to look up. Tools include `search_transactions`, `get_balance`, `get_debt`, `get_budget_status`, `get_goal_status`, and `project_cashflow`. Every turn's reasoning chain is persisted as JSONB on `conversation_turns.trajectory` for inspection and offline eval.
+- **Agent mode (opt-in, `true`)** — bounded tool-use loop: Fin sees a lean facts header plus a typed tool registry and decides what to look up. Seventeen tools, covering transactions, balances, debt, budgets, goals, spending roll-ups, investments, cashflow, documents, memory — plus `get_safe_to_spend`, `get_properties`, `get_usable_equity`, `project_retirement` and `get_next_actions`. Every turn's reasoning chain is persisted as JSONB on `conversation_turns.trajectory` for inspection and offline eval.
+
+  The registry is capped at seventeen by a unit test, because local-model *selection* accuracy degrades before the context window does. `get_next_actions` returns the Today page's list verbatim so chat and the app can't disagree about what to do; `project_retirement` samples five years rather than dumping fifty.
 
   Requires Qwen 2.5 14B+ (or comparable) for reliable local tool-calling. See [docs/concepts/advisor.md → Agent harness mode](docs/concepts/advisor.md#agent-harness-mode-opt-in) for the tool catalog, guards (max iterations, hallucinated tool, repeated call, invalid args), and CI coverage.
 
@@ -336,10 +387,32 @@ curl -X POST http://localhost:8000/api/upload-csv \
 
 ---
 
+## ✅ Tests
+
+```bash
+# Backend, no database needed — must stay green offline
+docker compose exec backend python -m pytest tests_unit -q
+
+# Backend integration (needs Postgres)
+docker compose exec backend python -m pytest tests -q
+
+# Frontend
+docker compose exec frontend npx craco test --watchAll=false
+
+# Docs must build clean
+mkdocs build --strict
+```
+
+> **The backend does not hot-reload.** After changing Python, run `docker compose restart backend` or you'll be testing the old code.
+
+---
+
 ## 📝 Notes
 
-- **Transactions** live in memory until sent to Google Sheets. Restarting the app clears the queue.
-- **Manually added balances** are persisted to `backend/manual_accounts.json` and survive restarts.
+- **Everything persists to Postgres.** Transactions, balances, budgets, goals, properties, loans and conversations all survive restarts; Alembic migrations run automatically on boot.
 - All transaction sources (SimpleFIN + CSVs) appear together in one review table.
 - The CSV watcher processes files one at a time.
+- **Single household, no auth.** Every single-row table is keyed `'household'`. This is designed to run on your own machine — don't expose it to the internet as-is.
+- **Property valuations are user-entered**, and equity, LTV and the entire retirement projection inherit that subjectivity. The UI shows `as_of` dates prominently rather than implying precision the data doesn't have.
+- **It won't tell you to sell a property.** It surfaces quantified reasons — negative cash flow, DSCR under 1.0, cash-on-cash below what an index fund would return — and leaves the decision to you.
 - MIT License — feel free to fork and adapt for your household.

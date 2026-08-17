@@ -411,6 +411,112 @@ class TestEndpoint:
             "/api/coach/actions", params={"as_of": "08/15/2026"}
         ).status_code == 422
 
-    def test_alerts_endpoint_is_untouched(self, client):
-        """The AlertsCard still depends on it."""
+    def test_alerts_endpoint_still_answers(self, client):
+        """The AlertsCard depends on it — now as a projection of these rules."""
         assert client.get("/api/alerts").status_code == 200
+
+
+class TestRecurringAnomaly:
+    def _charge(self, tid, month, amount, description="NETFLIX.COM"):
+        state.stored_transactions[tid] = {
+            "id": tid, "transaction_id": tid,
+            "date": f"2026-{month:02d}-08",
+            "description": description, "amount": amount,
+            "transaction_type": "debit", "source": "simplefin",
+            "category": "Entertainment",
+        }
+
+    def test_a_price_rise_is_flagged_against_the_median(self):
+        for i, month in enumerate(range(3, 8)):
+            self._charge(f"n{i}", month, 15.99)
+        self._charge("n_new", 8, 22.99)
+
+        actions = coach.rule_recurring_anomaly({"today": AUG_15})
+        assert len(actions) == 1
+        assert "up" in actions[0]["title"]
+        assert actions[0]["amount"] == 7.0
+
+    def test_the_median_ignores_one_odd_month(self):
+        """An average would let a single outlier move the baseline it is
+        being judged against; a median doesn't."""
+        for i, month in enumerate(range(3, 7)):
+            self._charge(f"n{i}", month, 15.99)
+        self._charge("odd", 7, 21.99)       # one-off
+        self._charge("n_new", 8, 21.99)
+
+        actions = coach.rule_recurring_anomaly({"today": AUG_15})
+        assert actions and actions[0]["amount"] == 6.0
+
+    def test_a_small_wobble_is_not_worth_mentioning(self):
+        # 30% up, but $1.50 — a real change, not one worth an alert.
+        for i, month in enumerate(range(4, 8)):
+            self._charge(f"n{i}", month, 4.99, "ICLOUD STORAGE")
+        self._charge("n_new", 8, 6.49, "ICLOUD STORAGE")
+
+        assert coach.rule_recurring_anomaly({"today": AUG_15}) == []
+
+    def test_a_single_charge_has_no_baseline_to_judge_against(self):
+        self._charge("n0", 8, 15.99)
+        assert coach.rule_recurring_anomaly({"today": AUG_15}) == []
+
+    def test_a_drop_is_reported_as_a_drop(self):
+        for i, month in enumerate(range(3, 8)):
+            self._charge(f"n{i}", month, 22.99)
+        self._charge("n_new", 8, 15.99)
+
+        actions = coach.rule_recurring_anomaly({"today": AUG_15})
+        assert actions and "down" in actions[0]["title"]
+
+
+class TestAlertsProjection:
+    """One rule set, two presentations. The convergence is the point."""
+
+    def test_alerts_carry_the_shape_the_dashboard_card_expects(self):
+        _seed_income()
+        _spend("huge", "2026-08-02", 99999)
+
+        payload = coach.build_alerts(today=AUG_15)
+        assert payload["alerts"]
+        for alert in payload["alerts"]:
+            assert alert["severity"] in ("error", "warn", "info")
+            assert alert["message"]
+            assert "category" in alert and "link" in alert
+
+    def test_counts_agree_with_the_alerts_returned(self):
+        _seed_income()
+        _spend("huge", "2026-08-02", 99999)
+
+        payload = coach.build_alerts(today=AUG_15)
+        assert sum(payload["counts"].values()) == len(payload["alerts"])
+
+    def test_the_two_surfaces_cannot_disagree_about_a_budget(self):
+        """The drift this convergence exists to prevent."""
+        _seed_income()
+        state.budgets["Dining"] = {"category": "Dining", "monthly_limit": 200.0}
+        _spend("over", "2026-08-03", 900.0)
+
+        actions = coach.build_actions(today=AUG_15, limit=coach.ALERT_LIMIT)["actions"]
+        alerts = coach.build_alerts(today=AUG_15)["alerts"]
+
+        assert [a["title"] for a in actions] == [a["message"] for a in alerts]
+
+    def test_a_dismissed_action_disappears_from_the_alerts_feed_too(self):
+        _seed_income()
+        state.budgets["Dining"] = {"category": "Dining", "monthly_limit": 200.0}
+        _spend("over", "2026-08-03", 900.0)
+
+        target = next(
+            a for a in coach.build_actions(today=AUG_15)["actions"]
+            if a["kind"] == "spend_less" and "Dining" in a["title"]
+        )
+        state.coach_dismissals[target["id"]] = {"dismissed_at": "2026-08-15"}
+
+        messages = [a["message"] for a in coach.build_alerts(today=AUG_15)["alerts"]]
+        assert target["title"] not in messages
+
+    def test_links_point_at_real_tabs(self):
+        _seed_income()
+        _spend("huge", "2026-08-02", 99999)
+        for alert in coach.build_alerts(today=AUG_15)["alerts"]:
+            if alert["link"]:
+                assert alert["link"].startswith("/finances/")

@@ -78,8 +78,8 @@ All endpoints are mounted under `/api`. The static help site lives at `/help/`. 
 | `GET` | `/api/insights/forecast` | Next-month forecast |
 | `GET` | `/api/dashboard` | Dashboard rollups |
 | `GET` | `/api/dashboard/income-vs-expenses` | Trend |
-| `GET` | `/api/dashboard/layout` / `PUT` / `DELETE` | Card layout persistence |
-| `GET` | `/api/alerts` | Budget / unusual-spend alerts |
+| `GET` | `/api/dashboard/layout` / `PUT` / `DELETE` | Card layout, hidden cards; `DELETE` restores the default |
+| `GET` | `/api/alerts` | Flat projection of the coach's rules — see below |
 | `GET` | `/api/bills/upcoming` | Recurring charges + due dates |
 
 ## Budgets & goals
@@ -137,16 +137,22 @@ All endpoints are mounted under `/api`. The static help site lives at `/help/`. 
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/coach/actions` | Ranked next actions with amounts and deadlines |
+| `GET` | `/api/coach/actions` | Ranked next actions with amounts and deadlines (`?limit=`, `?as_of=`) |
 | `POST` | `/api/coach/narrate` | Optional LLM voice-over; numbers verified against the rules |
 | `POST/DELETE` | `/api/coach/actions/{id}/dismiss` | Hide / restore one action |
 
-## Tools (debt payoff)
+`GET /api/alerts` is the same rule set flattened to `{severity, category, message, link}`
+for the dashboard's Alerts card. One rule set, two presentations — a dismissal
+applies to both.
+
+## Tools
 
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/tools/payoff-plan` | Avalanche / snowball calculator |
 | `POST` | `/api/tools/payoff-advice` | AI narrative on the plan |
+| `POST` | `/api/tools/allocate` | Where spare money goes: `{amount, cadence}` → ordered split, skipped tiers, questions, caveats |
+| `GET/PUT` | `/api/tools/allocation-settings` | Employer match, buffer months, contribution room |
 
 ## Documents (RAG)
 
