@@ -1,0 +1,161 @@
+"""The push/pull diff. Pure — no I/O, no database, no network.
+
+Two rules carry the whole design: an instance writes only rows it owns, and
+within a row it writes only the columns it owns. Everything else here is
+bookkeeping around those two.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
+from typing import Optional
+
+from sheet_sync import contract
+from sheet_sync.gateway import CellUpdate
+
+
+@dataclass(frozen=True)
+class DesiredRow:
+    txn_id: str
+    owner: str
+    date: date
+    description: str
+    amount: Decimal
+    who: str
+    owes_1: Optional[Decimal]
+    owes_2: Optional[Decimal]
+    notes: str
+    reviewed: bool
+    carried_from: Optional[str]
+
+
+@dataclass(frozen=True)
+class SheetRow:
+    row_number: int
+    values: dict[str, str]
+
+
+@dataclass(frozen=True)
+class Correction:
+    txn_id: str
+    column_name: str
+    sheet_value: str
+    app_value: str
+
+
+@dataclass(frozen=True)
+class PushPlan:
+    updates: list[CellUpdate] = field(default_factory=list)
+    appends: list[list[str]] = field(default_factory=list)
+    delete_row_numbers: list[int] = field(default_factory=list)
+    corrections: list[Correction] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PullResult:
+    peer_rows: list[SheetRow] = field(default_factory=list)
+    my_disputes: dict[str, dict[str, str]] = field(default_factory=dict)
+
+
+def read_sheet(rows: list[list[str]], index: dict[str, int]) -> list[SheetRow]:
+    """Parse data rows into ``SheetRow``s, keeping 1-based sheet row numbers.
+
+    Rows without a Txn ID are outside the contract — a hand-entered line, a
+    totals footer — and are left strictly alone.
+    """
+    parsed: list[SheetRow] = []
+    for offset, raw in enumerate(rows[1:], start=2):
+        values = {
+            key: (raw[i] if i < len(raw) else "").strip()
+            for key, i in index.items()
+        }
+        if values.get("txn_id"):
+            parsed.append(SheetRow(row_number=offset, values=values))
+    return parsed
+
+
+def _desired_cells(row: DesiredRow) -> dict[str, str]:
+    return {
+        "date": contract.format_date(row.date),
+        "description": row.description,
+        "amount": contract.format_amount(row.amount),
+        "who": row.who,
+        "owes_1": contract.format_amount(row.owes_1),
+        "owes_2": contract.format_amount(row.owes_2),
+        "notes": row.notes,
+        "reviewed": contract.format_bool(row.reviewed),
+        "txn_id": row.txn_id,
+        "owner": row.owner,
+        "carried_from": row.carried_from or "",
+    }
+
+
+def plan_push(
+    desired: list[DesiredRow],
+    current: list[SheetRow],
+    index: dict[str, int],
+    me: str,
+    headers: list[str],
+) -> PushPlan:
+    column_count = len(headers)
+    by_id = {r.values["txn_id"]: r for r in current if r.values.get("owner") == me}
+    desired_by_id = {d.txn_id: d for d in desired}
+
+    updates: list[CellUpdate] = []
+    appends: list[list[str]] = []
+    corrections: list[Correction] = []
+
+    for txn_id, want in desired_by_id.items():
+        cells = _desired_cells(want)
+        existing = by_id.get(txn_id)
+        if existing is None:
+            row = [""] * column_count
+            for key, value in cells.items():
+                row[index[key]] = value
+            appends.append(row)
+            continue
+        for key, value in cells.items():
+            on_sheet = existing.values.get(key, "")
+            if on_sheet != value:
+                updates.append(
+                    CellUpdate(
+                        row=existing.row_number, col=index[key] + 1, value=value
+                    )
+                )
+                corrections.append(
+                    Correction(
+                        txn_id=txn_id,
+                        column_name=headers[index[key]],
+                        sheet_value=on_sheet,
+                        app_value=value,
+                    )
+                )
+
+    deletes = sorted(
+        (r.row_number for tid, r in by_id.items() if tid not in desired_by_id),
+        reverse=True,
+    )
+
+    return PushPlan(
+        updates=updates,
+        appends=appends,
+        delete_row_numbers=deletes,
+        corrections=corrections,
+    )
+
+
+def plan_pull(current: list[SheetRow], me: str) -> PullResult:
+    peer_rows: list[SheetRow] = []
+    my_disputes: dict[str, dict[str, str]] = {}
+
+    for row in current:
+        if row.values.get("owner") == me:
+            if any(row.values.get(k) for k in contract.DISPUTER_KEYS):
+                my_disputes[row.values["txn_id"]] = {
+                    k: row.values.get(k, "") for k in contract.DISPUTER_KEYS
+                }
+        else:
+            peer_rows.append(row)
+
+    return PullResult(peer_rows=peer_rows, my_disputes=my_disputes)
