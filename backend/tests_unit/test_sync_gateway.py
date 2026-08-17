@@ -5,7 +5,12 @@ so its semantics are pinned here explicitly.
 """
 import pytest
 
-from sheet_sync.gateway import CellUpdate, InMemoryGateway, WorksheetNotFound
+from sheet_sync.gateway import (
+    CellUpdate,
+    InMemoryGateway,
+    WorksheetExists,
+    WorksheetNotFound,
+)
 
 
 def _gw():
@@ -71,6 +76,23 @@ class TestWrites:
         gw.delete_rows("June 2026", [2, 3])
         assert len(gw.read_rows("June 2026")) == 1
 
+    def test_delete_rows_out_of_range_raises(self):
+        """A stale row number is a real defect and must fail loudly, like the
+        real API does, rather than being silently skipped."""
+        gw = _gw()
+        with pytest.raises(IndexError):
+            gw.delete_rows("June 2026", [99])
+
+    def test_write_cells_empty_against_missing_worksheet_raises(self):
+        gw = _gw()
+        with pytest.raises(WorksheetNotFound):
+            gw.write_cells("Nope 2026", [])
+
+    def test_append_rows_empty_against_missing_worksheet_raises(self):
+        gw = _gw()
+        with pytest.raises(WorksheetNotFound):
+            gw.append_rows("Nope 2026", [])
+
 
 class TestWorksheetLifecycle:
     def test_duplicate_copies_content(self):
@@ -88,6 +110,11 @@ class TestWorksheetLifecycle:
     def test_duplicate_onto_existing_title_raises(self):
         gw = _gw()
         with pytest.raises(ValueError):
+            gw.duplicate_worksheet("June 2026", "_sync")
+
+    def test_duplicate_onto_existing_title_raises_worksheet_exists(self):
+        gw = _gw()
+        with pytest.raises(WorksheetExists):
             gw.duplicate_worksheet("June 2026", "_sync")
 
     def test_clear_rows_from_keeps_the_header(self):

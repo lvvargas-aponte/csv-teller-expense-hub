@@ -17,6 +17,15 @@ class WorksheetNotFound(Exception):
     """No worksheet with that title exists in the spreadsheet."""
 
 
+class WorksheetExists(ValueError):
+    """A worksheet with the target title already exists.
+
+    Subclasses ``ValueError`` so callers that tolerate a duplicate-title
+    race (e.g. the user creating a tab by hand) can keep catching
+    ``ValueError`` regardless of which gateway raised it.
+    """
+
+
 @dataclass(frozen=True)
 class CellUpdate:
     """A single cell write. ``row`` and ``col`` are 1-based, as Sheets counts."""
@@ -37,7 +46,7 @@ class SheetGateway(Protocol):
     def set_hidden(self, title: str, hidden: bool) -> None: ...
 
 
-class InMemoryGateway:
+class InMemoryGateway(SheetGateway):
     """A spreadsheet in a dict. Used by every test; never used in production."""
 
     def __init__(self, data: dict[str, list[list[str]]] | None = None) -> None:
@@ -61,6 +70,8 @@ class InMemoryGateway:
     def write_cells(self, title: str, updates: list[CellUpdate]) -> None:
         self.calls.append("write_cells")
         rows = self._sheet(title)
+        if not updates:
+            return
         for u in updates:
             while len(rows) < u.row:
                 rows.append([])
@@ -71,20 +82,26 @@ class InMemoryGateway:
 
     def append_rows(self, title: str, rows: list[list[str]]) -> None:
         self.calls.append("append_rows")
-        self._sheet(title).extend(copy.deepcopy(rows))
+        sheet = self._sheet(title)
+        if not rows:
+            return
+        sheet.extend(copy.deepcopy(rows))
 
     def delete_rows(self, title: str, row_numbers: list[int]) -> None:
         self.calls.append("delete_rows")
         rows = self._sheet(title)
         # Descending, so each deletion cannot renumber the ones still pending.
         for n in sorted(set(row_numbers), reverse=True):
-            if 1 <= n <= len(rows):
-                del rows[n - 1]
+            if not 1 <= n <= len(rows):
+                raise IndexError(
+                    f"row {n} out of range for {len(rows)}-row worksheet {title!r}"
+                )
+            del rows[n - 1]
 
     def duplicate_worksheet(self, source_title: str, new_title: str) -> None:
         self.calls.append("duplicate_worksheet")
         if new_title in self.data:
-            raise ValueError(f"Worksheet {new_title!r} already exists")
+            raise WorksheetExists(f"Worksheet {new_title!r} already exists")
         self.data[new_title] = copy.deepcopy(self._sheet(source_title))
 
     def clear_rows_from(self, title: str, start_row: int) -> None:
@@ -95,10 +112,13 @@ class InMemoryGateway:
     def set_hidden(self, title: str, hidden: bool) -> None:
         self.calls.append("set_hidden")
         self._sheet(title)
-        self.hidden.add(title) if hidden else self.hidden.discard(title)
+        if hidden:
+            self.hidden.add(title)
+        else:
+            self.hidden.discard(title)
 
 
-class GspreadGateway:
+class GspreadGateway(SheetGateway):
     """The production gateway. The only module that imports gspread directly."""
 
     def __init__(self, spreadsheet: gspread.Spreadsheet) -> None:
@@ -117,16 +137,17 @@ class GspreadGateway:
         return self._ws(title).get_all_values()
 
     def write_cells(self, title: str, updates: list[CellUpdate]) -> None:
+        ws = self._ws(title)
         if not updates:
             return
-        ws = self._ws(title)
         cells = [gspread.Cell(u.row, u.col, u.value) for u in updates]
         ws.update_cells(cells, value_input_option="USER_ENTERED")
 
     def append_rows(self, title: str, rows: list[list[str]]) -> None:
+        ws = self._ws(title)
         if not rows:
             return
-        self._ws(title).append_rows(rows, value_input_option="USER_ENTERED")
+        ws.append_rows(rows, value_input_option="USER_ENTERED")
 
     def delete_rows(self, title: str, row_numbers: list[int]) -> None:
         ws = self._ws(title)
@@ -134,13 +155,22 @@ class GspreadGateway:
             ws.delete_rows(n)
 
     def duplicate_worksheet(self, source_title: str, new_title: str) -> None:
+        if new_title in self.list_worksheets():
+            raise WorksheetExists(f"Worksheet {new_title!r} already exists")
         source = self._ws(source_title)
-        self._ss.duplicate_sheet(
-            source_sheet_id=source.id, new_sheet_name=new_title
-        )
+        try:
+            self._ss.duplicate_sheet(
+                source_sheet_id=source.id, new_sheet_name=new_title
+            )
+        except gspread.exceptions.APIError as e:
+            raise WorksheetExists(f"Worksheet {new_title!r} already exists") from e
 
     def clear_rows_from(self, title: str, start_row: int) -> None:
         ws = self._ws(title)
+        # row_count is the sheet's allocated grid (often 1000), not the data
+        # extent InMemoryGateway models — correct here because our only use
+        # is clearing a freshly duplicated worksheet down to its header.
+        # start_row must never be 1: the Sheets API rejects a zero-row sheet.
         if ws.row_count >= start_row:
             ws.delete_rows(start_row, ws.row_count)
 
