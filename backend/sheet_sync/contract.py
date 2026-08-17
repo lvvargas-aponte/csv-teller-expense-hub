@@ -101,6 +101,15 @@ def parse_date(raw: Optional[str]) -> Optional[date]:
     raise ContractError(f"Cannot read {raw!r} as a date")
 
 
+def parse_date_loose(raw: Optional[str]) -> Optional[date]:
+    """``parse_date`` that returns None instead of raising. For local data,
+    which reaches us from CSV importers rather than from the sheet."""
+    try:
+        return parse_date(raw)
+    except ContractError:
+        return None
+
+
 def format_date(value: date) -> str:
     return value.strftime("%m/%d/%Y")
 
