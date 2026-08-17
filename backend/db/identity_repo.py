@@ -109,3 +109,34 @@ def delete_peer(user_id: str) -> bool:
             {"uid": user_id},
         )
     return result.rowcount > 0
+
+
+def adopt_peer_identity(
+    person_slot: int, real_user_id: str, display_name: str
+) -> Dict[str, Any]:
+    """Make ``real_user_id`` the sole peer at ``person_slot``.
+
+    Bootstrap invents a placeholder id for the peer because their real one is
+    generated on their own instance and only reaches us through the sheet. This
+    swaps the placeholder out rather than leaving it behind as a rival row.
+    """
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "DELETE FROM peers "
+                "WHERE person_slot = :slot AND user_id <> CAST(:uid AS UUID)"
+            ),
+            {"slot": person_slot, "uid": real_user_id},
+        )
+        row = conn.execute(
+            text(
+                "INSERT INTO peers (user_id, display_name, person_slot) "
+                "VALUES (CAST(:uid AS UUID), :name, :slot) "
+                "ON CONFLICT (user_id) DO UPDATE SET "
+                "  display_name = EXCLUDED.display_name, "
+                "  person_slot = EXCLUDED.person_slot "
+                f"RETURNING {_PEER_COLS}"
+            ),
+            {"uid": real_user_id, "name": display_name, "slot": person_slot},
+        ).fetchone()
+    return _peer_to_dict(row)
