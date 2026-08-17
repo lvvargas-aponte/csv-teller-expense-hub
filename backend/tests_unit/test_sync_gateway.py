@@ -83,6 +83,13 @@ class TestWrites:
         with pytest.raises(IndexError):
             gw.delete_rows("June 2026", [99])
 
+    def test_write_cells_beyond_the_last_row_raises(self):
+        """The real update_cells fails outside the grid; growing the sheet here
+        would hide a sync bug that only shows up in production."""
+        gw = _gw()
+        with pytest.raises(IndexError):
+            gw.write_cells("June 2026", [CellUpdate(row=99, col=1, value="x")])
+
     def test_write_cells_empty_against_missing_worksheet_raises(self):
         gw = _gw()
         with pytest.raises(WorksheetNotFound):
@@ -123,6 +130,12 @@ class TestWorksheetLifecycle:
         assert gw.read_rows("June 2026") == [
             ["Transaction Date", "Description", "Amount"]
         ]
+
+    def test_clear_rows_from_row_one_raises(self):
+        """The Sheets API rejects a zero-row sheet, so start_row is never 1."""
+        gw = _gw()
+        with pytest.raises(ValueError):
+            gw.clear_rows_from("June 2026", 1)
 
     def test_set_hidden(self):
         gw = _gw()

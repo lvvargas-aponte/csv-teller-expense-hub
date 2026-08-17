@@ -50,6 +50,7 @@ class PushPlan:
     appends: list[list[str]] = field(default_factory=list)
     delete_row_numbers: list[int] = field(default_factory=list)
     corrections: list[Correction] = field(default_factory=list)
+    skipped_foreign: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,37 @@ def _desired_cells(row: DesiredRow) -> dict[str, str]:
     }
 
 
+_AMOUNT_KEYS = frozenset({"amount", "owes_1", "owes_2"})
+
+
+def cells_agree(key: str, on_sheet: str, app_value: str) -> bool:
+    """Compare a sheet cell to the value we would write, semantically.
+
+    Sheets re-renders what we send: ``112.25`` comes back ``$112.25`` and
+    ``06/01/2026`` comes back ``6/1/2026``. A byte comparison would therefore
+    see every owned row as changed on every cycle and rewrite it forever.
+    """
+    try:
+        if key in _AMOUNT_KEYS:
+            return contract.parse_amount(on_sheet) == contract.parse_amount(app_value)
+        if key == "date":
+            return contract.parse_date(on_sheet) == contract.parse_date(app_value)
+        if key == "reviewed":
+            return contract.parse_bool(on_sheet) == contract.parse_bool(app_value)
+    except contract.ContractError:
+        # A cell we cannot read is garbage; overwriting it is the right answer.
+        return False
+    return on_sheet.strip() == app_value.strip()
+
+
+def _row_owner(row: SheetRow) -> Optional[str]:
+    """Ownership comes from the Txn ID, not the human-editable Owner cell."""
+    try:
+        return contract.split_txn_id(row.values.get("txn_id", ""))[0]
+    except contract.ContractError:
+        return None
+
+
 def plan_push(
     desired: list[DesiredRow],
     current: list[SheetRow],
@@ -99,8 +131,9 @@ def plan_push(
     headers: list[str],
 ) -> PushPlan:
     column_count = len(headers)
-    by_id = {r.values["txn_id"]: r for r in current if r.values.get("owner") == me}
-    desired_by_id = {d.txn_id: d for d in desired}
+    by_id = {r.values["txn_id"]: r for r in current if _row_owner(r) == me}
+    skipped_foreign = [d.txn_id for d in desired if d.owner != me]
+    desired_by_id = {d.txn_id: d for d in desired if d.owner == me}
 
     updates: list[CellUpdate] = []
     appends: list[list[str]] = []
@@ -117,7 +150,7 @@ def plan_push(
             continue
         for key, value in cells.items():
             on_sheet = existing.values.get(key, "")
-            if on_sheet != value:
+            if not cells_agree(key, on_sheet, value):
                 updates.append(
                     CellUpdate(
                         row=existing.row_number, col=index[key] + 1, value=value
@@ -142,6 +175,7 @@ def plan_push(
         appends=appends,
         delete_row_numbers=deletes,
         corrections=corrections,
+        skipped_foreign=skipped_foreign,
     )
 
 
@@ -150,7 +184,10 @@ def plan_pull(current: list[SheetRow], me: str) -> PullResult:
     my_disputes: dict[str, dict[str, str]] = {}
 
     for row in current:
-        if row.values.get("owner") == me:
+        owner = _row_owner(row)
+        if owner is None:
+            continue
+        if owner == me:
             if any(row.values.get(k) for k in contract.DISPUTER_KEYS):
                 my_disputes[row.values["txn_id"]] = {
                     k: row.values.get(k, "") for k in contract.DISPUTER_KEYS

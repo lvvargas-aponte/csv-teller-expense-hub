@@ -20,6 +20,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # An instance that already accumulated two peers at one slot is exactly the
+    # instance this constraint is for; without the dedupe the whole upgrade
+    # chain would abort at container start.
+    op.execute(
+        """
+        DELETE FROM peers p
+        USING peers q
+        WHERE p.person_slot = q.person_slot
+          AND p.user_id <> q.user_id
+          AND (p.added_at, p.user_id) < (q.added_at, q.user_id)
+        """
+    )
     op.create_unique_constraint("peers_person_slot_key", "peers", ["person_slot"])
 
 

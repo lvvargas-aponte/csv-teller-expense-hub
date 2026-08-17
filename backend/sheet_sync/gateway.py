@@ -73,8 +73,10 @@ class InMemoryGateway(SheetGateway):
         if not updates:
             return
         for u in updates:
-            while len(rows) < u.row:
-                rows.append([])
+            if not 1 <= u.row <= len(rows):
+                raise IndexError(
+                    f"row {u.row} out of range for {len(rows)}-row worksheet {title!r}"
+                )
             row = rows[u.row - 1]
             while len(row) < u.col:
                 row.append("")
@@ -107,6 +109,11 @@ class InMemoryGateway(SheetGateway):
     def clear_rows_from(self, title: str, start_row: int) -> None:
         self.calls.append("clear_rows_from")
         rows = self._sheet(title)
+        if start_row < 2:
+            raise ValueError(
+                f"start_row must be >= 2; the Sheets API rejects a zero-row sheet "
+                f"(got {start_row} for worksheet {title!r})"
+            )
         del rows[start_row - 1:]
 
     def set_hidden(self, title: str, hidden: bool) -> None:
@@ -147,7 +154,18 @@ class GspreadGateway(SheetGateway):
         ws = self._ws(title)
         if not rows:
             return
-        ws.append_rows(rows, value_input_option="USER_ENTERED")
+        # Not ws.append_rows: with no table_range it appends after the table
+        # containing A1, which on a worksheet carrying a settlement footer can
+        # land above the footer or inside its separator. Explicit coordinates
+        # from the real data extent match InMemoryGateway exactly.
+        start = len(ws.get_all_values()) + 1
+        cells = [
+            gspread.Cell(start + r, c + 1, value)
+            for r, row in enumerate(rows)
+            for c, value in enumerate(row)
+        ]
+        if cells:
+            ws.update_cells(cells, value_input_option="USER_ENTERED")
 
     def delete_rows(self, title: str, row_numbers: list[int]) -> None:
         ws = self._ws(title)

@@ -134,6 +134,42 @@ class TestPushUpdates:
         assert plan.corrections == []
 
 
+class TestGoogleReformatting:
+    """Sheets parses what we send and returns the display form.
+
+    Comparing byte-for-byte made every owned row look changed on every cycle —
+    an endless rewrite loop. These rows are what the real spreadsheet hands
+    back after it has re-rendered exactly what we wrote.
+    """
+
+    def test_google_reformatted_cells_produce_no_rewrite(self):
+        d = _desired()
+        rendered = _sheet_row(
+            2,
+            d,
+            amount="$112.25",
+            owes_1="$56.13",
+            date="6/1/2026",
+            reviewed="TRUE",
+        )
+        plan = engine.plan_push([d], [rendered], INDEX, ME, HEADERS)
+        assert plan.updates == []
+        assert plan.corrections == []
+        assert plan.appends == []
+
+    def test_a_real_change_is_still_seen_through_the_reformatting(self):
+        d = _desired(owes_1=Decimal("70.00"))
+        rendered = _sheet_row(2, _desired(), amount="$112.25", owes_1="$56.13")
+        plan = engine.plan_push([d], [rendered], INDEX, ME, HEADERS)
+        assert [u.col for u in plan.updates] == [INDEX["owes_1"] + 1]
+
+    def test_an_unreadable_cell_is_overwritten_not_raised(self):
+        d = _desired()
+        garbage = _sheet_row(2, d, amount="about twenty quid")
+        plan = engine.plan_push([d], [garbage], INDEX, ME, HEADERS)
+        assert [u.value for u in plan.updates] == ["112.25"]
+
+
 class TestPushOwnership:
     def test_peer_rows_are_never_written(self):
         peer_row = _sheet_row(2, _desired(owner=PEER, local_id="p1"))
@@ -147,6 +183,36 @@ class TestPushOwnership:
         plan = engine.plan_push([_desired()], [peer_row], INDEX, ME, HEADERS)
         assert plan.delete_row_numbers == []
         assert len(plan.appends) == 1
+
+    def test_a_blanked_owner_cell_does_not_orphan_my_row(self):
+        """Ownership is the Txn ID prefix; the Owner cell is display only."""
+        d = _desired()
+        blanked = _sheet_row(2, d, owner="")
+        plan = engine.plan_push([d], [blanked], INDEX, ME, HEADERS)
+        assert plan.appends == [], "a blanked Owner must not duplicate the row"
+        assert plan.delete_row_numbers == []
+        assert [(u.col, u.value) for u in plan.updates] == [
+            (INDEX["owner"] + 1, ME)
+        ], "the Owner cell is corrected like any other owner-written column"
+
+    def test_a_row_with_a_malformed_txn_id_is_left_alone(self):
+        junk = _sheet_row(2, _desired(), txn_id="no-colon-here")
+        plan = engine.plan_push([], [junk], INDEX, ME, HEADERS)
+        assert plan.delete_row_numbers == []
+        assert plan.updates == []
+
+
+class TestPushForeignDesiredRows:
+    def test_a_desired_row_i_do_not_own_is_skipped_not_written(self):
+        peer_desired = _desired(owner=PEER, local_id="p1")
+        plan = engine.plan_push([peer_desired], [], INDEX, ME, HEADERS)
+        assert plan.appends == []
+        assert plan.updates == []
+        assert plan.skipped_foreign == [peer_desired.txn_id]
+
+    def test_my_own_rows_are_never_reported_as_foreign(self):
+        plan = engine.plan_push([_desired()], [], INDEX, ME, HEADERS)
+        assert plan.skipped_foreign == []
 
 
 class TestPushDeletes:
@@ -206,3 +272,19 @@ class TestPull:
         result = engine.plan_pull(rows, ME)
         peer_ids = {r.values["txn_id"] for r in result.peer_rows}
         assert peer_ids.isdisjoint(result.my_disputes)
+
+    def test_a_blanked_owner_cell_does_not_invent_a_peer_expense(self):
+        blanked = _sheet_row(2, _desired(), owner="")
+        result = engine.plan_pull([blanked], ME)
+        assert result.peer_rows == []
+
+    def test_a_dispute_on_my_blanked_row_is_still_returned(self):
+        blanked = _sheet_row(2, _desired(), owner="", dispute="Y")
+        result = engine.plan_pull([blanked], ME)
+        assert blanked.values["txn_id"] in result.my_disputes
+
+    def test_a_malformed_txn_id_is_neither_mine_nor_a_peer(self):
+        junk = _sheet_row(2, _desired(), txn_id="no-colon-here", dispute="Y")
+        result = engine.plan_pull([junk], ME)
+        assert result.peer_rows == []
+        assert result.my_disputes == {}

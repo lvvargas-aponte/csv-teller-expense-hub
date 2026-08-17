@@ -63,6 +63,20 @@ class TestHeaders:
             contract.header_index_map(headers, "Valeria", "Christy")
         assert "What Valeria Owes" in str(exc.value)
 
+    def test_duplicate_header_raises(self):
+        """A re-run adoption that double-adds a column would otherwise bind the
+        contract silently to the second, empty one."""
+        headers = contract.build_headers("Valeria", "Christy")
+        headers.append("Txn ID")
+        with pytest.raises(contract.ContractError) as exc:
+            contract.header_index_map(headers, "Valeria", "Christy")
+        assert "Txn ID" in str(exc.value)
+
+    def test_blank_trailing_columns_are_not_duplicates(self):
+        headers = contract.build_headers("Valeria", "Christy") + ["", "", "  "]
+        idx = contract.header_index_map(headers, "Valeria", "Christy")
+        assert idx["carried_from"] == 13
+
     def test_mismatched_person_name_raises(self):
         """The other instance named the column differently — a hard stop."""
         headers = contract.build_headers("Valeria", "Christy")

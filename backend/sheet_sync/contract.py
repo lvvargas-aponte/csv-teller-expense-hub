@@ -54,7 +54,14 @@ def header_index_map(
     header_row: list[str], person_1_name: str, person_2_name: str
 ) -> dict[str, int]:
     """Logical key → 0-based column index, resolved by header text."""
-    seen = {(h or "").strip(): i for i, h in enumerate(header_row)}
+    seen: dict[str, int] = {}
+    for i, h in enumerate(header_row):
+        text = (h or "").strip()
+        if not text:
+            continue
+        if text in seen:
+            raise ContractError(f"Sheet has a duplicate {text!r} column")
+        seen[text] = i
     mapping: dict[str, int] = {}
     for key, spec in _HEADERS:
         wanted = _header_text(spec, person_1_name, person_2_name)
