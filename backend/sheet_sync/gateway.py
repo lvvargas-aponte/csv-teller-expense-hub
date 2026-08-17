@@ -42,6 +42,7 @@ class SheetGateway(Protocol):
     def append_rows(self, title: str, rows: list[list[str]]) -> None: ...
     def delete_rows(self, title: str, row_numbers: list[int]) -> None: ...
     def duplicate_worksheet(self, source_title: str, new_title: str) -> None: ...
+    def create_worksheet(self, title: str, rows: int = 100, cols: int = 26) -> None: ...
     def clear_rows_from(self, title: str, start_row: int) -> None: ...
     def set_hidden(self, title: str, hidden: bool) -> None: ...
 
@@ -105,6 +106,12 @@ class InMemoryGateway(SheetGateway):
         if new_title in self.data:
             raise WorksheetExists(f"Worksheet {new_title!r} already exists")
         self.data[new_title] = copy.deepcopy(self._sheet(source_title))
+
+    def create_worksheet(self, title: str, rows: int = 100, cols: int = 26) -> None:
+        self.calls.append("create_worksheet")
+        if title in self.data:
+            raise WorksheetExists(f"Worksheet {title!r} already exists")
+        self.data[title] = []
 
     def clear_rows_from(self, title: str, start_row: int) -> None:
         self.calls.append("clear_rows_from")
@@ -182,6 +189,14 @@ class GspreadGateway(SheetGateway):
             )
         except gspread.exceptions.APIError as e:
             raise WorksheetExists(f"Worksheet {new_title!r} already exists") from e
+
+    def create_worksheet(self, title: str, rows: int = 100, cols: int = 26) -> None:
+        if title in self.list_worksheets():
+            raise WorksheetExists(f"Worksheet {title!r} already exists")
+        try:
+            self._ss.add_worksheet(title=title, rows=rows, cols=cols)
+        except gspread.exceptions.APIError as e:
+            raise WorksheetExists(f"Worksheet {title!r} already exists") from e
 
     def clear_rows_from(self, title: str, start_row: int) -> None:
         ws = self._ws(title)

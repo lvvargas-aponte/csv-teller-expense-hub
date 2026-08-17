@@ -1,6 +1,7 @@
 """Unit tests for period↔worksheet resolution and creation."""
 import pytest
 
+from sheet_sync import worksheet
 from sheet_sync import worksheet as ws
 from sheet_sync.gateway import InMemoryGateway
 
@@ -107,3 +108,36 @@ class TestEnsure:
         gw = InMemoryGateway({"_sync": [["key", "value"]]})
         with pytest.raises(ws.NoTemplateWorksheet):
             ws.ensure_worksheet(gw, "2026-07")
+
+
+class TestAmbiguousResolution:
+    def test_two_titles_for_one_period_raise(self):
+        gw = InMemoryGateway({
+            "June 2026": [["Transaction Date"]],
+            "June 2026 (old)": [["Transaction Date"]],
+        })
+        with pytest.raises(worksheet.AmbiguousWorksheet) as excinfo:
+            worksheet.find_worksheet(gw, "2026-06")
+
+        assert "June 2026" in str(excinfo.value)
+        assert "June 2026 (old)" in str(excinfo.value)
+
+    def test_a_leading_underscore_backup_does_not_collide(self):
+        """The _backup naming rule is what keeps sync out of a backup tab."""
+        gw = InMemoryGateway({
+            "June 2026": [["Transaction Date"]],
+            "_backup June 2026": [["Transaction Date"]],
+        })
+        assert worksheet.find_worksheet(gw, "2026-06") == "June 2026"
+
+    def test_a_pif_suffix_still_resolves(self):
+        gw = InMemoryGateway({"June 2026 - PIF": [["Transaction Date"]]})
+        assert worksheet.find_worksheet(gw, "2026-06") == "June 2026 - PIF"
+
+    def test_ensure_worksheet_propagates_ambiguity(self):
+        gw = InMemoryGateway({
+            "June 2026": [["Transaction Date"]],
+            "June 2026 backup": [["Transaction Date"]],
+        })
+        with pytest.raises(worksheet.AmbiguousWorksheet):
+            worksheet.ensure_worksheet(gw, "2026-06")

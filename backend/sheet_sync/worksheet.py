@@ -19,6 +19,15 @@ class NoTemplateWorksheet(Exception):
     """No existing month worksheet to copy formatting from."""
 
 
+class AmbiguousWorksheet(Exception):
+    """Two worksheet titles resolve to the same period.
+
+    The title parser has no end anchor, so ``June 2026 (old)`` resolves exactly
+    like ``June 2026``. Returning the first match would let sync write financial
+    rows into whichever tab happened to come first.
+    """
+
+
 _MONTHS = {name.lower(): i for i, name in enumerate(calendar.month_name) if name}
 _TITLE_RE = re.compile(
     r"^\s*([A-Za-z]+)\s*-?\s*(\d{4})\b", re.IGNORECASE
@@ -45,10 +54,14 @@ def is_settled_title(title: str) -> bool:
 
 
 def find_worksheet(gateway: SheetGateway, period: str) -> Optional[str]:
-    for title in gateway.list_worksheets():
-        if title_to_period(title) == period:
-            return title
-    return None
+    matches = [t for t in gateway.list_worksheets() if title_to_period(t) == period]
+    if len(matches) > 1:
+        raise AmbiguousWorksheet(
+            f"{len(matches)} worksheets resolve to {period}: "
+            f"{', '.join(repr(t) for t in matches)}. Rename all but one — a "
+            f"backup should start with an underscore, like '_backup June 2026'."
+        )
+    return matches[0] if matches else None
 
 
 def latest_month_title(gateway: SheetGateway) -> Optional[str]:

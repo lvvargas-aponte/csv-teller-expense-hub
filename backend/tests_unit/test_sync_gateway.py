@@ -149,3 +149,25 @@ class TestCallRecording:
         gw.read_rows("June 2026")
         gw.write_cells("June 2026", [CellUpdate(row=2, col=1, value="x")])
         assert gw.calls == ["read_rows", "write_cells"]
+
+
+class TestCreateWorksheet:
+    def test_creates_an_empty_worksheet(self):
+        gw = InMemoryGateway({"June 2026": [["Transaction Date"]]})
+        gw.create_worksheet("_sync")
+
+        assert "_sync" in gw.list_worksheets()
+        assert gw.read_rows("_sync") == []
+
+    def test_refuses_to_clobber_an_existing_title(self):
+        gw = InMemoryGateway({"_sync": [["Record"]]})
+        with pytest.raises(WorksheetExists):
+            gw.create_worksheet("_sync")
+        assert gw.read_rows("_sync") == [["Record"]]
+
+    def test_created_worksheet_accepts_appends(self):
+        gw = InMemoryGateway({})
+        gw.create_worksheet("_sync")
+        gw.append_rows("_sync", [["Record", "Period"]])
+
+        assert gw.read_rows("_sync") == [["Record", "Period"]]
