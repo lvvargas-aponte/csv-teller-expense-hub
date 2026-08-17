@@ -1336,6 +1336,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   display: inline-flex; gap: 4px; align-items: center;
 }
 .eh-kpi-delta-suffix { color: var(--text-muted); font-weight: 500; margin-left: 4px; }
+.eh-kpi-sub {
+  font-size: 12px; font-weight: 600; margin-top: 4px;
+  color: var(--text-muted);
+}
 .eh-kpi-bar {
   position: absolute; left: 16px; right: 16px; bottom: 8px;
   height: 3px; border-radius: 99px;
@@ -3773,6 +3777,7 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   font-size: 12px; margin-top: 6px; color: var(--text-secondary);
 }
 .prop-equity-of { color: var(--text-muted); }
+.prop-equity-debt { margin-top: 2px; color: var(--text-muted); }
 
 .prop-metrics {
   display: grid; grid-template-columns: repeat(4, 1fr);

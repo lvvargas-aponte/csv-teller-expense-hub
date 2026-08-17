@@ -91,12 +91,15 @@ export default function PropertiesPage() {
               <KpiCard
                 label="Portfolio value"
                 value={fmt$(portfolio?.total_value)}
+                sub={portfolio?.total_debt ? `${fmt$(portfolio.total_debt)} debt` : null}
                 barColor="#059669"
                 help="Sum of the latest recorded value for every property."
               />
               <KpiCard
                 label="Equity"
                 value={fmt$(portfolio?.total_equity)}
+                sub={portfolio?.portfolio_ltv === null || portfolio?.portfolio_ltv === undefined
+                  ? null : `${portfolio.portfolio_ltv.toFixed(2)}% LTV`}
                 barColor="#059669"
                 help="Value minus outstanding loan balances — what you'd keep after paying off the debt."
               />

@@ -17,6 +17,9 @@ import { fmt$ } from '../../utils/formatting';
  * @param barColor     Accent strip color.
  * @param blur         Applies the privacy blur used by the "Hide numbers" toggle.
  * @param help         Tooltip body; omitted renders no info icon.
+ * @param sub          Static qualifier under the value, e.g. "65.03% LTV".
+ *                     Unlike `delta` it is not compared with a prior period
+ *                     and takes no sign coloring; omitted renders nothing.
  */
 export default function KpiCard({
   label,
@@ -27,6 +30,7 @@ export default function KpiCard({
   barColor,
   blur,
   help,
+  sub,
 }) {
   const hasDelta = delta !== null && delta !== undefined;
 
@@ -54,6 +58,9 @@ export default function KpiCard({
         )}
       </div>
       <div className={`eh-kpi-value ${valueClass || ''}${blur ? ' eh-blur' : ''}`}>{value}</div>
+      {sub && (
+        <div className={`eh-kpi-sub${blur ? ' eh-blur' : ''}`}>{sub}</div>
+      )}
       {hasDelta && (
         <div className="eh-kpi-delta" style={{ color: deltaColor }}>
           <span>{arrow}</span>

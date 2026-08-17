@@ -59,6 +59,14 @@ export default function PropertyCard({ property, onOpen }) {
             <span><Num value={property.equity} /> equity</span>
             <span className="prop-equity-of">of <Num value={property.current_value} /></span>
           </div>
+          {/* Debt and LTV sit with equity rather than in the metrics grid
+              below: together the four describe the position, while the grid
+              describes performance. Without them a fully-leveraged property
+              and an owned-outright one differ only by bar width. */}
+          <div className="prop-equity-legend prop-equity-debt">
+            <span><Num value={property.total_debt} /> debt</span>
+            <span>{pct(property.ltv)} LTV</span>
+          </div>
         </div>
       )}
 
