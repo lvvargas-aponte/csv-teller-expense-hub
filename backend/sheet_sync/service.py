@@ -7,7 +7,7 @@ bearing: every guard runs, and refuses, before anything is written.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any, Dict, List, Optional
 
@@ -21,6 +21,7 @@ from config import (
 )
 from db import identity_repo, peer_transactions_repo, sync_state_repo
 from sheet_sync import applier, contract, engine, guards, projection, sync_sheet, worksheet
+from sheet_sync.adoption import ADOPTED_ID_PREFIX
 from sheet_sync.gateway import SheetGateway
 from sheet_sync.guards import Claim
 
@@ -251,12 +252,27 @@ def sync_period(
             )
 
         plan = engine.plan_push(desired, current, index, mine.user_id, rows[0])
+
+        # Adopted rows have no local transaction by design — that absence must
+        # never be read as "no longer shared". Without this filter engine.plan_push
+        # sees them as owned-but-undesired and deletes them on the very next cycle.
+        by_row_number = {r.row_number: r for r in current}
+        delete_row_numbers = [
+            row_number
+            for row_number in plan.delete_row_numbers
+            if not contract.split_txn_id(
+                by_row_number[row_number].values["txn_id"]
+            )[1].startswith(ADOPTED_ID_PREFIX)
+        ]
+
         outcome.corrections = _visible_corrections(plan.corrections)
         outcome.rows_pushed = len(plan.appends) + len({u.row for u in plan.updates})
-        outcome.rows_deleted = len(plan.delete_row_numbers)
+        outcome.rows_deleted = len(delete_row_numbers)
 
         if not dry_run:
-            applier.apply_push(gateway, title, plan)
+            applier.apply_push(
+                gateway, title, replace(plan, delete_row_numbers=delete_row_numbers)
+            )
             for row in desired:
                 sync_state_repo.mark_synced(
                     row.txn_id, contract.split_txn_id(row.txn_id)[1], period
@@ -264,7 +280,7 @@ def sync_period(
             sync_state_repo.record_corrections(period, outcome.corrections)
             sync_state_repo.delete_row_state(
                 [r.values["txn_id"] for r in current
-                 if r.row_number in set(plan.delete_row_numbers)]
+                 if r.row_number in set(delete_row_numbers)]
             )
 
         sync_state_repo.finish_run(
@@ -280,6 +296,9 @@ def sync_period(
         logger.exception(f"[sync] {period} failed: {e}")
         outcome.status = "error"
         outcome.error_detail = str(e)
+        outcome.rows_pushed = 0
+        outcome.rows_deleted = 0
+        outcome.rows_pulled = 0
         sync_state_repo.finish_run(run_id, "error", error_detail=str(e))
         return outcome
 

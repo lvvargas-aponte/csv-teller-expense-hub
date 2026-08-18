@@ -6,7 +6,7 @@ import pytest
 import identity_service
 import state
 from db import identity_repo, peer_transactions_repo, sync_state_repo
-from sheet_sync import service, sync_sheet
+from sheet_sync import adoption, service, sync_sheet
 from sheet_sync.gateway import InMemoryGateway
 from sheet_sync.guards import Claim
 
@@ -434,6 +434,43 @@ class TestConvergence:
         assert owners == {me["user_id"], PEER_ID}
         assert len(rows) == 2
         assert len(peer_transactions_repo.list_for_period("2026-06")) == 1
+
+
+class TestAdoptionSeam:
+    """The seam between adoption.py and service.py — nothing else crosses it.
+
+    Adoption mints synthetic ids for sheet rows with no local counterpart
+    (Phone Bill, Cleaning — genuinely manual, never coming from a bank feed).
+    A sync cycle must never read that absence as "no longer shared" and
+    delete the row it exists to preserve.
+    """
+
+    LEGACY_HEADERS = [
+        "Transaction Date", "Description", "Amount", "Who",
+        f"What {P1} Owes", f"What {P2} Owes", "Notes",
+    ]
+
+    def test_an_adopted_row_survives_the_next_sync(self, me):
+        gateway = InMemoryGateway({
+            "June 2026": [
+                list(self.LEGACY_HEADERS),
+                ["6/1/2026", "Phone Bill", "$112.25", P1, "", "", ""],
+            ]
+        })
+
+        plan = adoption.plan_adoption(
+            gateway, "2026-06", {1: me["user_id"]}, P1, P2, []
+        )
+        assert plan.rows and plan.rows[0].manual_only is True
+        adoption.apply_adoption(gateway, plan)
+
+        out = service.sync_period(gateway, "2026-06")
+
+        assert out.status == "ok"
+        assert out.rows_deleted == 0
+        rows = gateway.read_rows("June 2026")[1:]
+        descriptions = [r[self.LEGACY_HEADERS.index("Description")] for r in rows]
+        assert "Phone Bill" in descriptions
 
 
 class TestBuildGateway:

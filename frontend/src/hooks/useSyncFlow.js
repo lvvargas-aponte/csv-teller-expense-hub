@@ -85,6 +85,16 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
         return;
       }
 
+      // A cycle that failed still answers 200 — without this it would render as
+      // a success toast counting rows that were never written.
+      if (res.data.status === 'error') {
+        const failed = results.find((r) => r.error_detail);
+        setError(failed
+          ? `Sync failed: ${failed.error_detail}`
+          : 'Sync failed — please try again.');
+        return;
+      }
+
       const pushed = results.reduce((n, r) => n + r.rows_pushed, 0);
       const pulled = results.reduce((n, r) => n + r.rows_pulled, 0);
       await reload();

@@ -114,6 +114,18 @@ def project_push(
 
         owes_1 = None if slot == 1 else _decimal(txn.get("person_1_owes"))
         owes_2 = None if slot == 2 else _decimal(txn.get("person_2_owes"))
+        non_payer_owes = owes_2 if slot == 1 else owes_1
+        if not non_payer_owes:
+            payer_name = person_1_name if slot == 1 else person_2_name
+            unpublishable.append(
+                Unpublishable(
+                    transaction_id,
+                    description,
+                    f"No split set — the amount {payer_name} is owed is blank or "
+                    f"zero, so there is nothing to publish. Set a split in the app.",
+                )
+            )
+            continue
 
         desired.append(
             DesiredRow(

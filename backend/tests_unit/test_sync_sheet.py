@@ -84,11 +84,21 @@ class TestClaims:
     def test_read_claims_on_a_missing_worksheet_is_empty(self):
         assert sync_sheet.read_claims(InMemoryGateway({})) == []
 
-    def test_a_short_row_does_not_crash_the_reader(self):
+    def test_a_short_row_does_not_crash_the_reader_and_is_ignored(self):
+        """A short row parses person_slot as 0, which is not a valid slot —
+        it must be skipped, not returned with a bogus slot."""
         gw = InMemoryGateway({})
         sync_sheet.ensure_sync_worksheet(gw)
         gw.append_rows(sync_sheet.SYNC_TITLE, [["claim", "", PEER.user_id, "Christy"]])
 
-        claims = sync_sheet.read_claims(gw)
-        assert claims[0].person_slot == 0
-        assert claims[0].contract_version == ""
+        assert sync_sheet.read_claims(gw) == []
+
+    def test_a_claim_with_a_garbage_person_slot_is_ignored(self):
+        gw = InMemoryGateway({})
+        sync_sheet.ensure_sync_worksheet(gw)
+        gw.append_rows(
+            sync_sheet.SYNC_TITLE,
+            [["claim", "", PEER.user_id, "Christy", "not-a-slot", "1.0", "Valeria", "Christy"]],
+        )
+
+        assert sync_sheet.read_claims(gw) == []

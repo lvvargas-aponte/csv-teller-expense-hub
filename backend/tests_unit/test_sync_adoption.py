@@ -95,7 +95,7 @@ class TestPlan:
         row = plan(gw).rows[0]
 
         assert row.manual_only is True
-        assert "manual" in row.txn_id
+        assert adoption.ADOPTED_ID_PREFIX in row.txn_id
 
     def test_a_row_that_already_carries_a_txn_id_is_skipped(self):
         headers = LEGACY_HEADERS + [

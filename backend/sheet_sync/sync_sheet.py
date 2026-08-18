@@ -81,11 +81,14 @@ def read_claims(gateway: SheetGateway) -> List[Claim]:
     for row in rows[1:]:
         if _cell(row, _RECORD) != CLAIM_RECORD or not _cell(row, _USER_ID):
             continue
+        slot = _int_or_zero(_cell(row, _SLOT))
+        if slot not in (1, 2):
+            continue
         claims.append(
             Claim(
                 user_id=_cell(row, _USER_ID),
                 display_name=_cell(row, _DISPLAY_NAME),
-                person_slot=_int_or_zero(_cell(row, _SLOT)),
+                person_slot=slot,
                 contract_version=_cell(row, _VERSION),
                 person_1_name=_cell(row, _P1),
                 person_2_name=_cell(row, _P2),

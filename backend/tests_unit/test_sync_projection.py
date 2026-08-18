@@ -95,10 +95,25 @@ class TestProjectPush:
         )
         assert rows[0].carried_from == "2026-03"
 
-    def test_a_genuine_zero_on_a_reviewed_row_is_published(self):
-        """Unreviewed rows never reach here, so 0 means 'owes nothing'."""
-        rows, _ = self._project([("t1", txn(who="Valeria", person_2_owes=0))])
-        assert rows[0].owes_2 == Decimal("0")
+    def test_a_blank_or_zero_split_is_unpublishable(self):
+        """person_N_owes defaults to 0.0 in the transactions router whenever a
+        row is marked reviewed without an explicit split, so a zero here is not
+        a user decision — it must not be published as a settled claim."""
+        rows, bad = self._project([("t1", txn(who="Valeria", person_2_owes=0))])
+        assert rows == []
+        assert bad[0].transaction_id == "t1"
+        assert "split" in bad[0].reason.lower()
+        assert "Valeria" in bad[0].reason
+
+    def test_a_missing_split_is_unpublishable(self):
+        rows, bad = self._project([("t1", txn(who="Valeria", person_2_owes=None))])
+        assert rows == []
+        assert bad[0].transaction_id == "t1"
+
+    def test_a_nonzero_split_still_publishes(self):
+        rows, bad = self._project([("t1", txn(who="Valeria", person_2_owes=56.13))])
+        assert bad == []
+        assert rows[0].owes_2 == Decimal("56.13")
 
     def test_skips_unshared_and_unreviewed(self):
         rows, bad = self._project([

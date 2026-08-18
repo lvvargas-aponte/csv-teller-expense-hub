@@ -14,6 +14,7 @@ from sheet_sync import contract, projection, worksheet
 from sheet_sync.gateway import CellUpdate, SheetGateway, WorksheetExists
 
 BACKUP_PREFIX = "_backup "
+ADOPTED_ID_PREFIX = "adopted-"
 
 
 @dataclass(frozen=True)
@@ -134,7 +135,7 @@ def plan_adoption(
             else None
         )
         manual_only = bound is None
-        local_id = bound or f"manual-{period}-{offset}"
+        local_id = bound or f"{ADOPTED_ID_PREFIX}{period}-{offset}"
 
         actions = [
             f"Owner ← {who} ({owner})",
