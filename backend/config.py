@@ -60,6 +60,12 @@ if INSTANCE_PERSON_SLOT not in (1, 2):
         "One instance sets 1, the other sets 2."
     )
 
+# Two-way shared-expense sync with the Google Sheet. Default OFF: turning it on
+# lets the app write to a spreadsheet holding years of settled financial
+# records, so it is an explicit opt-in rather than something a fresh install
+# does on its own.
+SHEET_SYNC_ENABLED: bool = os.getenv("SHEET_SYNC_ENABLED", "false").lower() == "true"
+
 # Error verbosity — True in local dev (default), False in production
 DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
 
