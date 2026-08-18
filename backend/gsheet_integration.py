@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import logging
 
-from config import PERSON_1_NAME, PERSON_2_NAME, CREDENTIALS_FILE
+from config import CREDENTIALS_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -32,28 +32,6 @@ class AuthenticationError(GoogleSheetsError):
 
 class SheetNotFoundError(GoogleSheetsError):
     """Raised when the spreadsheet or worksheet cannot be found"""
-
-
-class AppendError(GoogleSheetsError):
-    """Raised when appending rows to the sheet fails"""
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def get_expected_headers() -> List[str]:
-    """Get expected headers using configured person names."""
-    return [
-        "Transaction Date",
-        "Description",
-        "Amount",
-        "Who",
-        "What",
-        f"{PERSON_1_NAME} Owes",
-        f"{PERSON_2_NAME} Owes",
-        "Notes",
-    ]
 
 
 @dataclass
@@ -136,43 +114,6 @@ class SheetRepository:
             logger.error(f"Failed to read sheet headers: {str(e)}")
             raise SheetNotFoundError(f"Failed to read sheet headers: {str(e)}") from e
 
-    def append_rows(self, config: SheetConfig, rows: List[List[Any]]) -> int:
-        """Append rows to the sheet."""
-        if not rows:
-            return 0
-
-        try:
-            worksheet = self.get_worksheet(config)
-            worksheet.append_rows(rows, value_input_option='USER_ENTERED')
-            logger.info(f"Successfully appended {len(rows)} rows to sheet")
-            return len(rows)
-        except (AuthenticationError, SheetNotFoundError):
-            raise
-        except Exception as e:
-            logger.error(f"Failed to append rows: {str(e)}")
-            raise AppendError(f"Failed to append rows to Google Sheet: {str(e)}") from e
-
-
-class TransactionFormatter:
-    """Format transactions as Google Sheets row lists."""
-
-    def format_for_sheet(self, transaction: Dict[str, Any]) -> List[Any]:
-        """Format a single transaction dict into a row list."""
-        return [
-            transaction.get('date', ''),
-            transaction.get('description', ''),
-            transaction.get('amount', 0),
-            transaction.get('who', ''),
-            transaction.get('what', ''),
-            transaction.get('person_1_owes', transaction.get('person1_owes', 0)),  # backward compat
-            transaction.get('person_2_owes', transaction.get('person2_owes', 0)),  # backward compat
-            transaction.get('notes', ''),
-        ]
-
-    def format_batch(self, transactions: List[Dict[str, Any]]) -> List[List[Any]]:
-        """Format multiple transaction dicts into a list of row lists."""
-        return [self.format_for_sheet(t) for t in transactions]
-
 
 class GoogleSheetsService:
     """Facade — simplified interface for Google Sheets operations."""
@@ -181,45 +122,27 @@ class GoogleSheetsService:
         self.config = config
         self.client = GoogleSheetsClient()
         self.repository = SheetRepository(self.client)
-        self.formatter = TransactionFormatter()
-
-    def append_transactions(self, transactions: List[Dict[str, Any]]) -> int:
-        """Append transactions to Google Sheet. Returns number of rows appended."""
-        if not transactions:
-            logger.warning("No transactions to append")
-            return 0
-
-        rows = self.formatter.format_batch(transactions)
-        return self.repository.append_rows(self.config, rows)
 
     def verify_headers(self) -> Dict[str, Any]:
-        """Verify sheet headers match expected format."""
+        """Compare the worksheet's headers against the sync contract."""
+        from config import PERSON_1_NAME, PERSON_2_NAME
+        from sheet_sync.contract import build_headers
+
         headers = self.repository.get_headers(self.config)
-        expected_headers = get_expected_headers()
+        expected = build_headers(PERSON_1_NAME, PERSON_2_NAME)
         return {
             "connected": True,
             "sheet_id": self.config.spreadsheet_id,
             "sheet_name": self.config.sheet_name or "Default",
             "headers": headers,
-            "headers_match": headers == expected_headers,
-            "expected_headers": expected_headers,
+            "headers_match": headers == expected,
+            "expected_headers": expected,
         }
 
 
 # ---------------------------------------------------------------------------
 # Convenience functions
 # ---------------------------------------------------------------------------
-
-def append_to_sheet(
-        spreadsheet_id: str,
-        transactions: List[Dict[str, Any]],
-        sheet_name: Optional[str] = None,
-) -> int:
-    """Append transactions to Google Sheet."""
-    config = SheetConfig(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
-    service = GoogleSheetsService(config)
-    return service.append_transactions(transactions)
-
 
 def get_sheet_headers(
         spreadsheet_id: str,

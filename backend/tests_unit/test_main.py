@@ -301,61 +301,28 @@ class TestBulkUpdate:
 
 
 # ---------------------------------------------------------------------------
-# Send to Google Sheet
+# The legacy sheet writer is retired — sync owns writing to the spreadsheet
 # ---------------------------------------------------------------------------
 
-class TestSendToGSheet:
-    def test_no_shared_transactions_returns_zero(self, client, sample_discover_csv):
-        _upload_csv(client, sample_discover_csv, "Discover-Statement.csv")
-        res = client.post("/api/send-to-gsheet")
-        assert res.status_code == 200
-        assert res.json()["count"] == 0
+class TestLegacyWriterRetired:
+    def test_send_to_gsheet_is_gone(self, client):
+        assert client.post("/api/send-to-gsheet").status_code == 404
 
-    def test_success_keeps_shared_in_storage(self, client, sample_discover_csv):
-        """Sending to the sheet must NOT delete the transaction.
+    def test_export_preview_is_gone(self, client):
+        assert client.get("/api/export/google-sheet").status_code == 404
 
-        History is documented as the full record of every transaction ever
-        synced or uploaded; deleting on send silently destroyed it. Sync in
-        sub-project B also requires rows to persist after a push.
-        """
-        _upload_csv(client, sample_discover_csv, "Discover-Statement.csv")
-        txns = client.get("/api/transactions/all").json()
-        txn_id = txns[0]["id"]
+    def test_verify_reports_the_sync_contract_headers(self, client):
+        """The 14-column contract, not the old eight positional values."""
+        from unittest.mock import patch
 
-        client.put(f"/api/transactions/{txn_id}", json={"is_shared": True})
+        with patch("routers.sheets.SPREADSHEET_ID", "sheet-1"), \
+             patch("routers.sheets.get_sheet_headers", return_value=["Transaction Date"]):
+            body = client.get("/api/gsheet/verify").json()
 
-        with patch("routers.sheets.append_to_sheet", return_value=1) as mock_append:
-            res = client.post("/api/send-to-gsheet")
-
-        assert res.status_code == 200
-        assert res.json()["count"] == 1
-        mock_append.assert_called_once()
-
-        remaining = client.get("/api/transactions/all").json()
-        remaining_ids = {t["id"] for t in remaining}
-        assert txn_id in remaining_ids, "Sent transaction must remain in storage"
-
-    def test_gsheet_failure_does_not_delete_transactions(self, client, sample_discover_csv):
-        """If append_to_sheet raises, the transaction must NOT be removed from storage."""
-        _upload_csv(client, sample_discover_csv, "Discover-Statement.csv")
-        txns = client.get("/api/transactions/all").json()
-        txn_id = txns[0]["id"]
-
-        client.put(f"/api/transactions/{txn_id}", json={"is_shared": True})
-
-        with patch("routers.sheets.append_to_sheet", side_effect=Exception("GSheet unavailable")):
-            res = client.post("/api/send-to-gsheet")
-
-        assert res.status_code == 500
-
-        remaining = client.get("/api/transactions/all").json()
-        remaining_ids = {t["id"] for t in remaining}
-        assert txn_id in remaining_ids, "Transaction must remain in queue when GSheet call fails"
-
-    def test_no_spreadsheet_id_returns_500(self, client, monkeypatch):
-        monkeypatch.setattr("routers.sheets.SPREADSHEET_ID", None)
-        res = client.post("/api/send-to-gsheet")
-        assert res.status_code == 500
+        assert body["expected_headers"][0] == "Transaction Date"
+        assert body["expected_headers"][-1] == "Carried From"
+        assert len(body["expected_headers"]) == 14
+        assert body["headers_match"] is False
 
 
 # ---------------------------------------------------------------------------

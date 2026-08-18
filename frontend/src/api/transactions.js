@@ -54,5 +54,5 @@ export const applyDeduplication = () =>
 export const getPersonNames = () =>
   axios.get(`${API}/api/config/person-names`);
 
-export const sendToSheet = (body) =>
-  axios.post(`${API}/api/send-to-gsheet`, body);
+export const syncShared = (body) =>
+  axios.post(`${API}/api/sync/shared`, body);

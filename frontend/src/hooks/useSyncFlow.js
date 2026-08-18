@@ -66,32 +66,38 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
   }, [reload, setError, pendingCsvFile]);
 
   const sendToSheet = useCallback(async () => {
-    const activeMonth = availableMonths.find((m) => m.key === filterMonth);
-    const sheetLabel  = activeMonth ? activeMonth.label : null;
+    const period = filterMonth !== 'all' ? filterMonth : null;
 
     if (!window.confirm(
-      `Send ${sharedCount} shared expense${sharedCount !== 1 ? 's' : ''} to Google Sheet` +
-      (sheetLabel ? ` "${sheetLabel}"` : '') +
-      `? They'll stay in your local list.`
+      `Sync ${sharedCount} shared expense${sharedCount !== 1 ? 's' : ''} with the Google Sheet` +
+      (period ? ` for ${period}` : '') +
+      `? Your local records are kept.`
     )) return;
 
     setSendingSheet(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/send-to-gsheet`, {
-        sheet_name:   sheetLabel,
-        filter_month: filterMonth !== 'all' ? filterMonth : null,
-      });
+      const res = await axios.post(`${API_BASE}/api/sync/shared`, { period });
+      const results = res.data.results || [];
+
+      if (res.data.status === 'refused') {
+        const refused = results.find((r) => r.refusal_message);
+        setError(refused ? refused.refusal_message : 'Sync was refused.');
+        return;
+      }
+
+      const pushed = results.reduce((n, r) => n + r.rows_pushed, 0);
+      const pulled = results.reduce((n, r) => n + r.rows_pulled, 0);
       await reload();
       setSyncToast({
-        total_new: res.data.count,
-        details: [{ account: `Google Sheet ✓ (${res.data.sheet_name})`, new: res.data.count, fetched: res.data.count }],
+        total_new: pushed,
+        details: [{ account: `Google Sheet ✓ (${pushed} sent, ${pulled} received)`, new: pushed, fetched: pushed + pulled }],
       });
     } catch (e) {
-      setError(userMessage(e, 'Send to Google Sheet failed — please try again.'));
+      setError(userMessage(e, 'Sync with Google Sheet failed — please try again.'));
     } finally {
       setSendingSheet(false);
     }
-  }, [reload, setError, availableMonths, filterMonth, sharedCount]);
+  }, [reload, setError, filterMonth, sharedCount]);
 
   return {
     syncing,
