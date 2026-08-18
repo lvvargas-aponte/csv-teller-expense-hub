@@ -184,6 +184,27 @@ class TestApply:
         row = gw.read_rows("June 2026")[1]
         assert row[:7] == ["6/1/2026", "Dinner", "$113.45", P2, "$37.82", "", "one third"]
 
+    def test_apply_tolerates_an_existing_backup_and_still_adopts(self):
+        """A partial-failure re-run: a prior attempt created the backup but died
+        before writing headers/rows. The plan is still non-empty, so the early
+        return does not fire and duplicate_worksheet's WorksheetExists must be
+        caught rather than clobbering whatever the earlier attempt left behind."""
+        gw = InMemoryGateway(legacy_sheet(
+            ["6/1/2026", "Phone Bill", "$112.25", P2, "", "", ""],
+        ))
+        gw.data["_backup June 2026"] = [["stale", "backup", "content"]]
+        preexisting_backup = [list(r) for r in gw.data["_backup June 2026"]]
+
+        adoption.apply_adoption(gw, plan(gw))
+
+        assert gw.read_rows("_backup June 2026") == preexisting_backup
+
+        rows = gw.read_rows("June 2026")
+        header = rows[0]
+        row = rows[1]
+        assert row[header.index("Owner")] == PEER
+        assert row[header.index(f"What {P1} Owes")] == "56.13"
+
     def test_apply_is_idempotent(self):
         gw = InMemoryGateway(legacy_sheet(
             ["6/1/2026", "Phone Bill", "$112.25", P2, "", "", ""],

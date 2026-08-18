@@ -15,11 +15,6 @@ from sheet_sync.gateway import CellUpdate, SheetGateway, WorksheetExists
 
 BACKUP_PREFIX = "_backup "
 
-_NEW_HEADER_KEYS = (
-    "reviewed", "dispute", "dispute_by", "dispute_note",
-    "txn_id", "owner", "carried_from",
-)
-
 
 @dataclass(frozen=True)
 class AdoptionRow:
