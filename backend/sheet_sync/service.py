@@ -136,9 +136,24 @@ def _visible_corrections(plan_corrections) -> List[Dict[str, str]]:
     return visible
 
 
-def _apply_pull(
+def _dispute_flag(raw: Optional[str]) -> Optional[str]:
+    """Map a sheet cell to ``sync_row_state.dispute_flag``'s ``NULL``/``'Y'``/``'N'`` domain.
+
+    The contract's truthy set (``TRUE``, ``X``, ``1``, ...) is wider than the
+    column's check constraint, and ``TRUE`` is exactly what this app writes
+    into the neighbouring ``Reviewed`` column — so a naive first-letter slice
+    raises ``IntegrityError`` on a perfectly ordinary dispute cell.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None
+    return "Y" if contract.parse_bool(text) else "N"
+
+
+def _project_pull(
     result: engine.PullResult, period: str, slots: Dict[int, str]
-) -> tuple[int, int]:
+) -> tuple[List[Dict[str, Any]], int]:
+    """Shape the peer rows worth importing. Pure — no database write."""
     peer_params = []
     skipped = 0
     for row in result.peer_rows:
@@ -149,13 +164,20 @@ def _apply_pull(
             skipped += 1
             continue
         peer_params.append(mapped)
+    return peer_params, skipped
+
+
+def _apply_pull(
+    result: engine.PullResult, period: str, slots: Dict[int, str]
+) -> tuple[int, int]:
+    peer_params, skipped = _project_pull(result, period, slots)
 
     pulled = peer_transactions_repo.upsert_many(peer_params)
 
     for txn_id, values in result.my_disputes.items():
         sync_state_repo.set_disputes(
             txn_id,
-            (values.get("dispute") or "").strip().upper()[:1] or None,
+            _dispute_flag(values.get("dispute")),
             values.get("dispute_by") or None,
             values.get("dispute_note") or None,
         )
@@ -172,15 +194,19 @@ def sync_period(
     try:
         mine = _my_claim()
 
-        sync_sheet.ensure_sync_worksheet(gateway)
+        # A dry run must not create or hide the ``_sync`` tab — ``read_claims``
+        # already tolerates an absent worksheet, so it is safe to call bare.
+        if not dry_run:
+            sync_sheet.ensure_sync_worksheet(gateway)
         peers = [c for c in sync_sheet.read_claims(gateway) if c.user_id != mine.user_id]
 
         refusal = guards.check_claims(mine, peers)
         if refusal:
             return _refuse(outcome, run_id, refusal)
 
-        sync_sheet.write_claim(gateway, mine)
-        _adopt_peers(peers)
+        if not dry_run:
+            sync_sheet.write_claim(gateway, mine)
+            _adopt_peers(peers)
 
         items = list(state.stored_transactions.items())
         desired, unpublishable = projection.project_push(
@@ -192,6 +218,14 @@ def sync_period(
         if title is None:
             if not desired:
                 sync_state_repo.finish_run(run_id, "ok")
+                return outcome
+            if dry_run:
+                # Report the tab that would be created rather than creating it.
+                outcome.title = worksheet.period_to_title(period)
+                outcome.rows_pushed = len(desired)
+                sync_state_repo.finish_run(
+                    run_id, "ok", rows_pushed=outcome.rows_pushed
+                )
                 return outcome
             title = worksheet.ensure_worksheet(gateway, period)
         outcome.title = title
@@ -208,7 +242,13 @@ def sync_period(
 
         slots = _slot_map(mine, peers)
         pull = engine.plan_pull(current, mine.user_id)
-        outcome.rows_pulled, outcome.skipped_peer_rows = _apply_pull(pull, period, slots)
+        if dry_run:
+            peer_params, outcome.skipped_peer_rows = _project_pull(pull, period, slots)
+            outcome.rows_pulled = len(peer_params)
+        else:
+            outcome.rows_pulled, outcome.skipped_peer_rows = _apply_pull(
+                pull, period, slots
+            )
 
         plan = engine.plan_push(desired, current, index, mine.user_id, rows[0])
         outcome.corrections = _visible_corrections(plan.corrections)
@@ -237,7 +277,7 @@ def sync_period(
         return outcome
 
     except Exception as e:
-        logger.warning(f"[sync] {period} failed: {e}")
+        logger.exception(f"[sync] {period} failed: {e}")
         outcome.status = "error"
         outcome.error_detail = str(e)
         sync_state_repo.finish_run(run_id, "error", error_detail=str(e))

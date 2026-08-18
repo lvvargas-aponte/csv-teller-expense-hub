@@ -158,6 +158,32 @@ class TestPush:
         assert len(gateway.read_rows("June 2026")) == 1
         assert sync_state_repo.get_row_state(f"{me['user_id']}:t1") is None
 
+    def test_dry_run_does_not_create_a_worksheet(self, me, gateway):
+        add_txn("t1", date="08/03/2026")
+        out = service.sync_period(gateway, "2026-08", dry_run=True)
+
+        assert out.status == "ok"
+        assert out.rows_pushed == 1
+        assert "August 2026" not in gateway.list_worksheets()
+
+    def test_dry_run_writes_no_claim_row(self, me, gateway):
+        add_txn("t1")
+        service.sync_period(gateway, "2026-06", dry_run=True)
+
+        assert sync_sheet.read_claims(gateway) == []
+
+    def test_dry_run_does_not_adopt_peers_or_import_rows(self, me, gateway):
+        sync_sheet.write_claim(gateway, peer_claim())
+        gateway.append_rows("June 2026", [peer_row()])
+        add_txn("t1")
+
+        out = service.sync_period(gateway, "2026-06", dry_run=True)
+
+        assert out.rows_pushed == 1
+        assert out.rows_pulled == 1
+        assert peer_transactions_repo.get(f"{PEER_ID}:x1") is None
+        assert identity_repo.list_peers()[0]["user_id"] != PEER_ID
+
 
 class TestCorrections:
     def test_a_hand_edit_is_restored_and_surfaced(self, me, gateway):
@@ -270,6 +296,33 @@ class TestPull:
         assert out.rows_pulled == 0
         assert out.skipped_peer_rows == 1
 
+    def test_a_true_dispute_cell_maps_to_y_without_erroring(self, me, gateway):
+        """Dispute cells share the contract's truthy set with Reviewed, so a
+        hand-written 'TRUE' must not violate sync_row_state's Y/N constraint."""
+        add_txn("t1")
+        service.sync_period(gateway, "2026-06")
+
+        edit_sheet(gateway, 2, "Dispute", "TRUE")
+        edit_sheet(gateway, 2, "Dispute By", P2)
+
+        out = service.sync_period(gateway, "2026-06")
+
+        assert out.status == "ok"
+        state_row = sync_state_repo.get_row_state(f"{me['user_id']}:t1")
+        assert state_row["dispute_flag"] == "Y"
+
+    def test_an_explicit_n_dispute_cell_maps_to_n(self, me, gateway):
+        add_txn("t1")
+        service.sync_period(gateway, "2026-06")
+
+        edit_sheet(gateway, 2, "Dispute", "N")
+
+        out = service.sync_period(gateway, "2026-06")
+
+        assert out.status == "ok"
+        state_row = sync_state_repo.get_row_state(f"{me['user_id']}:t1")
+        assert state_row["dispute_flag"] == "N"
+
 
 class TestRefusals:
     def _assert_refused(self, out, reason, gateway):
@@ -381,3 +434,40 @@ class TestConvergence:
         assert owners == {me["user_id"], PEER_ID}
         assert len(rows) == 2
         assert len(peer_transactions_repo.list_for_period("2026-06")) == 1
+
+
+class TestBuildGateway:
+    """SHEET_SYNC_ENABLED / SPREADSHEET_ID are the only guard against a real
+    write. Neither test ever sets the flag true against real credentials —
+    both monkeypatch the module globals service.py already reads them from."""
+
+    def test_disabled_flag_raises(self, monkeypatch):
+        monkeypatch.setattr(service, "SHEET_SYNC_ENABLED", False)
+
+        with pytest.raises(service.SyncDisabled):
+            service.build_gateway()
+
+    def test_enabled_but_no_spreadsheet_id_raises(self, monkeypatch):
+        monkeypatch.setattr(service, "SHEET_SYNC_ENABLED", True)
+        monkeypatch.setattr(service, "SPREADSHEET_ID", None)
+
+        with pytest.raises(service.SyncDisabled):
+            service.build_gateway()
+
+
+class TestStatus:
+    def test_status_shape(self, me):
+        out = service.status()
+
+        assert set(out.keys()) == {
+            "enabled", "open_periods", "last_run", "last_successful_pull",
+            "publishable_rows", "refusal", "corrections", "disputes_against_me",
+        }
+        assert out["enabled"] is False
+        assert isinstance(out["open_periods"], list)
+        assert out["last_run"] is None
+        assert out["last_successful_pull"] is None
+        assert out["publishable_rows"] == 0
+        assert out["refusal"] is None
+        assert out["corrections"] == []
+        assert out["disputes_against_me"] == []
