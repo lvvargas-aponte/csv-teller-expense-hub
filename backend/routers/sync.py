@@ -7,7 +7,7 @@ import logging
 import re
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
 from db import sync_state_repo
@@ -31,19 +31,24 @@ class SyncRequest(BaseModel):
         return v
 
 
+def _reject_before_cutover(period: str) -> None:
+    if period < worksheet.CUTOVER_PERIOD:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"{period} is before the {worksheet.CUTOVER_PERIOD} cutover. "
+                "Earlier months are hand-maintained and are never touched by sync."
+            ),
+        )
+
+
 @router.post("/sync/shared")
 async def sync_shared(req: Optional[SyncRequest] = None):
     """Run one sync cycle. Refusals return 200 with an explanation."""
     req = req or SyncRequest()
 
-    if req.period and req.period < worksheet.CUTOVER_PERIOD:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"{req.period} is before the {worksheet.CUTOVER_PERIOD} cutover. "
-                "Earlier months are hand-maintained and are never touched by sync."
-            ),
-        )
+    if req.period:
+        _reject_before_cutover(req.period)
 
     try:
         gateway = service.build_gateway()
@@ -59,6 +64,12 @@ async def sync_shared(req: Optional[SyncRequest] = None):
     statuses = {r.status for r in results}
     overall = "error" if "error" in statuses else "refused" if "refused" in statuses else "ok"
     return {"status": overall, "results": [r.as_dict() for r in results]}
+
+
+@router.get("/sync/shared-rows")
+async def shared_rows(period: str = Query(..., pattern=_PERIOD_RE.pattern)):
+    _reject_before_cutover(period)
+    return service.shared_rows(period)
 
 
 @router.get("/sync/status")
