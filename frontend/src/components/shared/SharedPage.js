@@ -144,7 +144,7 @@ export default function SharedPage() {
         </div>
       )}
       {syncMessage && syncMessage.kind === 'ok' && (
-        <div className="shared-sync-toast">✓ {syncMessage.text}</div>
+        <div className="shared-sync-toast" role="status">✓ {syncMessage.text}</div>
       )}
 
       <SyncStatusStrip status={status} />

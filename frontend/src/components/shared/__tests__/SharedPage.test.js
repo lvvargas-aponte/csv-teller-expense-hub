@@ -131,6 +131,29 @@ test('a disputed row shows the disputer and note', async () => {
   expect(within(tr).getByText(/that was mine/)).toBeInTheDocument();
 });
 
+test('an unparseable date renders the raw string, never "Invalid Date"', async () => {
+  mockRows([row({
+    transaction_id: 't4', publishable: false,
+    date: 'not-a-date', blocked_reason: 'Date could not be parsed',
+  })]);
+
+  render(<SharedPage />);
+
+  await screen.findByText('Cleaning');
+  const tr = screen.getByRole('row', { name: /Cleaning/ });
+  expect(within(tr).getByText('not-a-date')).toBeInTheDocument();
+  expect(within(tr).queryByText(/Invalid Date/)).not.toBeInTheDocument();
+});
+
+test('renders without a peer and falls back sensibly in the legend', async () => {
+  mockRows([row()], ME, null);
+
+  render(<SharedPage />);
+
+  await screen.findByText('Cleaning');
+  expect(screen.getByText(/peer/i)).toBeInTheDocument();
+});
+
 test('dismissing a correction calls acknowledgeCorrection and removes it from the list', async () => {
   mockStatus({
     corrections: [
@@ -166,9 +189,7 @@ test('a refused sync response surfaces refusal_message and does not show a succe
   await userEvent.click(syncBtn);
 
   expect(await screen.findByText(/Christy already claimed this period/)).toBeInTheDocument();
-  expect(screen.queryByText(
-    (_content, element) => element?.classList?.contains('shared-sync-toast')
-  )).not.toBeInTheDocument();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });
 
 test('an error sync response surfaces the error', async () => {
