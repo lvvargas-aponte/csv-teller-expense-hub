@@ -27,6 +27,33 @@ from sheet_sync.guards import Claim
 
 logger = logging.getLogger(__name__)
 
+# ``sync_runs.refusal_reason`` stores only the machine code (SyncOutcome.refusal_message
+# is never persisted), so a reload of a past run cannot recover the exact sentence
+# guards.py built for that run. This maps each known code to a readable one instead.
+_REFUSAL_MESSAGES = {
+    "contract_version": (
+        "Sync refused: the two instances speak different versions of the sheet "
+        "contract. One instance must be updated before they can sync."
+    ),
+    "person_names": (
+        "Sync refused: the two instances disagree about the person names that "
+        "title the owes columns. Both must be configured identically."
+    ),
+    "slot_collision": (
+        "Sync refused: both instances claim the same person slot. One must "
+        "change its configured slot — otherwise every settlement would be "
+        "inverted on one side."
+    ),
+    "duplicate_txn_id": (
+        "Sync refused: the worksheet carries a duplicate transaction id. Remove "
+        "the extra row before syncing."
+    ),
+}
+
+
+def _refusal_message(reason: Optional[str]) -> str:
+    return _REFUSAL_MESSAGES.get(reason, "Sync was refused.")
+
 
 class SyncDisabled(Exception):
     """Sync is switched off, or the spreadsheet is not configured."""
@@ -364,7 +391,12 @@ def status() -> Dict[str, Any]:
         "last_successful_pull": sync_state_repo.last_ok_run(),
         "publishable_rows": pending,
         "refusal": (
-            {"reason": refusal["refusal_reason"]} if refusal else None
+            {
+                "reason": refusal["refusal_reason"],
+                "message": _refusal_message(refusal["refusal_reason"]),
+            }
+            if refusal
+            else None
         ),
         "corrections": sync_state_repo.list_unacknowledged(),
         "disputes_against_me": sync_state_repo.list_disputes_against_me(),

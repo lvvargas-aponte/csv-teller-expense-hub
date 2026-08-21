@@ -513,3 +513,13 @@ class TestStatus:
     def test_status_reports_enabled_true_when_the_flag_is_on(self, me, monkeypatch):
         monkeypatch.setattr(service, "SHEET_SYNC_ENABLED", True)
         assert service.status()["enabled"] is True
+
+    def test_a_refusal_includes_a_readable_message_not_just_the_code(self, me, gateway):
+        sync_sheet.write_claim(gateway, peer_claim(person_slot=1))
+        service.sync_period(gateway, "2026-06")
+
+        refusal = service.status()["refusal"]
+
+        assert refusal["reason"] == "slot_collision"
+        assert refusal["message"] != refusal["reason"]
+        assert len(refusal["message"]) > len("slot_collision")
