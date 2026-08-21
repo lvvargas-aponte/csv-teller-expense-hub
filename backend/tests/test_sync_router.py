@@ -4,8 +4,9 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+import identity_service
 import state
-from db import sync_state_repo
+from db import peer_transactions_repo, sync_state_repo
 from main import app
 from sheet_sync import service
 from sheet_sync.gateway import InMemoryGateway
@@ -16,6 +17,28 @@ HEADERS = [
     f"What {P1} Owes", f"What {P2} Owes", "Notes", "Reviewed",
     "Dispute", "Dispute By", "Dispute Note", "Txn ID", "Owner", "Carried From",
 ]
+
+PEER_OWNER = "22222222-2222-2222-2222-222222222222"
+
+
+def _peer_row(txn_id: str, **over):
+    row = {
+        "txn_id": txn_id,
+        "owner_user_id": PEER_OWNER,
+        "date": "2026-06-15",
+        "description": "Groceries",
+        "amount": -40.00,
+        "who": P2,
+        "person_1_owes": 20.00,
+        "person_2_owes": 20.00,
+        "notes": "",
+        "reviewed": True,
+        "payer_user_id": PEER_OWNER,
+        "carried_from_period": None,
+        "settles_in_period": None,
+    }
+    row.update(over)
+    return row
 
 
 @pytest.fixture
@@ -131,6 +154,90 @@ class TestStatus:
         dispute = res.json()["disputes_against_me"][0]
         assert dispute["txn_id"] == "u1:t1"
         assert dispute["sheet_synced_at"] is not None
+
+
+class TestDisputeEndpoint:
+    def test_raises_a_dispute(self, client):
+        txn_id = f"{PEER_OWNER}:a"
+        peer_transactions_repo.upsert_many([_peer_row(txn_id)])
+        me = identity_service.ensure_identity()
+
+        res = client.put(
+            f"/api/sync/peer-rows/{txn_id}/dispute",
+            json={"flag": "Y", "note": "Split should be 70/30"},
+        )
+
+        assert res.status_code == 200
+        stored = peer_transactions_repo.get(txn_id)
+        assert stored["dispute_flag"] == "Y"
+        assert stored["dispute_note"] == "Split should be 70/30"
+        assert stored["dispute_by"] == me["display_name"]
+
+    def test_edits_an_existing_dispute(self, client):
+        txn_id = f"{PEER_OWNER}:a"
+        peer_transactions_repo.upsert_many([_peer_row(txn_id)])
+        client.put(f"/api/sync/peer-rows/{txn_id}/dispute", json={"flag": "Y", "note": "first"})
+
+        res = client.put(f"/api/sync/peer-rows/{txn_id}/dispute", json={"flag": "N", "note": "resolved"})
+
+        assert res.status_code == 200
+        stored = peer_transactions_repo.get(txn_id)
+        assert stored["dispute_flag"] == "N"
+        assert stored["dispute_note"] == "resolved"
+
+    def test_clearing_wipes_flag_author_and_note(self, client):
+        txn_id = f"{PEER_OWNER}:a"
+        peer_transactions_repo.upsert_many([_peer_row(txn_id)])
+        client.put(f"/api/sync/peer-rows/{txn_id}/dispute", json={"flag": "Y", "note": "wrong split"})
+
+        res = client.put(f"/api/sync/peer-rows/{txn_id}/dispute", json={"flag": None, "note": "ignored"})
+
+        assert res.status_code == 200
+        stored = peer_transactions_repo.get(txn_id)
+        assert stored["dispute_flag"] is None
+        assert stored["dispute_by"] is None
+        assert stored["dispute_note"] is None
+
+    def test_unknown_txn_id_is_404(self, client):
+        res = client.put("/api/sync/peer-rows/nope/dispute", json={"flag": "Y", "note": "x"})
+        assert res.status_code == 404
+
+    def test_invalid_flag_is_422(self, client):
+        txn_id = f"{PEER_OWNER}:a"
+        peer_transactions_repo.upsert_many([_peer_row(txn_id)])
+
+        res = client.put(f"/api/sync/peer-rows/{txn_id}/dispute", json={"flag": "X", "note": "bad"})
+
+        assert res.status_code == 422
+        assert peer_transactions_repo.get(txn_id)["dispute_flag"] is None
+
+    def test_refuses_a_row_this_instance_owns_even_if_present(self, client):
+        """peer_shared_transactions should only ever hold the peer's rows, so
+        this scenario is a data anomaly — but the refusal must be an explicit
+        rule, not an accident of an empty table."""
+        me = identity_service.ensure_identity()
+        owned_txn_id = f"{me['user_id']}:a"
+        peer_transactions_repo.upsert_many([_peer_row(owned_txn_id, owner_user_id=me["user_id"])])
+
+        res = client.put(f"/api/sync/peer-rows/{owned_txn_id}/dispute", json={"flag": "Y", "note": "x"})
+
+        assert res.status_code == 422
+        assert peer_transactions_repo.get(owned_txn_id)["dispute_flag"] is None
+
+    def test_dispute_by_is_server_identity_even_when_client_sends_another(self, client):
+        txn_id = f"{PEER_OWNER}:a"
+        peer_transactions_repo.upsert_many([_peer_row(txn_id)])
+        me = identity_service.ensure_identity()
+
+        res = client.put(
+            f"/api/sync/peer-rows/{txn_id}/dispute",
+            json={"flag": "Y", "note": "x", "dispute_by": "Someone Else"},
+        )
+
+        assert res.status_code == 200
+        stored = peer_transactions_repo.get(txn_id)
+        assert stored["dispute_by"] == me["display_name"]
+        assert stored["dispute_by"] != "Someone Else"
 
 
 class TestAcknowledge:

@@ -9,8 +9,10 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
+from sqlalchemy.exc import DBAPIError
 
-from db import sync_state_repo
+import identity_service
+from db import peer_transactions_repo, sync_state_repo
 from sheet_sync import service, shared_view, worksheet
 
 logger = logging.getLogger(__name__)
@@ -82,3 +84,36 @@ async def acknowledge_correction(correction_id: int):
     if not sync_state_repo.acknowledge(correction_id):
         raise HTTPException(status_code=404, detail="No open correction with that id")
     return {"acknowledged": True}
+
+
+class DisputeUpdate(BaseModel):
+    flag: Optional[str] = None
+    note: str = ""
+
+
+@router.put("/sync/peer-rows/{txn_id}/dispute")
+async def update_dispute(txn_id: str, update: DisputeUpdate):
+    """Raise, edit or clear a dispute on a row this instance does not own.
+
+    ``dispute_by`` always comes from our own identity, never the request body
+    — who authored a dispute is not something a caller gets to assert.
+    """
+    me = identity_service.ensure_identity()
+    if txn_id.startswith(f"{me['user_id']}:"):
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot dispute a row this instance owns.",
+        )
+
+    by = me["display_name"] if update.flag is not None else None
+    note = update.note if update.flag is not None else None
+
+    try:
+        found = peer_transactions_repo.set_dispute(txn_id, update.flag, by, note)
+    except DBAPIError:
+        raise HTTPException(status_code=422, detail="flag must be 'Y', 'N', or null")
+
+    if not found:
+        raise HTTPException(status_code=404, detail="No peer row with that id")
+
+    return peer_transactions_repo.get(txn_id)
