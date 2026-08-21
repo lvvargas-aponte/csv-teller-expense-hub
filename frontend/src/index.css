@@ -3087,7 +3087,7 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 
 .acct-table-card { padding: 0; overflow: hidden; }
 .acct-table-card .finances-section-title {
-  padding: 16px 20px 8px;
+  padding: 0;
   margin: 0;
   font-size: 13px;
   font-weight: 700;
@@ -3095,6 +3095,39 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   letter-spacing: 0.07em;
   color: var(--text-muted);
 }
+
+/* Heading row shared by every account list: name on the left, the matching
+   server-side total on the right, so each group states what it contributes. */
+.acct-list-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 8px;
+}
+.acct-list-total {
+  font-size: 13px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.acct-list-total.is-owed { color: var(--red); }
+
+/* Row actions (edit / remove a manual account), revealed on hover like the
+   list rows they sit in. Always visible to keyboard users. */
+.acct-row-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
+.acct-cash-row:hover .acct-row-actions,
+.acct-row:hover .acct-row-actions,
+.acct-row-actions:focus-within { opacity: 1; }
+
+.acct-rail-link {
+  display: block; width: 100%;
+  margin-top: 12px; padding: 8px 0 0;
+  border: none; border-top: 1px solid var(--border);
+  background: none;
+  font-size: 12px; font-weight: 600; text-align: left;
+  color: var(--accent);
+  cursor: pointer;
+}
+.acct-rail-link:hover { text-decoration: underline; }
 .acct-table-wrap { overflow-x: auto; }
 .acct-table {
   width: 100%;
@@ -3239,10 +3272,10 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   min-width: 32px; text-align: right;
 }
 
-/* Cash list */
+/* Balance lists (cash, investments) */
 .acct-cash-card { padding: 0; overflow: hidden; }
 .acct-cash-card .finances-section-title {
-  padding: 16px 20px 8px;
+  padding: 0;
   margin: 0;
   font-size: 13px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.07em;
@@ -3258,6 +3291,97 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 [data-theme="dark"] .acct-cash-row:hover { background: rgba(52, 211, 153, 0.06); }
 .acct-cash-row .acct-row-meta { flex: 1; min-width: 0; }
 .acct-cash-balance { text-align: right; }
+
+/* ---------------------------------------------------------------------------
+   Net Worth page — the breakdown reconciles to summary.net_worth, so the
+   layout keeps assets, liabilities and the resulting total visually distinct.
+   --------------------------------------------------------------------------- */
+.nw-delta { text-align: right; margin-right: 4px; }
+.nw-delta-label { font-size: 11px; opacity: 0.7; }
+.nw-delta-value {
+  font-size: 16px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.nw-breakdown { display: flex; flex-direction: column; gap: 18px; }
+.nw-group-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.nw-group-title {
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+.nw-group-total {
+  font-size: 14px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.nw-group-total.is-pos, .nw-row-value.is-pos { color: var(--accent); }
+.nw-group-total.is-neg, .nw-row-value.is-neg { color: var(--red); }
+.nw-group-empty {
+  font-size: 12px; color: var(--text-muted);
+  padding: 10px 0;
+}
+.nw-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.nw-row:last-child { border-bottom: none; }
+.nw-row-icon { font-size: 15px; line-height: 1.3; }
+.nw-row-label {
+  flex: 1; min-width: 0;
+  font-size: 13px; font-weight: 600;
+  color: var(--text-primary);
+}
+.nw-row-note {
+  display: block;
+  font-size: 11px; font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.nw-row-value {
+  font-size: 14px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.nw-total-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding-top: 14px;
+  border-top: 2px solid var(--text-primary);
+}
+.nw-total-label { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.nw-total-value {
+  font-size: 24px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.nw-total-value.is-neg { color: var(--red); }
+.nw-equity-note,
+.nw-warning-note,
+.nw-drift-note {
+  font-size: 12px; line-height: 1.5;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+}
+.nw-equity-note {
+  background: var(--accent-light);
+  color: var(--text-primary);
+}
+.nw-equity-note div { color: var(--text-muted); margin-top: 4px; }
+.nw-warning-note {
+  background: var(--amber-light, #fef3c7);
+  color: #92400e;
+}
+.nw-drift-note {
+  background: var(--red-light, #fee2e2);
+  color: #b91c1c;
+}
+.nw-trend-note {
+  font-size: 11px; color: var(--text-muted);
+  margin-top: 8px;
+}
 
 /* Right rail cards */
 .acct-rail-card {
@@ -4302,6 +4426,74 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
 }
 
+/* The goal: target on the left, progress on the right, bar under both. */
+.ret-goal-headline {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.ret-goal-target-label, .ret-goal-status-sub {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-faint); font-weight: 600;
+}
+.ret-goal-status-sub { text-transform: none; letter-spacing: 0; }
+.ret-goal-target-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 34px; font-weight: 700; line-height: 1.1; margin: 2px 0;
+}
+.ret-goal-target-sub { font-size: 12px; color: var(--text-secondary); }
+.ret-goal-status { text-align: right; }
+.ret-goal-pct {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 26px; font-weight: 700; color: var(--accent); line-height: 1.1;
+}
+
+.ret-goal-bar {
+  height: 8px; border-radius: 999px; overflow: hidden;
+  background: var(--border); margin-bottom: 16px;
+}
+.ret-goal-bar-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #6366f1 0%, #4338ca 100%);
+  transition: width .4s ease;
+}
+.ret-goal-bar-fill--done { background: var(--accent); }
+
+/* Where the plan actually lands, once the tenants have bought the houses. */
+.ret-goal-payoff {
+  margin-top: 16px; padding: 14px 16px;
+  background: var(--accent-light); border-radius: var(--radius-sm);
+  border: 1px solid var(--border-mid);
+}
+.ret-goal-payoff-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.ret-goal-payoff-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-muted); font-weight: 600;
+}
+.ret-goal-payoff-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 24px; font-weight: 700; line-height: 1.2; margin-top: 2px;
+}
+.ret-goal-payoff-delta {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 15px; font-weight: 700; color: var(--accent);
+}
+.ret-goal-payoff-body {
+  font-size: 12px; color: var(--text-secondary); line-height: 1.6;
+  margin: 8px 0 0;
+}
+
+.ret-goal-note {
+  font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+  margin-top: 10px; padding-left: 10px; border-left: 2px solid var(--border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ret-goal-bar-fill { transition: none; }
+}
+
 .ret-milestone {
   font-family: 'DM Sans', system-ui, sans-serif; color: var(--text-secondary);
 }
@@ -4515,4 +4707,89 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 .eh-grid .react-grid-item.react-draggable-dragging {
   z-index: 3;
   box-shadow: var(--shadow);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Category rules — standing "this payment is always X" decisions
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.rule-form {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.rule-form-row {
+  display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
+}
+.rule-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rule-field-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.rule-field input[type="text"],
+.rule-field input[type="number"] {
+  height: 32px; padding: 0 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-mid); border-radius: var(--radius-sm);
+  font-size: 13px; color: var(--text-primary);
+}
+.rule-field input:focus { outline: none; border-color: var(--accent-mid); }
+.rule-field--value  { flex: 1 1 240px; }
+.rule-field--amount { width: 110px; }
+.rule-field--cat    { width: 190px; }
+.rule-form-actions { display: flex; gap: 8px; }
+.rule-form-hint { font-size: 11px; color: var(--text-muted); margin-top: 10px; }
+
+.rule-row-empty { text-align: center; color: var(--text-muted); padding: 24px 12px; }
+.rule-row--off { opacity: 0.5; }
+.rule-match-kind  { color: var(--text-muted); font-size: 12px; }
+.rule-match-value { font-weight: 600; }
+.rule-cat-pill {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  background: var(--accent-light); color: var(--accent);
+  font-size: 12px; font-weight: 600;
+}
+.rule-row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+.rule-backfill {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 12px;
+}
+.rule-backfill-hint { font-size: 11px; color: var(--text-muted); flex: 1 1 260px; }
+
+.rule-preview {
+  background: var(--bg-card);
+  border: 1px solid var(--accent-mid);
+  border-radius: var(--radius);
+  padding: 14px 16px; margin-bottom: 12px;
+}
+.rule-preview-head {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.rule-preview-sub { font-size: 12px; color: var(--text-muted); }
+.rule-preview-actions { display: flex; gap: 8px; margin-left: auto; }
+.rule-preview-list {
+  list-style: none; margin: 12px 0 0; padding: 0;
+  max-height: 260px; overflow-y: auto;
+  font-size: 12px;
+}
+.rule-preview-list li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 0; border-top: 1px solid var(--border);
+}
+.rule-preview-date { color: var(--text-muted); white-space: nowrap; }
+.rule-preview-desc {
+  flex: 1; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.rule-preview-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rule-preview-cat { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.rule-preview-more { color: var(--text-muted); font-style: italic; }
+
+.rule-applied {
+  background: var(--accent-light); border: 1px solid var(--accent-mid);
+  border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 12px;
+  font-size: 13px; color: var(--text-primary);
 }

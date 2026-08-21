@@ -1,8 +1,8 @@
 # Add Account modal
 
-> Source: `frontend/src/components/finances/BalancesSection.js`, `frontend/src/components/finances/AccountsTab.js`, `backend/routers/balances.py`
+> Source: `frontend/src/components/finances/accounts/AddAccountModal.js`, `frontend/src/components/finances/AccountsTab.js`, `backend/routers/balances.py`
 
-Opens from **+ Add Account** in the Balances section (Overview tab) or the cash list (Accounts tab).
+Opens from the **+ Add** row at the foot of any list on the [Accounts](../tabs/finances-accounts.md) page. Which list you click from picks the preset.
 
 ## Purpose
 
@@ -18,16 +18,22 @@ These show a **Manual** badge and survive restarts.
 
 | Field | Notes |
 |---|---|
-| **Type** | `depository` (checking/savings) or `credit` (credit card) |
+| **Type** | Set by the preset — `credit`, `depository`, or `investment` |
 | **Institution** | Bank / brokerage name |
 | **Nickname** | Free text; shown in lists |
 | **Balance** | Current balance — for credit cards, enter as a **positive number** for amount owed |
 | **APR** (credit only) | Used by the [Payoff Planner](../tabs/finances-overview.md#payoff-planner) |
 | **Credit limit** (credit only) | Drives utilization % |
 
+The investment preset asks for a single **Current Value**, written to both the
+available and ledger fields — the same convention SnapTrade snapshots use. There
+is no cost-basis field to put a second number in.
+
 ## Updating
 
-Manual balances are inline-editable in the Balances section. Edits are saved immediately.
+Manual accounts carry **✎** (edit balance) and **✕** (remove) on their row in
+[Accounts](../tabs/finances-accounts.md). Saving an edit records a balance
+snapshot, so your net-worth history keeps the change.
 
 ## Under the hood
 

@@ -66,6 +66,7 @@ _snaptrade_creds_store = PgStore("snaptrade_creds", "snaptrade-creds")
 _coach_dismissals_store = PgStore("coach_dismissals", "coach-dismissals")
 _retirement_store = PgStore("retirement_assumptions", "retirement-assumptions")
 _allocation_store = PgStore("allocation_settings", "allocation-settings")
+_category_rules_store = PgStore("category_rules", "category-rules")
 
 
 def _migrate_reviewed_field() -> None:
@@ -128,6 +129,9 @@ retirement_assumptions: MutableMapping[str, Any] = _retirement_store.data
 # target and this year's contribution room — the handful of facts the
 # allocation waterfall cannot derive from transactions and must be told.
 allocation_settings: MutableMapping[str, Any] = _allocation_store.data
+# Keyed by rule id (rule_<hex>). Standing "this description + amount is
+# always category X" decisions, applied at ingest by ``category_rules``.
+category_rules:      MutableMapping[str, Any] = _category_rules_store.data
 
 # ---------------------------------------------------------------------------
 # SnapTradeClient instance
@@ -166,6 +170,7 @@ _STORE_NAMES = (
     ("_coach_dismissals_store", "coach_dismissals", "coach-dismissals"),
     ("_retirement_store", "retirement_assumptions", "retirement-assumptions"),
     ("_allocation_store", "allocation_settings", "allocation-settings"),
+    ("_category_rules_store", "category_rules", "category-rules"),
 )
 
 _LIVE_REFS = (
@@ -180,6 +185,7 @@ _LIVE_REFS = (
     ("coach_dismissals",    "_coach_dismissals_store"),
     ("retirement_assumptions", "_retirement_store"),
     ("allocation_settings",  "_allocation_store"),
+    ("category_rules",       "_category_rules_store"),
 )
 
 

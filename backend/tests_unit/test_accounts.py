@@ -74,6 +74,37 @@ class TestAccountDetails:
             self._endpoint, json={"min_payment_until": "not-a-date"}
         ).status_code == 422
 
+    def test_partial_put_preserves_untouched_fields(self, client):
+        """The Accounts tab and the payoff planner both PUT this record, each
+        sending only the fields it owns. A partial body must not null the
+        other screen's fields — an APR edit used to wipe the promo."""
+        client.put(self._endpoint, json={
+            "deferred_interest": True,
+            "promo_apr": 0.0,
+            "promo_expires": "2028-06-23",
+            "debt_class": "credit_card",
+            "payoff_start_balance": 15465.0,
+        })
+
+        # Accounts-tab style save: APR/limit/day fields only.
+        client.put(self._endpoint, json={
+            "apr": 29.0, "credit_limit": 16000.0, "minimum_payment": 520.0,
+            "statement_day": None, "due_day": None, "notes": "",
+        })
+
+        got = client.get(self._endpoint).json()
+        assert got["apr"] == 29.0
+        assert got["deferred_interest"] is True
+        assert got["promo_expires"] == "2028-06-23"
+        assert got["debt_class"] == "credit_card"
+        assert got["payoff_start_balance"] == 15465.0
+
+    def test_explicit_null_still_clears(self, client):
+        """Merge semantics only cover omitted keys — sending null clears."""
+        client.put(self._endpoint, json={"promo_expires": "2028-06-23"})
+        client.put(self._endpoint, json={"promo_expires": None})
+        assert client.get(self._endpoint).json()["promo_expires"] is None
+
     def test_min_payment_window_optional(self, client):
         r = client.put(self._endpoint, json={"minimum_payment": 35.0})
         assert r.status_code == 200

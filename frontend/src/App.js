@@ -17,6 +17,7 @@ import SyncToast        from './components/ui/SyncToast';
 import AccountsModal    from './components/accounts/AccountsModal';
 import FinancesPage     from './components/finances/FinancesPage';
 import HistoryPage      from './components/transactions/HistoryPage';
+import CategoryRulesPage from './components/transactions/CategoryRulesPage';
 import TransactionsSidebar from './components/transactions/TransactionsSidebar';
 import { useTransactions } from './hooks/useTransactions';
 import { useFilters } from './hooks/useFilters';
@@ -68,7 +69,7 @@ export default function App() {
   const [activeExpand, setActiveExpand] = useState(null);  // 'note-{id}' | 'adj-{id}' | null
   const [suggestionPreview, setSuggestionPreview] = useState(null);
   const [suggestingBulk, setSuggestingBulk] = useState(false);
-  const [txnView, setTxnView] = useState('current');  // 'current' | 'history'
+  const [txnView, setTxnView] = useState('current');  // 'current' | 'history' | 'rules'
   const [dedupingNow, setDedupingNow] = useState(false);
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem('theme');
@@ -468,6 +469,8 @@ export default function App() {
                     />
                   )}
                 </main>
+              ) : txnView === 'rules' ? (
+                <CategoryRulesPage />
               ) : (
                 <HistoryPage />
               )}

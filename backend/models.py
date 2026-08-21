@@ -58,6 +58,45 @@ class ApplyCategoriesRequest(BaseModel):
     items: List[CategoryAssignment]
 
 
+# ---------------------------------------------------------------------------
+# Category rules — standing "this is always category X" decisions
+# ---------------------------------------------------------------------------
+
+class CategoryRuleIn(BaseModel):
+    """Create/update payload for an auto-categorization rule.
+
+    ``amount`` and ``transaction_type`` are both optional narrowings: omit
+    them and the rule fires on description alone. Pinning the amount is what
+    separates "the $1,305.93 Zelle is rent" from "every Zelle to this person
+    is rent" — see ``category_rules`` for the evaluation order that keeps the
+    narrower rule winning.
+    """
+    match: Literal["description_contains", "merchant_key"] = "description_contains"
+    value: str
+    category: str
+    amount: Optional[float] = None
+    transaction_type: Optional[Literal["debit", "credit"]] = None
+    enabled: bool = True
+    notes: str = ""
+
+
+class CategoryRule(CategoryRuleIn):
+    id: str
+    created: str
+    updated: str
+
+
+class ApplyCategoryRulesRequest(BaseModel):
+    """Backfill request for rules against already-imported transactions.
+
+    ``mode="preview"`` reports what would change without writing, mirroring
+    the dedupe endpoint's preview/apply pair.
+    """
+    mode: Literal["preview", "apply"] = "preview"
+    rule_id: Optional[str] = None    # None = every enabled rule
+    overwrite: bool = False          # True also relabels already-categorized txns
+
+
 class SimplefinClaimRequest(BaseModel):
     setup_token: str
 
@@ -325,8 +364,16 @@ class BalancesSummary(BaseModel):
     # Real estate. ``total_property_debt`` is reported for display only — the
     # portion secured by a synced account is already inside
     # ``total_credit_debt``, so summing these two double-counts the mortgage.
+    # That split is published rather than left implicit: a client rendering a
+    # net-worth breakdown has to know which half of the property debt its
+    # credit total already carries, or its rows won't add up to ``net_worth``.
+    #   total_property_debt = linked + unlinked
+    #   net_worth = cash + investments + property_value
+    #               - credit_debt - property_debt_unlinked
     total_property_value: float = 0.0
     total_property_debt: float = 0.0
+    total_property_debt_linked: float = 0.0
+    total_property_debt_unlinked: float = 0.0
     total_property_equity: float = 0.0
     unvalued_properties: List[str] = []
     accounts: List[AccountBalance]

@@ -21,6 +21,7 @@ Split in two so the math is testable in isolation:
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Dict, List, Optional
@@ -123,7 +124,9 @@ def project_retirement(
     """
     today = as_of or date.today()
     a = inputs.assumptions
-    horizon = min(int(a.get("horizon_years") or 50), MAX_HORIZON_YEARS)
+    # Floored at zero as well as capped: a negative horizon would leave no
+    # rows at all, and year zero is what the goal figure is read from.
+    horizon = max(0, min(int(a.get("horizon_years") or 50), MAX_HORIZON_YEARS))
 
     invest_return = _pct(a, "investment_return_pct")
     inflation = _pct(a, "inflation_pct")
@@ -151,6 +154,17 @@ def project_retirement(
     rows: List[Dict[str, Any]] = []
     balance = float(inputs.investment_balance)
     retirement_year_index: Optional[int] = None
+
+    # Years until the last loan still running is retired — the point the rent
+    # stops being the bank's and starts being yours.
+    last_payoff_in = max(
+        (
+            loan.years_until_retired()
+            for prop in inputs.properties
+            for loan in prop.loans
+        ),
+        default=0,
+    )
 
     for year in range(0, horizon + 1):
         age = current_age + year
@@ -257,6 +271,26 @@ def project_retirement(
         "earliest_retirement_age": at_retirement["age"] if at_retirement else None,
         "years_away": sustained_from if feasible else None,
         "at_retirement": at_retirement,
+        "goal": _build_goal(
+            rows[0],
+            investment_balance=float(inputs.investment_balance),
+            annual_spending=spending_now,
+            swr=swr,
+            withdrawal_tax=withdrawal_tax,
+            ss_annual_now=ss_annual_now,
+            ss_start_age=ss_start_age,
+            # Today's rent with the debt service gone: what the properties
+            # pay once the tenants have finished buying them.
+            unlevered_rental_net=sum(
+                p.monthly_noi * 12 for p in inputs.properties
+            ) * (1 - rental_tax),
+            final_payoff_year=(
+                today.year + last_payoff_in if last_payoff_in else None
+            ),
+            final_payoff_age=(
+                current_age + last_payoff_in if last_payoff_in else None
+            ),
+        ),
         "rows": rows,
         "milestones": [
             {"year": r["year"], "age": r["age"], "mortgages_retired": r["mortgages_retired"]}
@@ -284,6 +318,112 @@ def project_retirement(
         )
 
     return result
+
+
+def _ceil_cents(value: float) -> float:
+    return math.ceil(value * 100 - 1e-9) / 100
+
+
+def _build_goal(
+    first_row: Dict[str, Any],
+    *,
+    investment_balance: float,
+    annual_spending: float,
+    swr: float,
+    withdrawal_tax: float,
+    ss_annual_now: float,
+    ss_start_age: int,
+    unlevered_rental_net: float = 0.0,
+    final_payoff_year: Optional[int] = None,
+    final_payoff_age: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
+    """The number to aim at: invested assets that would fund retirement today.
+
+    This is not a second model. It is the feasibility test the projection
+    already applies, rearranged to solve for the balance:
+
+        rental_net + balance * swr * (1 - tax) + social_security >= spending
+
+    becomes
+
+        balance >= (spending - rental_net - social_security) / (swr * (1 - tax))
+
+    so the target can never disagree with the retirement date above it.
+
+    Everything is in today's dollars and read off year zero, which makes the
+    figure directly comparable to the balance you hold now — the point of
+    having a goal at all. Two consequences follow, and both are honest:
+
+    * Rental profit is counted net of *today's* debt service, so the target
+      is conservative. Every mortgage payoff lowers it.
+    * Social Security is counted only once you're eligible, because a target
+      that quietly assumes an income stream you can't draw for twenty years
+      is not a target. ``social_security_pending`` says when that applies.
+
+    The first of those would understate the properties badly on its own. While
+    a mortgage runs, most of the rent goes to the bank — so the headline
+    target reads as though the rentals barely contribute, when the plan is
+    that they eventually carry most of the load. ``after_payoff`` is the same
+    target computed with the debt service gone and the rent kept, which is
+    the number the buy-and-hold strategy is actually aiming at. Both are
+    reported: one is where you stand, the other is where the plan lands.
+    """
+    effective_rate = swr * (1 - withdrawal_tax)
+    if annual_spending <= 0 or effective_rate <= 0:
+        return None
+
+    rental_offset = float(first_row["rental_net"])
+    ss_offset = float(first_row["social_security"])
+
+    fund_from_investments = max(0.0, annual_spending - rental_offset - ss_offset)
+    # Rounded *up* to the cent, here and for the gap. A target rounded down is
+    # a target you can hit and still fall short, which defeats the point of
+    # publishing one — saving the last cent is free, being told you're done
+    # when you aren't is not.
+    target = _ceil_cents(fund_from_investments / effective_rate)
+    gap = _ceil_cents(max(0.0, target - investment_balance))
+
+    # Only meaningful while debt service is actually suppressing the rent.
+    # With no loans running, this target *is* the headline one, and showing
+    # the same number twice under a different label would imply a gain that
+    # isn't there.
+    after_payoff = None
+    if unlevered_rental_net > rental_offset and final_payoff_year is not None:
+        after_fund = max(0.0, annual_spending - unlevered_rental_net - ss_offset)
+        after_target = _ceil_cents(after_fund / effective_rate)
+        after_payoff = {
+            "rental_offset": round(unlevered_rental_net, 2),
+            "fund_from_investments": round(after_fund, 2),
+            "target": after_target,
+            "reduction": _ceil_cents(target - after_target),
+            "final_payoff_year": final_payoff_year,
+            "final_payoff_age": final_payoff_age,
+        }
+
+    return {
+        "basis": "today",
+        "annual_spending": round(annual_spending, 2),
+        "after_payoff": after_payoff,
+        # The plain "25x your spending" figure, before any other income —
+        # what the target would be with no rentals and no Social Security.
+        "gross_target": _ceil_cents(annual_spending / effective_rate),
+        "rental_offset": round(rental_offset, 2),
+        "social_security_offset": round(ss_offset, 2),
+        "social_security_pending": ss_annual_now > 0 and ss_offset == 0,
+        "social_security_start_age": ss_start_age,
+        "fund_from_investments": round(fund_from_investments, 2),
+        "effective_withdrawal_rate_pct": round(effective_rate * 100, 2),
+        "target": target,
+        "multiple": round(target / annual_spending, 1),
+        "current_balance": round(investment_balance, 2),
+        "gap": gap,
+        "funded_pct": round(
+            100.0 if target <= 0
+            else min(100.0, investment_balance / target * 100),
+            1,
+        ),
+        "fully_funded": gap <= 0,
+    }
 
 
 def _solve_required_contribution(

@@ -11,10 +11,12 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 
+import category_rules
 import state
 from category_normalizer import normalize as normalize_category
 from csv_parser import Transaction as CsvTransaction, BankType, dedupe_key
 from helpers import _env_add_simplefin_url, _env_remove_simplefin_url, _previous_month_range
+from mcc import category_for_mcc
 from models import SimplefinClaimRequest, SimplefinSyncRequest
 from routers.balances import persist_simplefin_balances
 from simplefin import _mask_url
@@ -101,6 +103,9 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
         for t in state.stored_transactions.values()
     }
 
+    # Loaded once for the whole sync — every lookup hits json_stores.
+    rules = category_rules.list_rules(include_disabled=False)
+
     url_batches, url_errors = await state.simplefin.list_accounts_by_url(start_ts, end_ts)
     results: List[Dict[str, Any]] = list(url_errors)
 
@@ -140,6 +145,15 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                 added = 0
                 for t, txn_date in filtered:
                     amt = float(t.get("amount", 0))
+                    mcc = (str(t.get("mcc") or "")).strip() or None
+                    # SimpleFIN's spec allows a bank-reported category under
+                    # `extra`, but none of the connected institutions actually
+                    # populate it (`extra` is `{}` on every transaction), so in
+                    # practice the MCC is what lands a category here.
+                    category = (
+                        normalize_category((t.get("extra") or {}).get("category"))
+                        or category_for_mcc(mcc)
+                    )
                     txn = CsvTransaction(
                         date=txn_date,
                         description=t.get("description", ""),
@@ -147,13 +161,23 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                         source=BankType.SIMPLEFIN,
                         transaction_id=t.get("id"),
                         account_id=acct_id,
-                        category=normalize_category((t.get("extra") or {}).get("category")),
+                        category=category,
+                        payee=(t.get("payee") or "").strip() or None,
+                        mcc=mcc,
                         institution=org_name,
                         # SimpleFIN's amount sign is always balance-effect based
                         # (positive = money in) — no CR/DR heuristic needed.
                         transaction_type="credit" if amt > 0 else "debit",
                         account_type=account.get("name", ""),
                     )
+                    # A rule outranks SimpleFIN's own category — it's the
+                    # account holder saying what the money was for, not the
+                    # aggregator guessing at a merchant.
+                    rule_category = category_rules.match_category(
+                        txn.description, txn.amount, txn.transaction_type, rules=rules,
+                    )
+                    if rule_category:
+                        txn.category = rule_category
                     key = dedupe_key(
                         txn.date, txn.amount, txn.description, txn.transaction_type,
                     )
@@ -166,9 +190,19 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                         added += 1
                     elif txn.transaction_id in state.stored_transactions:
                         existing = state.stored_transactions[txn.transaction_id]
-                        for field in ("transaction_type", "account_type", "category",
-                                      "institution", "description", "amount", "date"):
+                        for field in ("transaction_type", "account_type", "institution",
+                                      "description", "amount", "date", "payee", "mcc"):
                             existing[field] = getattr(txn, field)
+                        # `category` is deliberately absent from that list.
+                        # Precedence on re-sync: a rule wins outright, and
+                        # re-asserting it here is what stops a monthly re-sync
+                        # undoing it; otherwise whatever is already on the row
+                        # stands, since a hand-set label is the entire point of
+                        # reviewing; and the payload only fills a blank.
+                        if rule_category:
+                            existing["category"] = rule_category
+                        elif not (existing.get("category") or "").strip() and txn.category:
+                            existing["category"] = txn.category
                         state.stored_transactions[txn.transaction_id] = existing
 
                 total_fetched += len(filtered)

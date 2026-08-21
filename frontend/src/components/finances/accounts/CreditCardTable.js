@@ -9,18 +9,32 @@ import { daysUntilNextDue, dueUrgencyClass } from './dueDate';
 // Credit Cards & Loans table with inline-editable APR / Limit / Min / Statement
 // / Due / Notes cells. Each cell calls onUpdate(accountId, fieldName, value)
 // which the parent debounces into an upsert request.
+//
+// `total` is the owed figure from the summary (total_credit_debt) shown in the
+// heading; edit/delete are offered per-row for manual accounts, folded in from
+// the retired BalancesSection so this is the only place credit accounts appear.
 export default function CreditCardTable({
   accounts,
   detailsMap,
   cacheFetchedAt,
+  total,
   onUpdate,
   onAdd,
+  onEdit,
+  onDelete,
 }) {
   if (!accounts.length && !onAdd) return null;
 
+  const showActions = Boolean((onEdit || onDelete) && accounts.some((a) => a.manual));
+
   return (
     <div className="finances-section acct-table-card">
-      <h2 className="finances-section-title">Credit Cards &amp; Loans</h2>
+      <div className="acct-list-head">
+        <h2 className="finances-section-title">Credit Cards &amp; Loans</h2>
+        {(total !== null && total !== undefined) && (
+          <span className="acct-list-total is-owed">{fmt$(total)} owed</span>
+        )}
+      </div>
       <div className="acct-table-wrap">
         <table className="acct-table">
           <thead>
@@ -33,6 +47,7 @@ export default function CreditCardTable({
               <th className="acct-th-num">Min</th>
               <th className="acct-th hide-md">Statement</th>
               <th className="acct-th">Due</th>
+              {showActions && <th className="acct-th" aria-label="Actions" />}
             </tr>
           </thead>
           <tbody>
@@ -42,7 +57,10 @@ export default function CreditCardTable({
                 account={acct}
                 details={detailsMap[acct.id] || {}}
                 cacheFetchedAt={cacheFetchedAt}
+                showActions={showActions}
                 onUpdate={(field, value) => onUpdate(acct.id, field, value)}
+                onEdit={onEdit}
+                onDelete={onDelete}
               />
             ))}
           </tbody>
@@ -58,7 +76,7 @@ export default function CreditCardTable({
   );
 }
 
-function CardRow({ account, details, cacheFetchedAt, onUpdate }) {
+function CardRow({ account, details, cacheFetchedAt, showActions, onUpdate, onEdit, onDelete }) {
   const owed = parseFloat(account.ledger) || 0;
   const avail = parseFloat(account.available) || 0;
   const limit = (details.credit_limit !== null && details.credit_limit !== undefined) ? parseFloat(details.credit_limit) : null;
@@ -166,6 +184,33 @@ function CardRow({ account, details, cacheFetchedAt, onUpdate }) {
           </div>
         )}
       </td>
+
+      {showActions && (
+        <td className="acct-cell">
+          {account.manual && (
+            <div className="acct-row-actions">
+              {onEdit && (
+                <button
+                  type="button"
+                  className="ov-icon-btn"
+                  onClick={() => onEdit(account)}
+                  aria-label={`Edit balance for ${account.name}`}
+                  title="Edit balance"
+                >✎</button>
+              )}
+              {onDelete && (
+                <button
+                  type="button"
+                  className="ov-icon-btn ov-icon-btn--danger"
+                  onClick={() => onDelete(account)}
+                  aria-label={`Remove ${account.name}`}
+                  title="Remove account"
+                >✕</button>
+              )}
+            </div>
+          )}
+        </td>
+      )}
     </tr>
   );
 }

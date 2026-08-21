@@ -14,6 +14,18 @@ All endpoints are mounted under `/api`. The static help site lives at `/help/`. 
 | `POST` | `/api/upload-csv` | Multipart CSV upload |
 | `POST` | `/api/suggest-categories/bulk` | AI category suggestions for selected rows |
 
+## Category rules
+
+Deterministic auto-categorization applied on CSV upload and bank sync. See [Transactions → Rules](../tabs/transactions-rules.md).
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/category-rules` | List rules in evaluation order |
+| `POST` | `/api/category-rules` | Create a rule |
+| `PUT` | `/api/category-rules/{id}` | Replace a rule |
+| `DELETE` | `/api/category-rules/{id}` | Delete a rule |
+| `POST` | `/api/category-rules/apply` | Replay rules over stored transactions (`mode: preview\|apply`) |
+
 ## Accounts & balances
 
 | Method | Path | Purpose |

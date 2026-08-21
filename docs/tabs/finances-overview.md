@@ -1,24 +1,22 @@
 # Finances → Overview
 
-> Source: `frontend/src/components/finances/BalancesSection.js`, `PayoffPlanner.js`, `SpendingInsights.js`
+> Source: `frontend/src/components/finances/PayoffPlanner.js`, `SpendingInsights.js`
 
-Three stacked sections: balances, debt payoff planning, and AI spending insights.
+!!! note "This tab has been split up"
 
-## Balances section
+    Overview no longer exists as a destination — a stored `overview` tab id
+    redirects to Accounts (`FinancesSidebar.LEGACY_TAB_IDS`). Its contents now
+    live on pages of their own:
 
-Lists every account grouped by type — **Depository** (checking / savings / money market), **Investments**, and **Credit**.
+    | Was | Now |
+    |---|---|
+    | Balances section | [Accounts](finances-accounts.md) — the account lists |
+    | Net worth banner | [Net Worth](finances-net-worth.md) — the figure and its breakdown |
+    | Payoff Planner | Finances → Payoff Plan — documented [below](#payoff-planner) |
+    | Spending Insights | Finances → Spending — documented [below](#spending-insights) |
 
-For each account:
-
-- Inline-editable institution, nickname, APR (credit), credit limit, statement / due day
-- Live balance from SimpleFIN, or **Manual** badge for hand-entered accounts
-
-Actions:
-
-- **+ Add Account** opens the [Add Account modal](../modals/add-account.md) — for accounts not connected via SimpleFIN.
-- **✕** removes a manual account.
-
-Backend: `GET /api/balances/summary`, `POST /api/balances/manual`, `PUT /api/balances/manual/{id}`, `PUT /api/accounts/{id}/details`.
+    The two sections below are kept here because they document those features in
+    detail and are linked from elsewhere.
 
 ## Payoff Planner
 

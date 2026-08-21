@@ -18,6 +18,38 @@ The first year income covers spending **and keeps covering it** for every year a
 
 Not the first crossing. Inflation can outrun a fixed income stream, so a year that works and then stops working is not a retirement date — reporting one would be a lie with a number attached. The projection scans backwards from the horizon to find the start of the final unbroken run.
 
+## Your retirement goal
+
+One number to aim at, and how close the portfolio is to it.
+
+The target is **not a second model**. It is the same feasibility test, rearranged to solve for the balance:
+
+```
+rental_net + balance × swr × (1 − tax) + social_security  ≥  spending
+balance  ≥  (spending − rental_net − social_security) / (swr × (1 − tax))
+```
+
+So the goal can never disagree with the retirement year shown above it. Fund it exactly and year zero turns feasible — that invariant is asserted in the tests, and it's why the target rounds *up* to the cent. A target rounded down is one you can hit and still fall short.
+
+Everything is in **today's dollars**, read off year zero, so it's directly comparable to the balance you hold now. Two consequences, both deliberate:
+
+- **Rental profit is netted against today's debt service**, which makes the target conservative. The card also shows the gross figure — what the same spending would need with no rentals at all — so the properties' contribution is visible.
+- **Social Security is subtracted only once you're eligible.** A target that quietly assumes an income stream you can't draw for twenty years is not a target. Before the start age the card says so rather than silently inflating the number.
+
+At a 4% withdrawal rate with 15% tax on withdrawals, the effective rate is 3.4% — so spending of $60,000/yr with no other income is a target of about $1.76m, or 29.4×. The familiar "25× your spending" rule is the same arithmetic with the tax drag left out.
+
+### Two targets, because one would mislead
+
+Netting rent against *today's* debt service understates the properties badly, and understating them is the one error this page must not make. While a mortgage runs, most of the rent is the bank's — so the headline target reads as though the rentals barely contribute, when the entire plan is that they eventually carry most of the load.
+
+So the card reports **`after_payoff`** alongside it: the same target with the debt service gone and the rent kept, dated to the last loan's payoff. It is the number the buy-and-hold strategy is actually aiming at.
+
+On real data the gap is not subtle — $1.63m while the mortgages run against $770k once they're done, because rental profit goes from $4,630/yr to $33,826/yr without rents changing at all. Showing only the first would misrepresent the strategy; showing only the second would flatter it. Both are reported: one is where you stand, the other is where the plan lands.
+
+It's omitted entirely when there are no loans left to retire, since the same number under a hopeful label would imply a gain that isn't coming.
+
+There is no goal when there's no spending figure to build one from, and none if the withdrawal rate is zero — the same standard the rest of the page holds to.
+
 ## What's projected each year
 
 | | |

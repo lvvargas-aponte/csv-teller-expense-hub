@@ -28,6 +28,25 @@ const ALLOC_COLORS = {
   other: '#94a3b8',
 };
 
+// What to say for an account showing a balance but no ticker-level positions.
+// Which explanation is right depends on where the account came from, so the
+// backend tags each by_account row with a `source`.
+function emptyAccountNote(source) {
+  if (source === 'manual') {
+    return 'Balance-only account — no position detail. Edit the value from Accounts.';
+  }
+  if (source === 'simplefin') {
+    return 'Balance-only account — your linked institution reports a total but no positions.';
+  }
+  return (
+    <>
+      No positions returned yet for this account. SnapTrade can take up to ~30 minutes
+      after a fresh brokerage connection to surface positions. If it stays empty after
+      that, reconnect this brokerage via <strong>+ Connect a brokerage</strong>.
+    </>
+  );
+}
+
 // InvestmentsTab — connects brokerages via SnapTrade and shows holdings,
 // allocation, and unrealized gain/loss. Mirrors the connect flow used for
 // bank accounts (accounts/AccountsModal.js) but SnapTrade hands back a
@@ -151,6 +170,8 @@ export default function InvestmentsTab() {
         account_id: a.account_id,
         account_name: a.account_name,
         institution: a.institution,
+        source: a.source || 'snaptrade',
+        value: a.value || 0,
         holdings: [],
       };
     }
@@ -159,6 +180,8 @@ export default function InvestmentsTab() {
         account_id: h.account_id,
         account_name: h.account_name,
         institution: h.institution,
+        source: 'snaptrade',
+        value: 0,
         holdings: [],
       });
       g.holdings.push(h);
@@ -202,6 +225,12 @@ export default function InvestmentsTab() {
                   ? ` (${portfolio.total_gain_pct >= 0 ? '+' : ''}${portfolio.total_gain_pct}%)`
                   : ''}
                 {' · '}cost basis {fmt$(portfolio.total_cost || 0)}
+              </div>
+            )}
+            {portfolio?.balance_only_value > 0 && (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
+                {fmt$(portfolio.balance_only_value)} tracked as account balances only —
+                no position detail
               </div>
             )}
           </div>
@@ -286,26 +315,29 @@ export default function InvestmentsTab() {
 
       {groups.map((g) => (
         <div className="finances-section" key={g.account_id}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12 }}>
             <h3 className="finances-section-title" style={{ margin: 0 }}>
               {g.account_name}
               {g.institution ? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> · {g.institution}</span> : null}
             </h3>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => runAccountSync(g.account_id, g.account_name)}
-              disabled={syncing || syncingAccount === g.account_id}
-              title="Sync only this account"
-            >
-              {syncingAccount === g.account_id ? 'Syncing…' : '↺ Sync'}
-            </button>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{fmt$(g.value)}</span>
+              {g.source === 'snaptrade' && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => runAccountSync(g.account_id, g.account_name)}
+                  disabled={syncing || syncingAccount === g.account_id}
+                  title="Sync only this account"
+                >
+                  {syncingAccount === g.account_id ? 'Syncing…' : '↺ Sync'}
+                </button>
+              )}
+            </div>
           </div>
           {g.holdings.length === 0 ? (
             <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>
-              No positions returned yet for this account. SnapTrade can take up to ~30 minutes
-              after a fresh brokerage connection to surface positions. If it stays empty after
-              that, reconnect this brokerage via <strong>+ Connect a brokerage</strong>.
+              {emptyAccountNote(g.source)}
             </div>
           ) : (
           <table className="eh-table" style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>

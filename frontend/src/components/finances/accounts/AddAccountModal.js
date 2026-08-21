@@ -30,6 +30,20 @@ const PRESETS = {
     primaryField: 'available',
     secondaryField: 'ledger',
   },
+  // An investment account has one number — what it's worth — so this preset
+  // asks once and mirrors it into both fields, the same convention SnapTrade
+  // snapshots use (see analytics._net_worth_at). A second input here would
+  // imply a cost-basis field the backend has nowhere to put.
+  investment: {
+    title: 'Add Investment or Retirement Account',
+    sub:   '401(k), IRA, HSA, brokerage — a balance-only account is fine.',
+    type:  'investment',
+    nameHint: 'e.g. Fidelity 401(k)',
+    primaryLabel: 'Current Value ($)',
+    primaryField: 'available',
+    secondaryField: null,
+    mirrorPrimaryTo: 'ledger',
+  },
 };
 
 export default function AddAccountModal({ kind, onClose, onSaved }) {
@@ -49,12 +63,18 @@ export default function AddAccountModal({ kind, onClose, onSaved }) {
     setSaving(true);
     setError(null);
     try {
+      const primaryValue = parseFloat(primary) || 0;
       await addManualAccount({
         institution: institution.trim(),
         name:        name.trim(),
         type:        preset.type,
-        [preset.primaryField]:   parseFloat(primary)   || 0,
-        [preset.secondaryField]: parseFloat(secondary) || 0,
+        [preset.primaryField]: primaryValue,
+        ...(preset.secondaryField
+          ? { [preset.secondaryField]: parseFloat(secondary) || 0 }
+          : {}),
+        ...(preset.mirrorPrimaryTo
+          ? { [preset.mirrorPrimaryTo]: primaryValue }
+          : {}),
       });
       onSaved?.();
       onClose();
@@ -91,17 +111,19 @@ export default function AddAccountModal({ kind, onClose, onSaved }) {
                        onChange={(e) => setName(e.target.value)} />
               </Field>
             </div>
-            <div className="form-row-2">
+            <div className={preset.secondaryField ? 'form-row-2' : undefined}>
               <Field label={preset.primaryLabel}>
                 <input className="form-input" type="number" step="0.01" min="0" placeholder="0.00"
                        value={primary}
                        onChange={(e) => setPrimary(e.target.value)} />
               </Field>
-              <Field label={preset.secondaryLabel}>
-                <input className="form-input" type="number" step="0.01" min="0" placeholder="0.00"
-                       value={secondary}
-                       onChange={(e) => setSecondary(e.target.value)} />
-              </Field>
+              {preset.secondaryField && (
+                <Field label={preset.secondaryLabel}>
+                  <input className="form-input" type="number" step="0.01" min="0" placeholder="0.00"
+                         value={secondary}
+                         onChange={(e) => setSecondary(e.target.value)} />
+                </Field>
+              )}
             </div>
             {error && <div className="ov-error">{error}</div>}
           </div>

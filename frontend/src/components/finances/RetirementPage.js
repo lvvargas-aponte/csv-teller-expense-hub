@@ -4,6 +4,7 @@ import Spin from '../ui/Spin';
 import Num from './Num';
 import ProjectionChart from './retirement/ProjectionChart';
 import AssumptionsForm from './retirement/AssumptionsForm';
+import GoalCard from './retirement/GoalCard';
 import { fmt$ } from '../../utils/formatting';
 import { userMessage } from '../../utils/errorMessage';
 import {
@@ -211,6 +212,8 @@ export default function RetirementPage() {
                 </ul>
               </section>
             )}
+
+            <GoalCard goal={projection.goal} />
 
             <section className="ov-card">
               <div className="ov-card-header">

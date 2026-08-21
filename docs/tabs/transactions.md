@@ -42,6 +42,11 @@ The home tab. A review queue of every transaction (SimpleFIN-synced + CSV-upload
 2. Click **Suggest** → opens the [Suggest Categories preview modal](../modals/suggest-preview.md).
 3. Review per-row suggestions and apply.
 
+### Categorize a recurring payment automatically, forever
+
+When the same payment lands every month, write a rule instead of categorizing it
+again each time. Sidebar → **Rules** → [Transactions → Rules](transactions-rules.md).
+
 ### Send shared expenses to Google Sheets
 
 1. Click **📊 Send to Sheet** in the control bar.

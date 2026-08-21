@@ -325,27 +325,24 @@ async def upsert_account_details(account_id: str, req: AccountDetailsIn):
         raise HTTPException(status_code=422, detail="payoff_start_balance must be >= 0")
 
     existing = state.account_details.get(account_id)
+    # Merge rather than replace. Several screens write this record and each
+    # sends only the fields it owns — the Accounts tab sends APR/limit/due-day,
+    # the payoff planner sends the promo and tracking fields. A wholesale
+    # replace meant an APR edit silently nulled the deferred-interest promo
+    # saved from the other screen. Fields the body omits keep their stored
+    # value; a field sent explicitly as ``null`` still clears.
+    fields: Dict = {name: getattr(req, name) for name in AccountDetailsIn.model_fields}
+    if existing:
+        fields.update({
+            k: v for k, v in existing.items() if k in AccountDetailsIn.model_fields
+        })
+        fields.update(req.model_dump(exclude_unset=True))
+
     record: Dict = {
-        "account_id":        account_id,
-        "apr":               req.apr,
-        "credit_limit":      req.credit_limit,
-        "minimum_payment":   req.minimum_payment,
-        "statement_day":     req.statement_day,
-        "due_day":           req.due_day,
-        "notes":             req.notes,
-        "debt_class":        req.debt_class,
-        "asset_value":       req.asset_value,
-        "due_date":          req.due_date,
-        "deferred_interest": req.deferred_interest,
-        "promo_apr":         req.promo_apr,
-        "promo_expires":     req.promo_expires,
-        "min_payment_from":  req.min_payment_from,
-        "min_payment_until": req.min_payment_until,
-        "payoff_start_balance": req.payoff_start_balance,
-        "payoff_start_date":    req.payoff_start_date,
-        "payment_account_id":   req.payment_account_id,
-        "created":           existing.get("created", _now_iso()) if existing else _now_iso(),
-        "updated":           _now_iso(),
+        "account_id": account_id,
+        **fields,
+        "created":    existing.get("created", _now_iso()) if existing else _now_iso(),
+        "updated":    _now_iso(),
     }
     state.account_details[account_id] = record
     state._account_details_store.save()

@@ -11,7 +11,7 @@ import re
 import statistics
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import state
 
@@ -136,6 +136,29 @@ def _classify_account_bucket(acct_type: str, subtype: str) -> str:
     return "other"
 
 
+def is_empty_synced_account(acct: Mapping[str, Any]) -> bool:
+    """True for a synced account that reports no value at all.
+
+    Several brokerages hand the aggregator an auto-created sub-account every
+    customer gets whether or not they ever funded it — Robinhood's separate
+    crypto account is the common one. Showing a $0 card on Investments and a
+    $0 row in Accounts for something the household doesn't own is pure noise,
+    so the display layers (``routers/investments`` and ``routers/balances``)
+    filter on this rather than the sync dropping it: the sync's job is to
+    record what the brokerage reported, and an account reappears the instant
+    it reports a balance.
+
+    Only applied to *synced* accounts. A manual account with a $0 balance was
+    typed in deliberately and always shows. Note the value here is the
+    brokerage-reported account total, not a sum of positions, so an account
+    that is funded but hasn't propagated its positions yet still passes.
+    """
+    return (
+        float(acct.get("available") or 0.0) == 0.0
+        and float(acct.get("ledger") or 0.0) == 0.0
+    )
+
+
 def summarize_holdings(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Aggregate a flat list of holdings into a portfolio summary.
 
@@ -220,11 +243,15 @@ def _balances_snapshot() -> Dict[str, Any]:
     ``simplefin_credit_debt`` scalars in the cache only cover depository +
     credit and would otherwise silently drop investment value from net worth.
     SnapTrade-synced investment accounts live under their own
-    ``snaptrade_accounts`` cache key.
+    ``snaptrade_accounts`` cache key; the valueless ones are filtered so the
+    advisor's account list matches what the Accounts tab shows.
     """
     cache = state._balances_cache or {}
     linked_accounts = list(cache.get("simplefin_accounts", []) or [])
-    snaptrade_accounts = cache.get("snaptrade_accounts", []) or []
+    snaptrade_accounts = [
+        a for a in (cache.get("snaptrade_accounts", []) or [])
+        if not is_empty_synced_account(a)
+    ]
 
     manual_accounts: List[Dict[str, Any]] = []
     for acct in state._manual_accounts.values():

@@ -148,6 +148,7 @@ class _FakeSnapTrade:
         self.register_user = AsyncMock(return_value={"user_id": "u1", "user_secret": "s1"})
         self.login_url = AsyncMock(return_value="https://app.snaptrade.com/connect/abc")
         self.get_all_holdings = AsyncMock(return_value=_sample_portfolios())
+        self.get_account_holdings = AsyncMock(return_value=_sample_portfolios()[0])
         self.list_connections = AsyncMock(
             return_value=[{"id": "auth1", "brokerage": "Robinhood", "disabled": False}]
         )
@@ -261,6 +262,117 @@ class TestInvestmentsRouter:
     def test_portfolio_empty_without_sync(self, client):
         portfolio = client.get("/api/investments/portfolio").json()
         assert portfolio["holding_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Empty synced accounts (e.g. Robinhood's auto-created crypto sub-account)
+# ---------------------------------------------------------------------------
+
+def _empty_portfolio(name="Robinhood Crypto", account_id="st_empty"):
+    return {
+        "account": {"id": account_id, "name": name,
+                    "institution": "Robinhood", "number": "x"},
+        "holdings": [],
+        "total_value": 0.0,
+        "currency": "USD",
+    }
+
+
+class TestEmptySyncedAccounts:
+    def test_empty_account_hidden_from_portfolio_and_balances(self, client, fake_snaptrade):
+        _seed_creds()
+        fake_snaptrade.get_all_holdings.return_value = (
+            _sample_portfolios() + [_empty_portfolio()]
+        )
+        client.post("/api/snaptrade/sync")
+
+        portfolio = client.get("/api/investments/portfolio").json()
+        assert [a["account_id"] for a in portfolio["by_account"]] == ["st_acc_1"]
+        assert portfolio["total_value"] == 22000.0
+
+        summary = client.get("/api/balances/summary").json()
+        assert "Robinhood Crypto" not in [a["name"] for a in summary["accounts"]]
+
+    def test_sync_still_records_the_empty_account(self, client, fake_snaptrade):
+        # Filtering is a display decision — the sync keeps recording whatever
+        # the brokerage reported, so the account returns on its own if funded.
+        _seed_creds()
+        fake_snaptrade.get_all_holdings.return_value = (
+            _sample_portfolios() + [_empty_portfolio()]
+        )
+        assert client.post("/api/snaptrade/sync").json()["accounts"] == 2
+        cached = state._balances_cache.get("snaptrade_accounts", [])
+        assert {a["id"] for a in cached} == {"st_acc_1", "st_empty"}
+
+    def test_funded_account_without_positions_is_kept(self, client, fake_snaptrade):
+        # Some SnapTrade plan tiers report an account total but no positions —
+        # that is a real balance and must not be filtered out as "empty".
+        _seed_creds()
+        funded = _empty_portfolio(name="Schwab Individual", account_id="st_funded")
+        funded["total_value"] = 5428.63
+        fake_snaptrade.get_all_holdings.return_value = [funded]
+        client.post("/api/snaptrade/sync")
+
+        portfolio = client.get("/api/investments/portfolio").json()
+        assert [a["account_id"] for a in portfolio["by_account"]] == ["st_funded"]
+        assert portfolio["total_value"] == 5428.63
+
+    def test_account_returns_once_it_reports_a_balance(self, client, fake_snaptrade):
+        _seed_creds()
+        fake_snaptrade.get_all_holdings.return_value = [_empty_portfolio()]
+        client.post("/api/snaptrade/sync")
+        assert client.get("/api/investments/portfolio").json()["by_account"] == []
+
+        funded = _empty_portfolio()
+        funded["total_value"] = 250.0
+        fake_snaptrade.get_account_holdings.return_value = funded
+        client.post("/api/snaptrade/sync/st_empty")
+
+        portfolio = client.get("/api/investments/portfolio").json()
+        assert [a["account_id"] for a in portfolio["by_account"]] == ["st_empty"]
+        assert portfolio["total_value"] == 250.0
+
+
+# ---------------------------------------------------------------------------
+# Investment accounts held outside SnapTrade (manual 401k, exchange balances)
+# ---------------------------------------------------------------------------
+
+class TestExternalInvestmentAccounts:
+    def _add_manual(self, acct_id, name, type_, subtype, available):
+        state._manual_accounts[acct_id] = {
+            "id": acct_id, "institution": "Slavic401k", "name": name,
+            "type": type_, "subtype": subtype, "available": available, "ledger": 0.0,
+        }
+
+    def test_manual_investment_accounts_join_the_portfolio(self, client):
+        self._add_manual("m_401k", "401(k)", "investment", "401k", 62611.16)
+        self._add_manual("m_eth", "Ether", "investment", "crypto", 5728.34)
+        # A cash account must not leak in.
+        self._add_manual("m_cash", "Checking", "depository", "checking", 900.0)
+
+        portfolio = client.get("/api/investments/portfolio").json()
+        by_id = {a["account_id"]: a for a in portfolio["by_account"]}
+        assert set(by_id) == {"m_401k", "m_eth"}
+        assert by_id["m_401k"]["value"] == 62611.16
+        assert by_id["m_401k"]["source"] == "manual"
+        assert portfolio["total_value"] == 68339.5
+        assert portfolio["balance_only_value"] == 68339.5
+
+    def test_portfolio_total_matches_balances_total_investments(self, client, fake_snaptrade):
+        _seed_creds()
+        client.post("/api/snaptrade/sync")
+        self._add_manual("m_401k", "401(k)", "investment", "401k", 62611.16)
+
+        portfolio = client.get("/api/investments/portfolio").json()
+        summary = client.get("/api/balances/summary").json()
+        assert portfolio["total_value"] == summary["total_investments"]
+
+    def test_manual_accounts_appear_in_holdings_grouping(self, client):
+        self._add_manual("m_401k", "401(k)", "investment", "401k", 62611.16)
+        body = client.get("/api/investments/holdings").json()
+        assert body["accounts"][0]["account_id"] == "m_401k"
+        assert body["accounts"][0]["source"] == "manual"
+        assert body["accounts"][0]["holdings"] == []
 
 
 # ---------------------------------------------------------------------------

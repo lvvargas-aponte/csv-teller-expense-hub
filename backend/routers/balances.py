@@ -149,8 +149,16 @@ def _append_snaptrade_accounts(
     cache key, so a SimpleFIN refresh (which rewrites ``simplefin_accounts``)
     never clobbers them. They are investment-typed, so ``_compute_investments``
     picks up their value into net worth.
+
+    Accounts reporting no value at all are left out — they'd add a $0 row for
+    a brokerage sub-account the household never funded. See
+    ``analytics.is_empty_synced_account``.
     """
+    from analytics import is_empty_synced_account
+
     for a in state._balances_cache.get("snaptrade_accounts", []) or []:
+        if is_empty_synced_account(a):
+            continue
         try:
             accounts_out.append(AccountBalance(**a))
         except Exception as e:
@@ -302,6 +310,8 @@ def _build_summary(
         total_investments=total_investments,
         total_property_value=real_estate["total_value"],
         total_property_debt=real_estate["total_debt"],
+        total_property_debt_linked=real_estate["linked_debt"],
+        total_property_debt_unlinked=real_estate["unlinked_debt"],
         total_property_equity=real_estate["total_equity"],
         unvalued_properties=real_estate["unvalued_properties"],
         accounts=accounts,

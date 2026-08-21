@@ -293,6 +293,194 @@ class TestInfeasible:
         assert "required_monthly_contribution" not in result
 
 
+class TestGoal:
+    """The target number, and the one property that matters: it is the
+    feasibility test rearranged, so it can never contradict the date."""
+
+    def test_target_is_spending_over_the_after_tax_withdrawal_rate(self):
+        goal = project_retirement(_inputs(), AS_OF)["goal"]
+        # $60k at 4% less 15% tax = 3.4% effective.
+        assert goal["target"] == pytest.approx(60000 / 0.034, rel=1e-6)
+        assert goal["effective_withdrawal_rate_pct"] == pytest.approx(3.4)
+
+    def test_multiple_is_reported_against_spending(self):
+        goal = project_retirement(_inputs(), AS_OF)["goal"]
+        assert goal["multiple"] == pytest.approx(
+            round(goal["target"] / 60000, 1)
+        )
+
+    def test_rental_profit_lowers_the_target(self):
+        prop = PropertyProjection(name="P", value=100000, monthly_noi=1000, loans=[])
+        with_rental = project_retirement(_inputs(properties=[prop]), AS_OF)["goal"]
+        without = project_retirement(_inputs(), AS_OF)["goal"]
+
+        assert with_rental["target"] < without["target"]
+        # $12k NOI, 20% tax = $9,600 of spending the portfolio needn't fund.
+        assert with_rental["rental_offset"] == pytest.approx(9600.0)
+        assert with_rental["fund_from_investments"] == pytest.approx(60000 - 9600)
+        # The gross figure still shows what it would take alone.
+        assert with_rental["gross_target"] == pytest.approx(without["target"])
+
+    def test_hitting_the_target_is_exactly_what_makes_year_zero_feasible(self):
+        """The guarantee. Funded to the target means the projection agrees."""
+        target = project_retirement(_inputs(), AS_OF)["goal"]["target"]
+
+        assert project_retirement(
+            _inputs(investment_balance=target * 0.999), AS_OF
+        )["rows"][0]["feasible"] is False
+        assert project_retirement(
+            _inputs(investment_balance=target), AS_OF
+        )["rows"][0]["feasible"] is True
+
+    def test_progress_tracks_the_balance(self):
+        target = project_retirement(_inputs(), AS_OF)["goal"]["target"]
+        goal = project_retirement(
+            _inputs(investment_balance=target / 4), AS_OF
+        )["goal"]
+
+        assert goal["funded_pct"] == pytest.approx(25.0, abs=0.1)
+        assert goal["gap"] == pytest.approx(target * 0.75, rel=1e-3)
+        assert goal["fully_funded"] is False
+
+    def test_progress_is_capped_and_the_gap_never_goes_negative(self):
+        goal = project_retirement(_inputs(investment_balance=50_000_000), AS_OF)["goal"]
+        assert goal["funded_pct"] == 100.0
+        assert goal["gap"] == 0.0
+        assert goal["fully_funded"] is True
+
+    def test_social_security_is_not_counted_before_it_can_be_drawn(self):
+        """A target that assumes income you can't draw for 27 years isn't one."""
+        goal = project_retirement(
+            _inputs(assumptions=_assumptions(
+                social_security_monthly=2000, social_security_start_age=67,
+            )),
+            AS_OF,
+        )["goal"]
+        assert goal["social_security_offset"] == 0.0
+        assert goal["social_security_pending"] is True
+
+    def test_social_security_lowers_the_target_once_eligible(self):
+        goal = project_retirement(
+            _inputs(assumptions=_assumptions(
+                current_age=70, social_security_monthly=2000,
+                social_security_start_age=67,
+            )),
+            AS_OF,
+        )["goal"]
+        assert goal["social_security_offset"] == pytest.approx(24000.0)
+        assert goal["social_security_pending"] is False
+        assert goal["fund_from_investments"] == pytest.approx(36000.0)
+
+    def test_other_income_covering_everything_leaves_no_target(self):
+        prop = PropertyProjection(name="P", value=100000, monthly_noi=9000, loans=[])
+        goal = project_retirement(_inputs(properties=[prop]), AS_OF)["goal"]
+        assert goal["fund_from_investments"] == 0.0
+        assert goal["target"] == 0.0
+        assert goal["fully_funded"] is True
+
+    def test_no_spending_figure_means_no_goal(self):
+        """Same standard the rest of the page holds to: decline, don't invent."""
+        result = project_retirement(
+            _inputs(annual_spending_now=0,
+                    assumptions=_assumptions(retirement_spending_monthly=None)),
+            AS_OF,
+        )
+        assert result["goal"] is None
+
+    def test_a_zero_withdrawal_rate_declines_rather_than_dividing_by_zero(self):
+        result = project_retirement(
+            _inputs(assumptions=_assumptions(safe_withdrawal_rate_pct=0)), AS_OF
+        )
+        assert result["goal"] is None
+
+    def test_the_goal_survives_a_degenerate_horizon(self):
+        result = project_retirement(
+            _inputs(assumptions=_assumptions(horizon_years=-5)), AS_OF
+        )
+        assert len(result["rows"]) == 1
+        assert result["goal"]["target"] > 0
+
+
+class TestGoalAfterPayoff:
+    """While a mortgage runs most of the rent is the bank's. The headline
+    target reflects that; ``after_payoff`` shows where the plan lands."""
+
+    def _levered(self, **kw):
+        # $3,000/mo NOI against a $2,000/mo payment: today the property nets
+        # almost nothing, and after payoff it nets the lot.
+        prop = PropertyProjection(
+            name="Davie", value=400000, monthly_noi=3000,
+            loans=[_mortgage(years_in=20, term_months=360, payment=2000)],
+        )
+        return _inputs(properties=[prop], **kw)
+
+    def test_the_payoff_target_is_lower_than_the_levered_one(self):
+        goal = project_retirement(self._levered(), AS_OF)["goal"]
+        assert goal["after_payoff"]["target"] < goal["target"]
+
+    def test_it_counts_the_whole_rent_once_the_debt_service_stops(self):
+        goal = project_retirement(self._levered(), AS_OF)["goal"]
+        # $36k NOI, 20% tax, no debt service at all.
+        assert goal["after_payoff"]["rental_offset"] == pytest.approx(28800.0)
+        assert goal["after_payoff"]["fund_from_investments"] == pytest.approx(
+            60000 - 28800
+        )
+
+    def test_the_reduction_is_the_difference_between_the_two(self):
+        goal = project_retirement(self._levered(), AS_OF)["goal"]
+        assert goal["after_payoff"]["reduction"] == pytest.approx(
+            goal["target"] - goal["after_payoff"]["target"], abs=0.01
+        )
+
+    def test_it_lands_on_the_last_payoff_not_the_first(self):
+        early = PropertyProjection(
+            name="Early", value=200000, monthly_noi=1500,
+            loans=[_mortgage(years_in=25, term_months=360)],   # 5 years out
+        )
+        late = PropertyProjection(
+            name="Late", value=200000, monthly_noi=1500,
+            loans=[_mortgage(years_in=10, term_months=360)],   # 20 years out
+        )
+        goal = project_retirement(
+            _inputs(properties=[early, late]), AS_OF
+        )["goal"]
+        assert goal["after_payoff"]["final_payoff_year"] == AS_OF.year + 20
+        assert goal["after_payoff"]["final_payoff_age"] == 60
+
+    def test_a_paid_off_portfolio_reports_no_second_target(self):
+        """Nothing left to pay off, so the same number under a hopeful
+        label would imply a gain that isn't coming."""
+        prop = PropertyProjection(
+            name="Owned", value=400000, monthly_noi=3000, loans=[],
+        )
+        goal = project_retirement(_inputs(properties=[prop]), AS_OF)["goal"]
+        assert goal["after_payoff"] is None
+
+    def test_no_properties_means_no_second_target(self):
+        assert project_retirement(_inputs(), AS_OF)["goal"]["after_payoff"] is None
+
+    def test_the_payoff_target_matches_feasibility_in_that_year(self):
+        """The same guarantee the headline target carries, checked at the
+        year the debt actually ends — rents have grown by then, so the real
+        requirement is no higher than this today's-dollars figure."""
+        inputs = self._levered()
+        goal = project_retirement(inputs, AS_OF)["goal"]
+        target = goal["after_payoff"]["target"]
+        years = goal["after_payoff"]["final_payoff_year"] - AS_OF.year
+
+        funded = project_retirement(
+            RetirementInputs(
+                assumptions={**inputs.assumptions, "investment_return_pct": 0.0,
+                             "inflation_pct": 0.0, "rent_growth_pct": 0.0},
+                investment_balance=target,
+                properties=inputs.properties,
+                annual_spending_now=inputs.annual_spending_now,
+            ),
+            AS_OF,
+        )
+        assert funded["rows"][years]["feasible"] is True
+
+
 class TestSensitivity:
     def test_three_scenarios(self):
         assert len(build_sensitivity(_inputs(), AS_OF)) == 3

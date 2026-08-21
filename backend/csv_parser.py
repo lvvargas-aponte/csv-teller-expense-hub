@@ -85,6 +85,11 @@ class Transaction:
     institution: str = ""
     transaction_type: str = "debit"   # "credit" | "debit"
     account_type: str = ""            # "checking" | "savings" | "credit_card" | "credit" | ...
+    # Aggregator enrichment, passed through as-is. SimpleFIN sends both on
+    # transactions that carry them; CSV imports leave them None.
+    payee: Optional[str] = None       # merchant name, already cleaned ("Food Lion"
+                                      # where description is "FOOD LION #1557 RALEIGH NC")
+    mcc: Optional[str] = None         # ISO 18245 merchant category code — see mcc.py
 
     def __post_init__(self):
         """Generate transaction ID if not provided"""

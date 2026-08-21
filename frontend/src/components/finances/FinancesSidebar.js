@@ -9,6 +9,7 @@ const NAV_SECTIONS = [
     items: [
       { id: 'today',       icon: '☀️', label: 'Today' },
       { id: 'dashboard',   icon: '📊', label: 'Dashboard' },
+      { id: 'net-worth',   icon: '💰', label: 'Net Worth' },
       { id: 'accounts',    icon: '🏦', label: 'Accounts' },
     ],
   },

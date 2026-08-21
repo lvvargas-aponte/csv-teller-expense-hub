@@ -4,7 +4,7 @@ import FinancesSidebar, { normalizeTabId } from './FinancesSidebar';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
 import InvestmentsTab from './InvestmentsTab';
-import BalancesSection from './BalancesSection';
+import NetWorthPage from './NetWorthPage';
 import PayoffPlanner from './PayoffPlanner';
 import SpendingInsights from './SpendingInsights';
 import BudgetsSection from './BudgetsSection';
@@ -112,6 +112,21 @@ export default function FinancesPage() {
           <DashboardTab healthScore={healthScore} />
         )}
 
+        {activeId === 'net-worth' && (
+          <SimplePage title="Net Worth">
+            <NetWorthPage
+              summary={summary}
+              loading={summaryLoading}
+              error={summaryError}
+              dashboard={dashboard}
+              onRefresh={() => loadBalances(true)}
+            />
+          </SimplePage>
+        )}
+
+        {/* Accounts lists accounts, and nothing else. Net worth moved to its
+            own destination above — it was never an accounts question, and
+            having it here meant two different net-worth figures on one page. */}
         {activeId === 'accounts' && (
           <SimplePage title="Accounts">
             <AccountsTab
@@ -119,13 +134,7 @@ export default function FinancesPage() {
               summaryLoading={summaryLoading}
               summaryError={summaryError}
               onRefresh={() => loadBalances(true)}
-            />
-            <BalancesSection
-              summary={summary}
-              loading={summaryLoading}
-              error={summaryError}
-              onRefresh={() => loadBalances(true)}
-              onMutate={() => loadBalances(false)}
+              onViewNetWorth={() => handleNavigate('net-worth')}
             />
             <ProfileSection />
           </SimplePage>

@@ -82,13 +82,28 @@ def known_categories() -> List[str]:
     return list(seen_lower.values())
 
 
-def _build_prompt(description: str, amount: float, known: List[str]) -> str:
-    """Format the single-shot categorization prompt."""
+def _build_prompt(
+    description: str,
+    amount: float,
+    known: List[str],
+    payee: Optional[str] = None,
+) -> str:
+    """Format the single-shot categorization prompt.
+
+    ``payee`` is the aggregator's cleaned merchant name. It's given its own
+    line rather than replacing the description because the two carry
+    different information: "Food Lion" names the merchant, while "FOOD LION
+    #1557 RALEIGH NC" still holds the store number and city. Naming the
+    merchant explicitly saves the model from having to find it inside a
+    string of processor prefixes and location codes.
+    """
     amount_str = f"${amount:.2f}" if amount >= 0 else f"-${abs(amount):.2f}"
     listing = ", ".join(known)
+    merchant_line = f"Merchant: {payee}\n" if (payee or "").strip() else ""
     return (
         "You categorize personal-finance transactions.\n"
         f"Allowed categories: {listing}\n\n"
+        f"{merchant_line}"
         f"Transaction: {description}\n"
         f"Amount: {amount_str}\n\n"
         "Reply with ONLY the single best-matching category name from the allowed "
@@ -116,6 +131,7 @@ async def suggest_category(
     description: str,
     amount: float,
     known: Optional[List[str]] = None,
+    payee: Optional[str] = None,
 ) -> dict:
     """Ask Ollama for a category suggestion.
 
@@ -127,7 +143,7 @@ async def suggest_category(
     if not candidates:
         return {"category": None, "ai_available": False, "candidates": []}
 
-    prompt = _build_prompt(description, amount, candidates)
+    prompt = _build_prompt(description, amount, candidates, payee=payee)
     result = await ask_ollama(prompt)
     if not result["ai_available"]:
         return {"category": None, "ai_available": False, "candidates": candidates}

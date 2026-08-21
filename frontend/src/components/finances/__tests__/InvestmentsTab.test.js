@@ -61,6 +61,34 @@ test('renders holdings grouped by account when configured', async () => {
   expect(screen.getByText('Robinhood Individual')).toBeInTheDocument();
 });
 
+test('shows balance-only accounts with their value and no Sync button', async () => {
+  mockGet({ configured: true, connected: true }, {
+    total_value: 68011.16,
+    balance_only_value: 68011.16,
+    holding_count: 0,
+    holdings: [],
+    allocation: [],
+    concentration: [],
+    by_account: [
+      {
+        account_id: 'm_401k', account_name: '401(k)', institution: 'Slavic401k',
+        value: 62611.16, holding_count: 0, source: 'manual',
+      },
+      {
+        account_id: 'st_1', account_name: 'Individual ...095', institution: 'Schwab',
+        value: 5400, holding_count: 0, source: 'snaptrade',
+      },
+    ],
+  });
+  render(<InvestmentsTab />);
+
+  expect(await screen.findByText('401(k)')).toBeInTheDocument();
+  expect(screen.getByText('$62,611.16')).toBeInTheDocument();
+  expect(screen.getByText(/Edit the value from Accounts/i)).toBeInTheDocument();
+  // Only the SnapTrade account offers a per-account sync.
+  expect(screen.getAllByRole('button', { name: /Sync$/ })).toHaveLength(1);
+});
+
 test('shows the empty state when there are no holdings', async () => {
   mockGet(
     { configured: true, connected: false },

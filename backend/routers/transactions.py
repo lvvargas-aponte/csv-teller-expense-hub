@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile, File
 
+import category_rules
 import state
 from csv_parser import CSVProcessorService, dedupe_key
 from helpers import _decode_csv_bytes
@@ -181,9 +182,21 @@ async def upload_csv(
             )
             for t in state.stored_transactions.values()
         }
+        # Read the rule set once rather than per row — every lookup is a
+        # round-trip to json_stores.
+        rules = category_rules.list_rules(include_disabled=False)
         for transaction in transactions:
             if resolved_account_id:
                 transaction.account_id = resolved_account_id
+            # A user-authored rule outranks whatever category the bank's CSV
+            # reported: the rule is this household stating what the money was
+            # for, the CSV column is the issuer guessing at a merchant.
+            rule_category = category_rules.match_category(
+                transaction.description, transaction.amount,
+                transaction.transaction_type, rules=rules,
+            )
+            if rule_category:
+                transaction.category = rule_category
             key = dedupe_key(
                 transaction.date, transaction.amount,
                 transaction.description, transaction.transaction_type,
@@ -434,13 +447,21 @@ async def bulk_update_transactions(update: BulkTransactionUpdate):
 
 @router.post("/transactions/suggest-categories/bulk")
 async def bulk_suggest_categories(req: BulkSuggestRequest):
-    """Ask the local LLM to suggest categories for many transactions at once.
+    """Suggest categories for many transactions at once.
+
+    A transaction carrying a merchant category code is answered from it
+    directly — the code is assigned to the merchant by its acquiring bank, so
+    it's a fact about the charge rather than an inference from its text, and
+    spending a model call to second-guess it would be slower and worse. The
+    rest go to the LLM, with the aggregator's cleaned merchant name attached
+    when there is one. ``source`` on each result says which answered.
 
     Skips transactions that already have a non-empty category — this is a
     fill-in-the-blanks tool, not a re-categorizer. Mutates nothing; the
     caller previews the suggestions and confirms via PUT /transactions/categories.
     """
     from categorizer import suggest_category, known_categories
+    from mcc import category_for_mcc
 
     candidates = known_categories()
     results: List[Dict[str, Any]] = []
@@ -462,18 +483,36 @@ async def bulk_suggest_categories(req: BulkSuggestRequest):
         except (TypeError, ValueError):
             amount = 0.0
 
+        description = txn.get("description", "") or ""
+        payee = (txn.get("payee") or "").strip() or None
+
+        from_mcc = category_for_mcc(txn.get("mcc"))
+        if from_mcc:
+            results.append({
+                "id": tid,
+                "description": description,
+                "payee": payee,
+                "amount": amount,
+                "suggested_category": from_mcc,
+                "source": "mcc",
+            })
+            continue
+
         out = await suggest_category(
-            description=txn.get("description", "") or "",
+            description=description,
             amount=amount,
             known=candidates,
+            payee=payee,
         )
         if not out["ai_available"]:
             ai_available = False
         results.append({
             "id": tid,
-            "description": txn.get("description", "") or "",
+            "description": description,
+            "payee": payee,
             "amount": amount,
             "suggested_category": out["category"],
+            "source": "llm",
         })
 
     return {
