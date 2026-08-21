@@ -99,6 +99,53 @@
 .shared-flag--dispute { color: var(--amber); }
 .shared-flag--blocked { color: var(--red); }
 
+.shared-dispute-actions { margin-left: 8px; }
+
+.shared-dispute-btn {
+  margin-left: 8px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.shared-dispute-btn:hover:not(:disabled) { background: var(--accent-light); color: var(--accent); }
+.shared-dispute-btn:disabled { opacity: 0.6; cursor: wait; }
+.shared-dispute-btn--primary {
+  background: var(--amber);
+  color: white;
+  border-color: var(--amber);
+}
+.shared-dispute-btn--primary:hover:not(:disabled) { background: var(--amber); opacity: 0.9; }
+
+.shared-dispute-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+}
+
+.shared-dispute-label {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.shared-dispute-input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  outline: none;
+}
+.shared-dispute-input:focus { border-color: var(--amber); }
+
 .shared-legend {
   display: flex;
   gap: 20px;

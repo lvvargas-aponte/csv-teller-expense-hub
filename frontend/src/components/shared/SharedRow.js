@@ -1,13 +1,45 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { fmt$, fmtDate } from '../../utils/formatting';
 
 function formatOwesCell(value) {
   return value === null || value === undefined ? '—' : fmt$(value);
 }
 
-export default function SharedRow({ row }) {
+export default function SharedRow({ row, onDispute }) {
   const isMe = row.owner === 'me';
+  const hasDispute = Boolean(row.dispute_flag);
   const rowClass = `shared-row${row.publishable === false ? ' shared-row--blocked' : ''}`;
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const openRaise = () => { setNote(''); setFormOpen(true); };
+  const openEdit = () => { setNote(row.dispute_note || ''); setFormOpen(true); };
+  const cancel = () => setFormOpen(false);
+
+  const submit = async () => {
+    setSubmitting(true);
+    try {
+      await onDispute(row.transaction_id, { flag: 'Y', note });
+      setFormOpen(false);
+    } catch (e) {
+      // error already surfaced by the caller; keep the form open with the note
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const withdraw = async () => {
+    setSubmitting(true);
+    try {
+      await onDispute(row.transaction_id, { flag: null, note: null });
+    } catch (e) {
+      // error already surfaced by the caller
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <tr className={rowClass}>
@@ -23,12 +55,71 @@ export default function SharedRow({ row }) {
       <td className="shared-td-date">{fmtDate(row.date)}</td>
       <td className="shared-td-desc">
         {row.description}
-        {row.dispute_flag && (
+        {isMe && hasDispute && (
           <span
             className="shared-flag shared-flag--dispute"
-            title={`Disputed by ${row.dispute_by}: ${row.dispute_note}`}
+            title={`${row.dispute_by} is disputing this: ${row.dispute_note}`}
           >
-            ⚑ disputed — {row.dispute_by}: {row.dispute_note}
+            ⚑ {row.dispute_by} is disputing this: {row.dispute_note}
+          </span>
+        )}
+        {!isMe && hasDispute && !formOpen && (
+          <span
+            className="shared-flag shared-flag--dispute"
+            title={`You disputed this: ${row.dispute_note}`}
+          >
+            ⚑ You disputed this: {row.dispute_note}
+          </span>
+        )}
+        {!isMe && hasDispute && !formOpen && (
+          <span className="shared-dispute-actions">
+            <button
+              type="button"
+              className="shared-dispute-btn"
+              onClick={openEdit}
+              aria-label={`Edit dispute for ${row.description}`}
+            >Edit</button>
+            <button
+              type="button"
+              className="shared-dispute-btn"
+              onClick={withdraw}
+              disabled={submitting}
+              aria-label={`Withdraw dispute for ${row.description}`}
+            >Withdraw</button>
+          </span>
+        )}
+        {!isMe && !hasDispute && !formOpen && (
+          <button
+            type="button"
+            className="shared-dispute-btn"
+            onClick={openRaise}
+            aria-label={`Dispute ${row.description}`}
+          >Dispute</button>
+        )}
+        {!isMe && formOpen && (
+          <span className="shared-dispute-form">
+            <label htmlFor={`dispute-note-${row.transaction_id}`} className="shared-dispute-label">
+              Dispute note
+            </label>
+            <input
+              id={`dispute-note-${row.transaction_id}`}
+              className="shared-dispute-input"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              autoFocus
+            />
+            <button
+              type="button"
+              className="shared-dispute-btn shared-dispute-btn--primary"
+              onClick={submit}
+              disabled={submitting}
+            >{submitting ? 'Saving…' : 'Save'}</button>
+            <button
+              type="button"
+              className="shared-dispute-btn"
+              onClick={cancel}
+              disabled={submitting}
+            >Cancel</button>
           </span>
         )}
         {row.publishable === false && (

@@ -14,3 +14,6 @@ export const syncShared = (body) => axios.post(`${API}/api/sync/shared`, body);
 
 export const acknowledgeCorrection = (id) =>
   axios.post(`${API}/api/sync/corrections/${id}/acknowledge`);
+
+export const setDispute = (txnId, body) =>
+  axios.put(`${API}/api/sync/peer-rows/${txnId}/dispute`, body);

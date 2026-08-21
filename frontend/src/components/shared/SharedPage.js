@@ -3,7 +3,7 @@ import SyncStatusStrip from './SyncStatusStrip';
 import CorrectionsFeed from './CorrectionsFeed';
 import SharedRow from './SharedRow';
 import Spin from '../ui/Spin';
-import { getSharedRows, getSyncStatus, syncShared, acknowledgeCorrection } from '../../api/sync';
+import { getSharedRows, getSyncStatus, syncShared, acknowledgeCorrection, setDispute } from '../../api/sync';
 import { userMessage } from '../../utils/errorMessage';
 import './SharedPage.css';
 
@@ -84,6 +84,16 @@ export default function SharedPage() {
       setSyncMessage({ kind: 'error', text: userMessage(e, 'Sync failed — please try again.') });
     } finally {
       setSyncing(false);
+    }
+  }, [period, load]);
+
+  const handleDispute = useCallback(async (txnId, payload) => {
+    try {
+      await setDispute(txnId, payload);
+      await load(period);
+    } catch (e) {
+      setError(userMessage(e, 'Could not update the dispute — please try again.'));
+      throw e;
     }
   }, [period, load]);
 
@@ -178,7 +188,9 @@ export default function SharedPage() {
                 </div>
               </td></tr>
             ) : (
-              rows.map((row) => <SharedRow key={row.transaction_id} row={row} />)
+              rows.map((row) => (
+                <SharedRow key={row.transaction_id} row={row} onDispute={handleDispute} />
+              ))
             )}
           </tbody>
         </table>
