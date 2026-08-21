@@ -211,6 +211,13 @@ class TestDisputeEndpoint:
         assert res.status_code == 422
         assert peer_transactions_repo.get(txn_id)["dispute_flag"] is None
 
+    def test_invalid_flag_on_a_nonexistent_id_is_still_422(self, client):
+        """Flag validation happens before any row lookup, so a bad flag is
+        422 even when the id doesn't exist — it must not fall through to a
+        404 that would misreport the actual problem."""
+        res = client.put("/api/sync/peer-rows/nope/dispute", json={"flag": "X", "note": "bad"})
+        assert res.status_code == 422
+
     def test_refuses_a_row_this_instance_owns_even_if_present(self, client):
         """peer_shared_transactions should only ever hold the peer's rows, so
         this scenario is a data anomaly — but the refusal must be an explicit

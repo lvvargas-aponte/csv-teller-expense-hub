@@ -9,7 +9,6 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
-from sqlalchemy.exc import DBAPIError
 
 import identity_service
 from db import peer_transactions_repo, sync_state_repo
@@ -88,7 +87,14 @@ async def acknowledge_correction(correction_id: int):
 
 class DisputeUpdate(BaseModel):
     flag: Optional[str] = None
-    note: str = ""
+    note: Optional[str] = None
+
+    @field_validator("flag")
+    @classmethod
+    def _valid_flag(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("Y", "N"):
+            raise ValueError("flag must be 'Y', 'N', or null")
+        return v
 
 
 @router.put("/sync/peer-rows/{txn_id}/dispute")
@@ -108,10 +114,7 @@ async def update_dispute(txn_id: str, update: DisputeUpdate):
     by = me["display_name"] if update.flag is not None else None
     note = update.note if update.flag is not None else None
 
-    try:
-        found = peer_transactions_repo.set_dispute(txn_id, update.flag, by, note)
-    except DBAPIError:
-        raise HTTPException(status_code=422, detail="flag must be 'Y', 'N', or null")
+    found = peer_transactions_repo.set_dispute(txn_id, update.flag, by, note)
 
     if not found:
         raise HTTPException(status_code=404, detail="No peer row with that id")
