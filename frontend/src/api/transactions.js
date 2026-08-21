@@ -53,6 +53,3 @@ export const applyDeduplication = () =>
 
 export const getPersonNames = () =>
   axios.get(`${API}/api/config/person-names`);
-
-export const syncShared = (body) =>
-  axios.post(`${API}/api/sync/shared`, body);

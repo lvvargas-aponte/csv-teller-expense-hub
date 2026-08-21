@@ -1,0 +1,109 @@
+.shared-page {
+  padding: 16px 0;
+}
+
+.shared-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.shared-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.shared-month-wrap {
+  margin-left: 4px;
+}
+
+.shared-header .tx-btn {
+  margin-left: auto;
+}
+
+.shared-status-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.shared-status-ok { color: var(--accent); font-weight: 500; }
+.shared-status-warn { color: var(--red); font-weight: 500; }
+.shared-status-refusal {
+  color: var(--red);
+  font-weight: 500;
+}
+
+.shared-sync-toast {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.shared-corrections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.shared-correction-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--amber-light);
+  border: 1px solid var(--amber);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.shared-correction-icon { flex-shrink: 0; }
+.shared-correction-text { flex: 1; }
+.shared-correction-dismiss { flex-shrink: 0; }
+
+.shared-table th, .shared-table td { white-space: nowrap; }
+.shared-table .shared-td-desc { white-space: normal; }
+
+.shared-td-owner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shared-owner-dot { font-size: 12px; }
+.shared-owner-dot--me { color: var(--accent); }
+.shared-owner-dot--peer { color: var(--text-faint); }
+
+.shared-row--blocked { background: var(--red-light); }
+
+.shared-flag {
+  display: inline-block;
+  margin-left: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.shared-flag--dispute { color: var(--amber); }
+.shared-flag--blocked { color: var(--red); }
+
+.shared-legend {
+  display: flex;
+  gap: 20px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.shared-legend .shared-owner-dot { margin-right: 4px; }

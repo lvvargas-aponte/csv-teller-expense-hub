@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import axios from 'axios';
 import { API_BASE } from '../utils/formatting';
 import { userMessage } from '../utils/errorMessage';
+import { syncShared as postSharedSync } from '../api/sync';
 
 // Owns the bank sync (SimpleFIN), CSV upload, and Send-to-Sheet
 // flows plus the modal visibility flags they trigger. Reaches back into
@@ -76,7 +77,7 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
 
     setSendingSheet(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/sync/shared`, { period });
+      const res = await postSharedSync({ period });
       const results = res.data.results || [];
 
       if (res.data.status === 'refused') {
