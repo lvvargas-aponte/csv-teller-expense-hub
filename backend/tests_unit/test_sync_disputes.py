@@ -85,6 +85,37 @@ class TestContent:
         assert engine.plan_dispute_push(desired, [row(2, f"{PEER}:x1")], INDEX, ME) == []
 
 
+class TestFormulaInjection:
+    """dispute_note is the one cell a human types freehand onto a row we do
+    not own. GspreadGateway writes with USER_ENTERED, so an unescaped leading
+    '=' becomes a live formula in the peer's spreadsheet — and because the
+    read-back would never equal the raw desired value, it would be rewritten
+    forever."""
+
+    def test_a_note_starting_with_equals_is_emitted_escaped(self):
+        desired = [DesiredDispute(f"{PEER}:x1", "Y", P1, "=1+1")]
+        updates = engine.plan_dispute_push(desired, [row(2, f"{PEER}:x1")], INDEX, ME)
+
+        note_update = next(u for u in updates if u.col == INDEX["dispute_note"] + 1)
+        assert note_update.value == "'=1+1"
+
+    def test_a_second_cycle_with_the_same_note_writes_nothing(self):
+        """The regression test for the infinite rewrite loop: the read-back
+        of an escaped cell is the literal text, which must compare equal to
+        the unescaped desired value."""
+        current = [row(2, f"{PEER}:x1", dispute="Y", by=P1, note="=1+1")]
+        desired = [DesiredDispute(f"{PEER}:x1", "Y", P1, "=1+1")]
+
+        assert engine.plan_dispute_push(desired, current, INDEX, ME) == []
+
+    def test_an_ordinary_note_is_not_escaped(self):
+        desired = [DesiredDispute(f"{PEER}:x1", "Y", P1, "should be 70/30")]
+        updates = engine.plan_dispute_push(desired, [row(2, f"{PEER}:x1")], INDEX, ME)
+
+        note_update = next(u for u in updates if u.col == INDEX["dispute_note"] + 1)
+        assert note_update.value == "should be 70/30"
+
+
 class TestPullClearing:
     def test_a_blank_disputer_cell_is_reported_so_it_can_clear(self):
         result = engine.plan_pull([row(2, f"{ME}:t1")], ME)

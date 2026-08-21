@@ -7,21 +7,22 @@ function formatOwesCell(value) {
 
 export default function SharedRow({ row, onDispute }) {
   const isMe = row.owner === 'me';
-  const hasDispute = Boolean(row.dispute_flag);
+  const hasDispute = row.dispute_flag === 'Y';
   const rowClass = `shared-row${row.publishable === false ? ' shared-row--blocked' : ''}`;
 
   const [formOpen, setFormOpen] = useState(false);
   const [note, setNote] = useState('');
+  const [editingFlag, setEditingFlag] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const openRaise = () => { setNote(''); setFormOpen(true); };
-  const openEdit = () => { setNote(row.dispute_note || ''); setFormOpen(true); };
+  const openRaise = () => { setNote(''); setEditingFlag(null); setFormOpen(true); };
+  const openEdit = () => { setNote(row.dispute_note || ''); setEditingFlag(row.dispute_flag); setFormOpen(true); };
   const cancel = () => setFormOpen(false);
 
   const submit = async () => {
     setSubmitting(true);
     try {
-      await onDispute(row.transaction_id, { flag: 'Y', note });
+      await onDispute(row.transaction_id, { flag: editingFlag || 'Y', note });
       setFormOpen(false);
     } catch (e) {
       // error already surfaced by the caller; keep the form open with the note

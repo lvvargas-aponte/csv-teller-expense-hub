@@ -409,6 +409,47 @@ class TestOutboundDispute:
         assert row[HEADERS.index("Dispute Note")] == ""
         assert out.disputes_pushed == 0
 
+    def test_a_deletion_and_a_dispute_write_in_the_same_cycle_do_not_misdirect(self, me, gateway):
+        """apply_push must write updates — including dispute writes — before
+        it deletes, against the pre-write row numbers (applier.py:3-7). Put a
+        row we are about to delete BEFORE the peer row we are disputing, so
+        that deleting first (the wrong order) would renumber the peer row out
+        from under the dispute write and this test would fail."""
+        add_txn("t1")
+        add_txn("t2", description="Fuel")
+        sync_sheet.write_claim(gateway, peer_claim())
+        service.sync_period(gateway, "2026-06")
+
+        gateway.append_rows("June 2026", [peer_row()])
+        service.sync_period(gateway, "2026-06")
+
+        rows = gateway.read_rows("June 2026")
+        assert rows[1][HEADERS.index("Description")] == "Groceries"
+        assert rows[3][HEADERS.index("Txn ID")] == f"{PEER_ID}:x1"
+
+        peer_transactions_repo.set_dispute(f"{PEER_ID}:x1", "Y", P1, "should be 70/30")
+        t = state.stored_transactions["t1"]
+        t["is_shared"] = False
+        state.stored_transactions["t1"] = t
+
+        out = service.sync_period(gateway, "2026-06")
+
+        assert out.status == "ok"
+        assert out.rows_deleted == 1
+        assert out.disputes_pushed == 1
+
+        final_rows = gateway.read_rows("June 2026")
+        assert len(final_rows) == 3
+        descriptions = [r[HEADERS.index("Description")] for r in final_rows[1:]]
+        assert "Groceries" not in descriptions
+
+        peer_final = next(
+            r for r in final_rows if r[HEADERS.index("Txn ID")] == f"{PEER_ID}:x1"
+        )
+        assert peer_final[HEADERS.index("Dispute")] == "Y"
+        assert peer_final[HEADERS.index("Dispute By")] == P1
+        assert peer_final[HEADERS.index("Dispute Note")] == "should be 70/30"
+
     def test_a_peer_raised_dispute_clears_locally_when_they_blank_it(self, me, gateway):
         add_txn("t1")
         service.sync_period(gateway, "2026-06")
@@ -510,6 +551,28 @@ class TestFailureBehaviour:
         assert out.status == "error"
         assert sync_state_repo.get_row_state(f"{me['user_id']}:t1") is None
         assert sync_state_repo.last_run("2026-06")["status"] == "error"
+
+    def test_a_failed_write_zeroes_disputes_pushed_too(self, me, gateway):
+        """Every other counter is deliberately zeroed on the error path so a
+        failed run cannot over-report; disputes_pushed is the only visibility
+        into the code that writes to the peer's row and was missed."""
+        sync_sheet.write_claim(gateway, peer_claim())
+        gateway.append_rows("June 2026", [peer_row()])
+        service.sync_period(gateway, "2026-06")
+        peer_transactions_repo.set_dispute(f"{PEER_ID}:x1", "Y", P1, "should be 70/30")
+
+        real_write_cells = gateway.write_cells
+
+        def boom(title, updates):
+            if title == "June 2026":
+                raise RuntimeError("Google is over quota")
+            return real_write_cells(title, updates)
+
+        gateway.write_cells = boom
+        out = service.sync_period(gateway, "2026-06")
+
+        assert out.status == "error"
+        assert out.disputes_pushed == 0
 
     def test_the_next_run_repairs_it(self, me, gateway):
         add_txn("t1")

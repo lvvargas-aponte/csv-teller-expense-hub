@@ -127,6 +127,24 @@ def cells_agree(key: str, on_sheet: str, app_value: str) -> bool:
     return on_sheet.strip() == app_value.strip()
 
 
+_FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+
+def _escape_formula(value: str) -> str:
+    """Prefix a leading apostrophe so Sheets stores the value as literal text.
+
+    ``dispute_note`` is the one cell a human types freehand onto a row this
+    instance does not own, and ``GspreadGateway.write_cells`` writes with
+    ``USER_ENTERED``: a note starting with ``=`` would otherwise become a live
+    formula in the peer's spreadsheet. Only the emitted value is escaped —
+    comparisons still use the raw desired value, since Sheets' read-back of an
+    escaped cell is the literal text with the apostrophe stripped.
+    """
+    if value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def _row_owner(row: SheetRow) -> Optional[str]:
     """Ownership comes from the Txn ID, not the human-editable Owner cell."""
     try:
@@ -244,8 +262,9 @@ def plan_dispute_push(
             on_sheet = row.values.get(key, "")
             if on_sheet.strip() == value.strip():
                 continue
+            emit_value = _escape_formula(value) if key == "dispute_note" else value
             updates.append(
-                CellUpdate(row=row.row_number, col=index[key] + 1, value=value)
+                CellUpdate(row=row.row_number, col=index[key] + 1, value=emit_value)
             )
 
     return updates

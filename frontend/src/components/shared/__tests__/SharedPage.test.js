@@ -295,6 +295,44 @@ test('a successful sync shows the toast and refetches, picking up rows the sync 
   expect(await screen.findByText('Just synced')).toBeInTheDocument();
 });
 
+test('a sync that pushed a dispute includes it in the toast', async () => {
+  syncShared.mockResolvedValue({
+    data: {
+      status: 'ok',
+      results: [{ rows_pushed: 2, rows_pulled: 3, disputes_pushed: 1 }],
+    },
+  });
+
+  render(<SharedPage />);
+
+  await waitFor(() => expect(getSharedRows).toHaveBeenCalledTimes(1));
+  const syncBtn = screen.getByRole('button', { name: /sync now/i });
+  await userEvent.click(syncBtn);
+
+  const toast = await screen.findByRole('status');
+  expect(toast).toHaveTextContent('2 sent, 3 received');
+  expect(toast).toHaveTextContent(/1 dispute/);
+});
+
+test('a sync with no dispute writes leaves the toast unchanged', async () => {
+  syncShared.mockResolvedValue({
+    data: {
+      status: 'ok',
+      results: [{ rows_pushed: 2, rows_pulled: 3, disputes_pushed: 0 }],
+    },
+  });
+
+  render(<SharedPage />);
+
+  await waitFor(() => expect(getSharedRows).toHaveBeenCalledTimes(1));
+  const syncBtn = screen.getByRole('button', { name: /sync now/i });
+  await userEvent.click(syncBtn);
+
+  const toast = await screen.findByRole('status');
+  expect(toast).toHaveTextContent('2 sent, 3 received');
+  expect(toast).not.toHaveTextContent(/dispute/);
+});
+
 test('raising a dispute on a peer row calls the API with txn_id, flag and note, then refetches', async () => {
   mockRows([
     row({
@@ -386,6 +424,62 @@ test('a failed dispute call surfaces an error and does not leave the row looking
 
   expect(await screen.findByText(/could not save dispute/i)).toBeInTheDocument();
   expect(screen.queryByText(/you disputed this/i)).not.toBeInTheDocument();
+});
+
+test('a dispute resolved to N on our own row is not shown as active', async () => {
+  mockRows([
+    row({
+      transaction_id: 't1', owner: 'me', owner_name: 'Valeria',
+      dispute_flag: 'N', dispute_by: 'Christy', dispute_note: 'withdrawn',
+    }),
+  ]);
+
+  render(<SharedPage />);
+
+  await screen.findByText('Cleaning');
+  expect(screen.queryByText(/is disputing this/i)).not.toBeInTheDocument();
+});
+
+test('a dispute resolved to N on a peer row offers Dispute again, not Edit/Withdraw', async () => {
+  mockRows([
+    row({
+      transaction_id: 'peer:x1', owner: 'peer', owner_name: 'Christy',
+      description: 'UBER *TRIP', dispute_flag: 'N', dispute_by: 'Valeria', dispute_note: 'withdrawn',
+    }),
+  ]);
+
+  render(<SharedPage />);
+
+  await screen.findByText('UBER *TRIP');
+  expect(screen.queryByText(/you disputed this/i)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /dispute uber \*trip/i })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument();
+});
+
+test('editing an existing dispute note preserves the current flag rather than forcing Y', async () => {
+  mockRows([
+    row({
+      transaction_id: 'peer:x1', owner: 'peer', owner_name: 'Christy',
+      description: 'UBER *TRIP', dispute_flag: 'Y', dispute_by: 'Valeria', dispute_note: 'that was mine',
+    }),
+  ]);
+  setDispute.mockResolvedValue({ data: {} });
+
+  render(<SharedPage />);
+
+  await screen.findByText(/you disputed this/i);
+  const editBtn = screen.getByRole('button', { name: /edit dispute for uber \*trip/i });
+  await userEvent.click(editBtn);
+
+  const noteField = screen.getByLabelText(/dispute note/i);
+  expect(noteField).toHaveValue('that was mine');
+  await userEvent.clear(noteField);
+  await userEvent.type(noteField, 'updated note');
+
+  const saveBtn = screen.getByRole('button', { name: /save/i });
+  await userEvent.click(saveBtn);
+
+  await waitFor(() => expect(setDispute).toHaveBeenCalledWith('peer:x1', { flag: 'Y', note: 'updated note' }));
 });
 
 test('changing the month refetches', async () => {

@@ -78,7 +78,9 @@ export default function SharedPage() {
 
       const pushed = results.reduce((n, r) => n + (r.rows_pushed || 0), 0);
       const pulled = results.reduce((n, r) => n + (r.rows_pulled || 0), 0);
-      setSyncMessage({ kind: 'ok', text: `${pushed} sent, ${pulled} received` });
+      const disputed = results.reduce((n, r) => n + (r.disputes_pushed || 0), 0);
+      const disputeText = disputed > 0 ? `, ${disputed} dispute${disputed === 1 ? '' : 's'} sent` : '';
+      setSyncMessage({ kind: 'ok', text: `${pushed} sent, ${pulled} received${disputeText}` });
       await load(period);
     } catch (e) {
       setSyncMessage({ kind: 'error', text: userMessage(e, 'Sync failed — please try again.') });

@@ -16,4 +16,4 @@ export const acknowledgeCorrection = (id) =>
   axios.post(`${API}/api/sync/corrections/${id}/acknowledge`);
 
 export const setDispute = (txnId, body) =>
-  axios.put(`${API}/api/sync/peer-rows/${txnId}/dispute`, body);
+  axios.put(`${API}/api/sync/peer-rows/${encodeURIComponent(txnId)}/dispute`, body);

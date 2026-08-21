@@ -362,6 +362,7 @@ def sync_period(
         outcome.rows_pushed = 0
         outcome.rows_deleted = 0
         outcome.rows_pulled = 0
+        outcome.disputes_pushed = 0
         sync_state_repo.finish_run(run_id, "error", error_detail=str(e))
         return outcome
 
