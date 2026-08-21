@@ -493,7 +493,8 @@ class TestBuildGateway:
 
 
 class TestStatus:
-    def test_status_shape(self, me):
+    def test_status_shape(self, me, monkeypatch):
+        monkeypatch.setattr(service, "SHEET_SYNC_ENABLED", False)
         out = service.status()
 
         assert set(out.keys()) == {
@@ -508,3 +509,7 @@ class TestStatus:
         assert out["refusal"] is None
         assert out["corrections"] == []
         assert out["disputes_against_me"] == []
+
+    def test_status_reports_enabled_true_when_the_flag_is_on(self, me, monkeypatch):
+        monkeypatch.setattr(service, "SHEET_SYNC_ENABLED", True)
+        assert service.status()["enabled"] is True

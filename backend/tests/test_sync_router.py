@@ -98,12 +98,17 @@ class TestSyncShared:
 
 
 class TestStatus:
-    def test_reports_the_flag_and_an_empty_feed(self, client):
+    def test_reports_the_flag_and_an_empty_feed(self, client, monkeypatch):
+        monkeypatch.setattr(service, "SHEET_SYNC_ENABLED", False)
         body = client.get("/api/sync/status").json()
 
         assert body["enabled"] is False
         assert body["corrections"] == []
         assert body["last_run"] is None
+
+    def test_reports_enabled_true_when_the_flag_is_on(self, client, monkeypatch):
+        monkeypatch.setattr(service, "SHEET_SYNC_ENABLED", True)
+        assert client.get("/api/sync/status").json()["enabled"] is True
 
     def test_reports_the_last_run(self, client, fake_gateway):
         client.post("/api/sync/shared", json={"period": "2026-06"})

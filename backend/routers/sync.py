@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
 from db import sync_state_repo
-from sheet_sync import service, worksheet
+from sheet_sync import service, shared_view, worksheet
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -69,7 +69,7 @@ async def sync_shared(req: Optional[SyncRequest] = None):
 @router.get("/sync/shared-rows")
 async def shared_rows(period: str = Query(..., pattern=_PERIOD_RE.pattern)):
     _reject_before_cutover(period)
-    return service.shared_rows(period)
+    return shared_view.shared_rows(period)
 
 
 @router.get("/sync/status")

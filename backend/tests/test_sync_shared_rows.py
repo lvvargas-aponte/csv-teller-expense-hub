@@ -6,7 +6,7 @@ import identity_service
 import state
 from db import peer_transactions_repo, sync_state_repo
 from main import app
-from sheet_sync import service
+from sheet_sync import shared_view
 
 P1, P2 = "Valeria", "Christy"
 PEER_ID = "22222222-2222-2222-2222-222222222222"
@@ -19,8 +19,8 @@ def client():
 
 @pytest.fixture(autouse=True)
 def names(monkeypatch):
-    monkeypatch.setattr(service, "PERSON_1_NAME", P1)
-    monkeypatch.setattr(service, "PERSON_2_NAME", P2)
+    monkeypatch.setattr(shared_view, "PERSON_1_NAME", P1)
+    monkeypatch.setattr(shared_view, "PERSON_2_NAME", P2)
 
 
 def mine(tid, **over):
