@@ -256,6 +256,39 @@ def set_disputes(
         )
 
 
+def set_disputes_bulk(items: List[Dict[str, Any]]) -> int:
+    """Same upsert as ``set_disputes``, batched with one ``executemany``.
+
+    Each item carries ``txn_id``, ``flag``, ``by``, ``note`` — the shape
+    ``sync_period`` already builds from ``PullResult.my_disputes``.
+    """
+    if not items:
+        return 0
+    params = [
+        {
+            "txn_id": i["txn_id"],
+            "flag": i.get("flag"),
+            "by": i.get("by"),
+            "note": i.get("note"),
+        }
+        for i in items
+    ]
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO sync_row_state "
+                "  (txn_id, transaction_id, period, dispute_flag, dispute_by, dispute_note) "
+                "VALUES (:txn_id, :txn_id, '', :flag, :by, :note) "
+                "ON CONFLICT (txn_id) DO UPDATE SET "
+                "  dispute_flag = EXCLUDED.dispute_flag, "
+                "  dispute_by = EXCLUDED.dispute_by, "
+                "  dispute_note = EXCLUDED.dispute_note"
+            ),
+            params,
+        )
+    return len(items)
+
+
 def get_row_state(txn_id: str) -> Optional[Dict[str, Any]]:
     with sync_engine.connect() as conn:
         row = conn.execute(

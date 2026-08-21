@@ -324,6 +324,84 @@ class TestPull:
         assert state_row["dispute_flag"] == "N"
 
 
+class TestOutboundDispute:
+    """The other half of the round-trip: raising, editing, clearing a dispute
+    on a peer row, and having it reach the sheet's I–K columns."""
+
+    def _import_peer_row(self, gateway):
+        sync_sheet.write_claim(gateway, peer_claim())
+        gateway.append_rows("June 2026", [peer_row()])
+        service.sync_period(gateway, "2026-06")
+
+    def test_a_local_dispute_reaches_the_sheet(self, me, gateway):
+        self._import_peer_row(gateway)
+        peer_transactions_repo.set_dispute(f"{PEER_ID}:x1", "Y", P1, "should be 70/30")
+
+        out = service.sync_period(gateway, "2026-06")
+
+        row = gateway.read_rows("June 2026")[1]
+        assert row[HEADERS.index("Dispute")] == "Y"
+        assert row[HEADERS.index("Dispute By")] == P1
+        assert row[HEADERS.index("Dispute Note")] == "should be 70/30"
+        assert out.disputes_pushed == 1
+
+    def test_clearing_blanks_the_sheet_cells(self, me, gateway):
+        self._import_peer_row(gateway)
+        txn_id = f"{PEER_ID}:x1"
+        peer_transactions_repo.set_dispute(txn_id, "Y", P1, "should be 70/30")
+        service.sync_period(gateway, "2026-06")
+
+        peer_transactions_repo.set_dispute(txn_id, None, None, None)
+        out = service.sync_period(gateway, "2026-06")
+
+        row = gateway.read_rows("June 2026")[1]
+        assert row[HEADERS.index("Dispute")] == ""
+        assert row[HEADERS.index("Dispute By")] == ""
+        assert row[HEADERS.index("Dispute Note")] == ""
+        assert out.disputes_pushed == 1
+
+    def test_an_unchanged_cycle_writes_nothing(self, me, gateway):
+        self._import_peer_row(gateway)
+        peer_transactions_repo.set_dispute(f"{PEER_ID}:x1", "Y", P1, "should be 70/30")
+        service.sync_period(gateway, "2026-06")
+        before = gateway.read_rows("June 2026")
+
+        out = service.sync_period(gateway, "2026-06")
+
+        assert gateway.read_rows("June 2026") == before
+        assert out.disputes_pushed == 0
+
+    def test_never_writes_a_dispute_onto_a_row_it_owns(self, me, gateway):
+        """The safety property that matters most: our own row is never a
+        target, even if something upstream mistakenly produced one."""
+        add_txn("t1")
+        service.sync_period(gateway, "2026-06")
+
+        out = service.sync_period(gateway, "2026-06")
+
+        row = gateway.read_rows("June 2026")[1]
+        assert row[HEADERS.index("Dispute")] == ""
+        assert out.disputes_pushed == 0
+
+    def test_a_peer_raised_dispute_clears_locally_when_they_blank_it(self, me, gateway):
+        add_txn("t1")
+        service.sync_period(gateway, "2026-06")
+        edit_sheet(gateway, 2, "Dispute", "Y")
+        edit_sheet(gateway, 2, "Dispute By", P2)
+        edit_sheet(gateway, 2, "Dispute Note", "wrong split")
+        service.sync_period(gateway, "2026-06")
+        assert sync_state_repo.get_row_state(f"{me['user_id']}:t1")["dispute_flag"] == "Y"
+
+        edit_sheet(gateway, 2, "Dispute", "")
+        edit_sheet(gateway, 2, "Dispute By", "")
+        edit_sheet(gateway, 2, "Dispute Note", "")
+        service.sync_period(gateway, "2026-06")
+
+        state_row = sync_state_repo.get_row_state(f"{me['user_id']}:t1")
+        assert state_row["dispute_flag"] is None
+        assert state_row["dispute_by"] is None
+
+
 class TestRefusals:
     def _assert_refused(self, out, reason, gateway):
         assert out.status == "refused"

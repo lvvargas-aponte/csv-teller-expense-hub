@@ -90,6 +90,20 @@ class TestRowState:
         sync_state_repo.set_disputes("u1:t9", "Y", "Christy", "?")
         assert sync_state_repo.get_row_state("u1:t9")["dispute_flag"] == "Y"
 
+    def test_set_disputes_bulk_upserts_every_item_in_one_round_trip(self):
+        n = sync_state_repo.set_disputes_bulk(
+            [
+                {"txn_id": "u1:t1", "flag": "Y", "by": "Christy", "note": "wrong split"},
+                {"txn_id": "u1:t2", "flag": None, "by": None, "note": None},
+            ]
+        )
+        assert n == 2
+        assert sync_state_repo.get_row_state("u1:t1")["dispute_flag"] == "Y"
+        assert sync_state_repo.get_row_state("u1:t2")["dispute_flag"] is None
+
+    def test_set_disputes_bulk_empty_list_is_a_noop(self):
+        assert sync_state_repo.set_disputes_bulk([]) == 0
+
     def test_delete_row_state(self):
         sync_state_repo.mark_synced("u1:t1", "t1", "2026-06")
         assert sync_state_repo.delete_row_state(["u1:t1", "u1:absent"]) == 1

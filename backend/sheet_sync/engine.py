@@ -1,8 +1,12 @@
 """The push/pull diff. Pure — no I/O, no database, no network.
 
 Two rules carry the whole design: an instance writes only rows it owns, and
-within a row it writes only the columns it owns. Everything else here is
-bookkeeping around those two.
+within a row it writes only the columns it owns. The disputer columns (I–K —
+``contract.DISPUTER_KEYS``) are the single exception, and it is a mirror image
+of the rule rather than a hole in it: those three columns are written only on
+rows this instance does NOT own (``plan_dispute_push``), never on rows it does
+own (``plan_push`` never touches them). Everything else here is bookkeeping
+around those two rules.
 """
 from __future__ import annotations
 
@@ -34,6 +38,14 @@ class DesiredRow:
 class SheetRow:
     row_number: int
     values: dict[str, str]
+
+
+@dataclass(frozen=True)
+class DesiredDispute:
+    txn_id: str
+    flag: Optional[str]
+    by: str
+    note: str
 
 
 @dataclass(frozen=True)
@@ -188,11 +200,51 @@ def plan_pull(current: list[SheetRow], me: str) -> PullResult:
         if owner is None:
             continue
         if owner == me:
-            if any(row.values.get(k) for k in contract.DISPUTER_KEYS):
-                my_disputes[row.values["txn_id"]] = {
-                    k: row.values.get(k, "") for k in contract.DISPUTER_KEYS
-                }
+            my_disputes[row.values["txn_id"]] = {
+                k: row.values.get(k, "") for k in contract.DISPUTER_KEYS
+            }
         else:
             peer_rows.append(row)
 
     return PullResult(peer_rows=peer_rows, my_disputes=my_disputes)
+
+
+def plan_dispute_push(
+    desired: list[DesiredDispute],
+    current: list[SheetRow],
+    index: dict[str, int],
+    me: str,
+) -> list[CellUpdate]:
+    """Write columns I–K on rows we do NOT own — the disputer's half of a row.
+
+    The mirror image of ``plan_push``: here ownership is the reason to skip a
+    row, not the reason to write it. A ``DesiredDispute`` naming a row ``me``
+    owns is silently dropped — writing I–K there would corrupt the owner's data.
+    """
+    by_id = {r.values["txn_id"]: r for r in current}
+    updates: list[CellUpdate] = []
+
+    for want in desired:
+        row = by_id.get(want.txn_id)
+        if row is None:
+            continue
+        if _row_owner(row) == me:
+            continue
+        if want.flag is None:
+            cells = {"dispute": "", "dispute_by": "", "dispute_note": ""}
+        else:
+            cells = {
+                "dispute": want.flag,
+                "dispute_by": want.by,
+                "dispute_note": want.note,
+            }
+        for key in contract.DISPUTER_KEYS:
+            value = cells[key]
+            on_sheet = row.values.get(key, "")
+            if on_sheet.strip() == value.strip():
+                continue
+            updates.append(
+                CellUpdate(row=row.row_number, col=index[key] + 1, value=value)
+            )
+
+    return updates

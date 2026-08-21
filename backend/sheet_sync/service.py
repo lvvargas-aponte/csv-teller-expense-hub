@@ -67,6 +67,7 @@ class SyncOutcome:
     rows_pushed: int = 0
     rows_pulled: int = 0
     rows_deleted: int = 0
+    disputes_pushed: int = 0
     skipped_peer_rows: int = 0
     refusal_reason: Optional[str] = None
     refusal_message: Optional[str] = None
@@ -202,15 +203,36 @@ def _apply_pull(
 
     pulled = peer_transactions_repo.upsert_many(peer_params)
 
-    for txn_id, values in result.my_disputes.items():
-        sync_state_repo.set_disputes(
-            txn_id,
-            _dispute_flag(values.get("dispute")),
-            values.get("dispute_by") or None,
-            values.get("dispute_note") or None,
-        )
+    dispute_items = [
+        {
+            "txn_id": txn_id,
+            "flag": _dispute_flag(values.get("dispute")),
+            "by": values.get("dispute_by") or None,
+            "note": values.get("dispute_note") or None,
+        }
+        for txn_id, values in result.my_disputes.items()
+    ]
+    sync_state_repo.set_disputes_bulk(dispute_items)
 
     return pulled, skipped
+
+
+def _desired_disputes(period: str) -> List[engine.DesiredDispute]:
+    """One entry per peer row we have imported for this period.
+
+    Every row, disputed or not — a row whose local ``dispute_flag`` has just
+    become ``None`` must still appear here so ``plan_dispute_push`` can write
+    the blanks that withdraw it.
+    """
+    return [
+        engine.DesiredDispute(
+            txn_id=row["txn_id"],
+            flag=row.get("dispute_flag"),
+            by=row.get("dispute_by") or "",
+            note=row.get("dispute_note") or "",
+        )
+        for row in peer_transactions_repo.list_for_period(period)
+    ]
 
 
 def sync_period(
@@ -296,9 +318,23 @@ def sync_period(
         outcome.rows_pushed = len(plan.appends) + len({u.row for u in plan.updates})
         outcome.rows_deleted = len(delete_row_numbers)
 
+        # Computed from the same pre-write `current` snapshot the push diff used,
+        # and merged into `plan.updates` only for the apply below — never into
+        # the rows_pushed count above, or an outbound dispute would inflate it.
+        dispute_updates = engine.plan_dispute_push(
+            _desired_disputes(period), current, index, mine.user_id
+        )
+        outcome.disputes_pushed = len({u.row for u in dispute_updates})
+
         if not dry_run:
             applier.apply_push(
-                gateway, title, replace(plan, delete_row_numbers=delete_row_numbers)
+                gateway,
+                title,
+                replace(
+                    plan,
+                    updates=plan.updates + dispute_updates,
+                    delete_row_numbers=delete_row_numbers,
+                ),
             )
             for row in desired:
                 sync_state_repo.mark_synced(

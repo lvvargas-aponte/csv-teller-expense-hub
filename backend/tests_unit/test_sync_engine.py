@@ -260,9 +260,16 @@ class TestPull:
             "dispute_note": "wrong split",
         }
 
-    def test_my_undisputed_rows_are_not_reported(self):
+    def test_my_undisputed_rows_are_reported_blank_so_clearing_can_propagate(self):
+        """A blank report is what lets a withdrawn dispute clear locally.
+
+        Reporting only non-blank disputer cells (the old behaviour) meant a
+        cleared dispute on the sheet never reached ``sync_row_state`` — it
+        stayed disputed forever.
+        """
         result = engine.plan_pull([_sheet_row(2, _desired())], ME)
-        assert result.my_disputes == {}
+        d = result.my_disputes[_desired().txn_id]
+        assert d == {"dispute": "", "dispute_by": "", "dispute_note": ""}
 
     def test_a_row_is_never_both_peer_and_mine(self):
         rows = [
