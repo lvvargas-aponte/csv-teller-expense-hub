@@ -202,3 +202,28 @@ class TestRoute:
         res = client.get("/api/sync/shared-rows?period=2026-05")
         assert res.status_code == 422
         assert "cutover" in res.json()["detail"].lower()
+
+
+class TestNamePlumbing:
+    """_my_row takes the person names as parameters; _peer_row must resolve
+    slots from the SAME parameters, not from the shared_view module globals —
+    otherwise a caller passing different names gets two different slot
+    resolutions from one payload."""
+
+    def test_peer_row_resolves_slot_from_the_passed_in_names_not_module_globals(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(shared_view, "PERSON_1_NAME", "WrongName1")
+        monkeypatch.setattr(shared_view, "PERSON_2_NAME", "WrongName2")
+
+        peer_row = {
+            "txn_id": f"{PEER_ID}:x1", "date": "2026-06-02",
+            "description": "Cleaning", "amount": 150, "who": P2,
+            "person_1_owes": 75, "person_2_owes": 0, "notes": "",
+            "reviewed": True,
+        }
+
+        row = shared_view._peer_row(peer_row, my_slot=1, peer_name=P2,
+                                     person_1_name=P1, person_2_name=P2)
+
+        assert row["you_owe"] == 75.0

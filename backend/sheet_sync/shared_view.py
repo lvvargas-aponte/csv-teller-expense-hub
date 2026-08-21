@@ -120,10 +120,14 @@ def _my_row(
 
 
 def _peer_row(
-    peer_row: Dict[str, Any], my_slot: int, peer_name: str
+    peer_row: Dict[str, Any],
+    my_slot: int,
+    peer_name: str,
+    person_1_name: str,
+    person_2_name: str,
 ) -> Dict[str, Any]:
     who = peer_row.get("who") or ""
-    txn_slot = projection.payer_slot(who, PERSON_1_NAME, PERSON_2_NAME)
+    txn_slot = projection.payer_slot(who, person_1_name, person_2_name)
     you_owe, they_owe = _owes_by_slot(
         my_slot,
         txn_slot,
@@ -187,7 +191,9 @@ def shared_rows(period: str) -> Dict[str, Any]:
 
     peer_name = peers[0]["display_name"] if peers else PERSON_2_NAME if my_slot == 1 else PERSON_1_NAME
     for peer_row in peer_transactions_repo.list_for_period(period):
-        rows.append(_peer_row(peer_row, my_slot, peer_name))
+        rows.append(
+            _peer_row(peer_row, my_slot, peer_name, PERSON_1_NAME, PERSON_2_NAME)
+        )
 
     rows.sort(key=lambda r: (r["date"] or "", r["description"], r["transaction_id"]))
 
