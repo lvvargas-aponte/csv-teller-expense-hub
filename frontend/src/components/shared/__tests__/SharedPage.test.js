@@ -95,14 +95,39 @@ test('renders your row and the peer row, each labelled with its owner name', asy
 });
 
 test('a null you_owe renders as an em dash, not 0.00', async () => {
-  mockRows([row({ you_owe: null })]);
+  mockRows([row({ you_owe: null, they_owe: 56.13 })]);
 
   render(<SharedPage />);
 
   await screen.findByText('Cleaning');
   const tr = screen.getByRole('row', { name: /Cleaning/ });
-  expect(within(tr).getByText('—')).toBeInTheDocument();
+  const cells = within(tr).getAllByRole('cell');
+  expect(cells[4]).toHaveTextContent('—');
   expect(within(tr).queryByText('$0.00')).not.toBeInTheDocument();
+});
+
+test('a row you paid shows the peer amount under "They owe" and an em dash under "You owe"', async () => {
+  mockRows([row({ who: 'Valeria', you_owe: null, they_owe: 56.13 })]);
+
+  render(<SharedPage />);
+
+  await screen.findByText('Cleaning');
+  const tr = screen.getByRole('row', { name: /Cleaning/ });
+  const cells = within(tr).getAllByRole('cell');
+  expect(cells[4]).toHaveTextContent('—');
+  expect(cells[5]).toHaveTextContent('$56.13');
+});
+
+test('a row they paid shows your amount under "You owe" and an em dash under "They owe"', async () => {
+  mockRows([row({ who: 'Christy', you_owe: 56.13, they_owe: null })]);
+
+  render(<SharedPage />);
+
+  await screen.findByText('Cleaning');
+  const tr = screen.getByRole('row', { name: /Cleaning/ });
+  const cells = within(tr).getAllByRole('cell');
+  expect(cells[4]).toHaveTextContent('$56.13');
+  expect(cells[5]).toHaveTextContent('—');
 });
 
 test('a publishable: false row shows its blocked_reason', async () => {
@@ -207,6 +232,66 @@ test('an error sync response surfaces the error', async () => {
   await userEvent.click(syncBtn);
 
   expect(await screen.findByText(/Sheet API is unreachable/)).toBeInTheDocument();
+});
+
+test('a refused sync still refreshes the status strip, instead of leaving a stale success banner', async () => {
+  syncShared.mockResolvedValue({
+    data: {
+      status: 'refused',
+      results: [{ rows_pushed: 0, rows_pulled: 0, refusal_message: 'Christy already claimed this period.' }],
+    },
+  });
+
+  render(<SharedPage />);
+
+  await waitFor(() => expect(getSyncStatus).toHaveBeenCalledTimes(1));
+  const syncBtn = screen.getByRole('button', { name: /sync now/i });
+  await userEvent.click(syncBtn);
+
+  await screen.findByText(/Christy already claimed this period/);
+  await waitFor(() => expect(getSyncStatus).toHaveBeenCalledTimes(2));
+});
+
+test('an error sync response also refreshes the status strip', async () => {
+  syncShared.mockResolvedValue({
+    data: {
+      status: 'error',
+      results: [{ rows_pushed: 0, rows_pulled: 0, error_detail: 'Sheet API is unreachable.' }],
+    },
+  });
+
+  render(<SharedPage />);
+
+  await waitFor(() => expect(getSyncStatus).toHaveBeenCalledTimes(1));
+  const syncBtn = screen.getByRole('button', { name: /sync now/i });
+  await userEvent.click(syncBtn);
+
+  await screen.findByText(/Sheet API is unreachable/);
+  await waitFor(() => expect(getSyncStatus).toHaveBeenCalledTimes(2));
+});
+
+test('a successful sync shows the toast and refetches, picking up rows the sync just wrote', async () => {
+  syncShared.mockResolvedValue({
+    data: {
+      status: 'ok',
+      results: [{ rows_pushed: 2, rows_pulled: 3 }],
+    },
+  });
+
+  render(<SharedPage />);
+
+  await waitFor(() => expect(getSharedRows).toHaveBeenCalledTimes(1));
+
+  mockRows([row({ transaction_id: 'new-from-sync', description: 'Just synced' })]);
+
+  const syncBtn = screen.getByRole('button', { name: /sync now/i });
+  await userEvent.click(syncBtn);
+
+  const toast = await screen.findByRole('status');
+  expect(toast).toHaveTextContent('2 sent, 3 received');
+
+  await waitFor(() => expect(getSharedRows).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText('Just synced')).toBeInTheDocument();
 });
 
 test('changing the month refetches', async () => {

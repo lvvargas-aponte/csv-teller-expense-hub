@@ -39,6 +39,7 @@ export default function SharedRow({ row }) {
       </td>
       <td className="shared-td-amt">{fmt$(row.amount)}</td>
       <td className="shared-td-amt">{formatOwesCell(row.you_owe)}</td>
+      <td className="shared-td-amt">{formatOwesCell(row.they_owe)}</td>
     </tr>
   );
 }

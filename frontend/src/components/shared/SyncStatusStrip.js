@@ -31,7 +31,7 @@ export default function SyncStatusStrip({ status }) {
       )}
       {refusal && (
         <span className="shared-status-refusal" role="alert">
-          <span aria-hidden="true">⚠</span> Sync refused — {refusal.reason}
+          <span aria-hidden="true">⚠</span> Sync refused — {refusal.message || refusal.reason}
         </span>
       )}
     </div>

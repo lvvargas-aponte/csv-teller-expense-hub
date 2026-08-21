@@ -66,11 +66,13 @@ export default function SharedPage() {
       if (res.data.status === 'refused') {
         const refused = results.find((r) => r.refusal_message);
         setSyncMessage({ kind: 'refused', text: refused ? refused.refusal_message : 'Sync was refused.' });
+        await load(period);
         return;
       }
       if (res.data.status === 'error') {
         const failed = results.find((r) => r.error_detail);
         setSyncMessage({ kind: 'error', text: failed ? failed.error_detail : 'Sync failed — please try again.' });
+        await load(period);
         return;
       }
 
@@ -160,15 +162,16 @@ export default function SharedPage() {
               <th>Description</th>
               <th className="tx-col-amt">Amount</th>
               <th className="tx-col-amt">You owe</th>
+              <th className="tx-col-amt">{peer && peer.display_name ? `${peer.display_name} owes` : 'They owe'}</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5}>
+              <tr><td colSpan={6}>
                 <div className="tx-empty"><div style={{ fontSize: 28 }}>⏳</div><p>Loading…</p></div>
               </td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={5}>
+              <tr><td colSpan={6}>
                 <div className="tx-empty">
                   <div style={{ fontSize: 28 }}>🔍</div>
                   <p>No shared expenses for this month.</p>

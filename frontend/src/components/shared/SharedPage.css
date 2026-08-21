@@ -75,6 +75,7 @@
 
 .shared-table th, .shared-table td { white-space: nowrap; }
 .shared-table .shared-td-desc { white-space: normal; }
+.shared-table .shared-td-amt { text-align: right; }
 
 .shared-td-owner {
   display: flex;
