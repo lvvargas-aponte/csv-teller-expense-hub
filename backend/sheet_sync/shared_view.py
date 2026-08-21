@@ -20,11 +20,17 @@ def _blocked_reason(
 ) -> Optional[str]:
     """Why ``project_push`` would withhold this row, or None if it would not.
 
-    Mirrors ``projection.project_push``'s checks in the same order, so the page
-    never disagrees with what a sync cycle actually does.
+    Mirrors ``projection.project_push``'s checks in the same order (reviewed,
+    then date, then who/slot, then amount, then split), so the page never
+    disagrees with what a sync cycle actually does — including which reason it
+    reports first when a row fails more than one check.
     """
     if not txn.get("reviewed"):
         return "Not reviewed yet — review it in Transactions to publish."
+
+    when = contract.parse_date_loose(txn.get("date"))
+    if when is None:
+        return f"Cannot read {txn.get('date')!r} as a date."
 
     who = txn.get("who") or ""
     slot = projection.payer_slot(who, person_1_name, person_2_name)
@@ -34,10 +40,6 @@ def _blocked_reason(
             f"{person_1_name!r} nor {person_2_name!r}, so sync cannot tell "
             f"whose owes cell to fill."
         )
-
-    when = contract.parse_date_loose(txn.get("date"))
-    if when is None:
-        return f"Cannot read {txn.get('date')!r} as a date."
 
     if projection._decimal(txn.get("amount")) is None:
         return f"Cannot read {txn.get('amount')!r} as an amount."
@@ -63,7 +65,8 @@ def _owes_by_slot(
     report — both halves stay whatever the raw values say once cast to float.
     """
     def _num(v: Any) -> Optional[float]:
-        return None if v is None else float(v)
+        parsed = projection._decimal(v)
+        return None if parsed is None else float(parsed)
 
     my_owes = owes_1 if my_slot == 1 else owes_2
     their_owes = owes_2 if my_slot == 1 else owes_1
@@ -79,6 +82,7 @@ def _my_row(
     txn: Dict[str, Any],
     my_user_id: str,
     my_slot: int,
+    my_display_name: str,
     person_1_name: str,
     person_2_name: str,
 ) -> Dict[str, Any]:
@@ -97,7 +101,7 @@ def _my_row(
     return {
         "transaction_id": transaction_id,
         "owner": "me",
-        "owner_name": person_1_name if my_slot == 1 else person_2_name,
+        "owner_name": my_display_name,
         "date": when.isoformat() if when else txn.get("date"),
         "description": txn.get("description") or "",
         "amount": txn.get("amount"),
@@ -175,6 +179,7 @@ def shared_rows(period: str) -> Dict[str, Any]:
                 txn,
                 mine["user_id"],
                 my_slot,
+                mine["display_name"],
                 PERSON_1_NAME,
                 PERSON_2_NAME,
             )

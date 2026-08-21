@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 import identity_service
 import state
-from db import peer_transactions_repo, sync_state_repo
+from db import identity_repo, peer_transactions_repo, sync_state_repo
 from main import app
 from sheet_sync import shared_view
 
@@ -78,6 +78,15 @@ class TestOwnership:
         mine("t1", date="07/04/2026")
         assert client.get("/api/sync/shared-rows?period=2026-06").json()["rows"] == []
 
+    def test_owner_name_follows_a_rename_not_the_config_default(self, client):
+        identity_service.ensure_identity()
+        mine("t1")
+        identity_repo.rename_identity("Val")
+
+        row = client.get("/api/sync/shared-rows?period=2026-06").json()["rows"][0]
+
+        assert row["owner_name"] == "Val"
+
 
 class TestOwesResolvedBySlot:
     def test_when_you_paid_your_side_is_null_and_theirs_is_set(self, client):
@@ -140,6 +149,27 @@ class TestPublishability:
         identity_service.ensure_identity()
         theirs()
         assert self._reason(client) == (True, None)
+
+    def test_when_who_and_date_are_both_bad_the_date_reason_wins(self, client):
+        """project_push checks date before who — the page must report the same one."""
+        identity_service.ensure_identity()
+        # settles_in_period keeps the row in this month's list despite the bad
+        # date — period_of falls back to parsing `date` otherwise, which would
+        # exclude the row entirely rather than surface it as unpublishable.
+        mine("t1", who="Mom", date="not-a-date", settles_in_period="2026-06")
+        publishable, reason = self._reason(client)
+        assert publishable is False
+        assert "date" in reason.lower()
+        assert "not-a-date" in reason
+
+    def test_a_blank_owes_value_degrades_instead_of_500ing(self, client):
+        identity_service.ensure_identity()
+        mine("t1", who=P1, person_1_owes=0.0, person_2_owes="")
+        res = client.get("/api/sync/shared-rows?period=2026-06")
+        assert res.status_code == 200
+        row = res.json()["rows"][0]
+        assert row["publishable"] is False
+        assert "split" in row["blocked_reason"].lower()
 
 
 class TestDisputes:
