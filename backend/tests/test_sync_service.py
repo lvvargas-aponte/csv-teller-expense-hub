@@ -344,6 +344,10 @@ class TestOutboundDispute:
         assert row[HEADERS.index("Dispute By")] == P1
         assert row[HEADERS.index("Dispute Note")] == "should be 70/30"
         assert out.disputes_pushed == 1
+        assert out.rows_pushed == 0, (
+            "a dispute write must never inflate rows_pushed — that count is "
+            "computed before the dispute updates are merged into the plan"
+        )
 
     def test_clearing_blanks_the_sheet_cells(self, me, gateway):
         self._import_peer_row(gateway)
@@ -373,14 +377,36 @@ class TestOutboundDispute:
 
     def test_never_writes_a_dispute_onto_a_row_it_owns(self, me, gateway):
         """The safety property that matters most: our own row is never a
-        target, even if something upstream mistakenly produced one."""
+        target, even if something upstream mistakenly produced a
+        DesiredDispute naming it — e.g. a stray row in
+        ``peer_shared_transactions`` keyed by our own txn_id."""
         add_txn("t1")
         service.sync_period(gateway, "2026-06")
+        my_txn_id = f"{me['user_id']}:t1"
+
+        peer_transactions_repo.upsert_many([{
+            "txn_id": my_txn_id,
+            "owner_user_id": me["user_id"],
+            "date": "2026-06-15",
+            "description": "Groceries",
+            "amount": 112.25,
+            "who": P1,
+            "person_1_owes": 56.13,
+            "person_2_owes": 56.13,
+            "notes": "",
+            "reviewed": True,
+            "payer_user_id": me["user_id"],
+            "carried_from_period": None,
+            "settles_in_period": "2026-06",
+        }])
+        peer_transactions_repo.set_dispute(my_txn_id, "Y", P2, "not real")
 
         out = service.sync_period(gateway, "2026-06")
 
         row = gateway.read_rows("June 2026")[1]
         assert row[HEADERS.index("Dispute")] == ""
+        assert row[HEADERS.index("Dispute By")] == ""
+        assert row[HEADERS.index("Dispute Note")] == ""
         assert out.disputes_pushed == 0
 
     def test_a_peer_raised_dispute_clears_locally_when_they_blank_it(self, me, gateway):

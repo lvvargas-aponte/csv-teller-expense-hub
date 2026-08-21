@@ -228,7 +228,8 @@ def plan_dispute_push(
         row = by_id.get(want.txn_id)
         if row is None:
             continue
-        if _row_owner(row) == me:
+        owner = _row_owner(row)
+        if owner is None or owner == me:
             continue
         if want.flag is None:
             cells = {"dispute": "", "dispute_by": "", "dispute_note": ""}

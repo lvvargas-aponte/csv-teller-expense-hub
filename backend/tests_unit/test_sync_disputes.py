@@ -40,6 +40,19 @@ class TestOwnershipSafety:
 
         assert {u.row for u in engine.plan_dispute_push(desired, current, INDEX, ME)} == {7}
 
+    def test_a_mixed_batch_skips_only_the_owned_row(self):
+        """A per-row 'if any row is owned, return []' bug would pass every
+        other test here — every one of them passes a single-element batch."""
+        current = [row(2, f"{ME}:mine"), row(3, f"{PEER}:theirs")]
+        desired = [
+            DesiredDispute(f"{ME}:mine", "Y", P1, "mine"),
+            DesiredDispute(f"{PEER}:theirs", "Y", P1, "theirs"),
+        ]
+
+        updates = engine.plan_dispute_push(desired, current, INDEX, ME)
+
+        assert updates and {u.row for u in updates} == {3}
+
 
 class TestContent:
     def test_writes_flag_author_and_note(self):

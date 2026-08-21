@@ -90,7 +90,7 @@ class TestRowState:
         sync_state_repo.set_disputes("u1:t9", "Y", "Christy", "?")
         assert sync_state_repo.get_row_state("u1:t9")["dispute_flag"] == "Y"
 
-    def test_set_disputes_bulk_upserts_every_item_in_one_round_trip(self):
+    def test_set_disputes_bulk_upserts_every_item(self):
         n = sync_state_repo.set_disputes_bulk(
             [
                 {"txn_id": "u1:t1", "flag": "Y", "by": "Christy", "note": "wrong split"},

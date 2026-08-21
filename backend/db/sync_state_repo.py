@@ -237,30 +237,13 @@ def synced_at_map(txn_ids: List[str]) -> Dict[str, datetime]:
     return {r[0]: r[1] for r in rows}
 
 
-def set_disputes(
-    txn_id: str, flag: Optional[str], by: Optional[str], note: Optional[str]
-) -> None:
-    """Record a dispute the peer raised against one of our rows."""
-    with sync_engine.begin() as conn:
-        conn.execute(
-            text(
-                "INSERT INTO sync_row_state "
-                "  (txn_id, transaction_id, period, dispute_flag, dispute_by, dispute_note) "
-                "VALUES (:txn_id, :txn_id, '', :flag, :by, :note) "
-                "ON CONFLICT (txn_id) DO UPDATE SET "
-                "  dispute_flag = EXCLUDED.dispute_flag, "
-                "  dispute_by = EXCLUDED.dispute_by, "
-                "  dispute_note = EXCLUDED.dispute_note"
-            ),
-            {"txn_id": txn_id, "flag": flag, "by": by, "note": note},
-        )
-
-
 def set_disputes_bulk(items: List[Dict[str, Any]]) -> int:
-    """Same upsert as ``set_disputes``, batched with one ``executemany``.
+    """Upsert dispute state for many rows in one ``executemany`` round trip.
 
     Each item carries ``txn_id``, ``flag``, ``by``, ``note`` — the shape
-    ``sync_period`` already builds from ``PullResult.my_disputes``.
+    ``sync_period`` already builds from ``PullResult.my_disputes``. The only
+    place this upsert's SQL is written; ``set_disputes`` delegates here as a
+    single-row convenience so the two can never drift apart.
     """
     if not items:
         return 0
@@ -287,6 +270,17 @@ def set_disputes_bulk(items: List[Dict[str, Any]]) -> int:
             params,
         )
     return len(items)
+
+
+def set_disputes(
+    txn_id: str, flag: Optional[str], by: Optional[str], note: Optional[str]
+) -> None:
+    """Record a dispute the peer raised against one of our rows.
+
+    A single-row convenience kept for tests; production code batches through
+    ``set_disputes_bulk``, which owns the actual upsert SQL.
+    """
+    set_disputes_bulk([{"txn_id": txn_id, "flag": flag, "by": by, "note": note}])
 
 
 def get_row_state(txn_id: str) -> Optional[Dict[str, Any]]:
