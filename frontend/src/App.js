@@ -18,6 +18,7 @@ import SyncToast        from './components/ui/SyncToast';
 import AccountsModal    from './components/accounts/AccountsModal';
 import FinancesPage     from './components/finances/FinancesPage';
 import HistoryPage      from './components/transactions/HistoryPage';
+import SharedPage       from './components/shared/SharedPage';
 import TransactionsSidebar from './components/transactions/TransactionsSidebar';
 import { useTransactions } from './hooks/useTransactions';
 import { useFilters } from './hooks/useFilters';
@@ -496,6 +497,8 @@ export default function App() {
                     sendingSheet={sync.sendingSheet}
                   />
                 </div>
+              ) : txnView === 'shared' ? (
+                <SharedPage />
               ) : (
                 <HistoryPage />
               )}

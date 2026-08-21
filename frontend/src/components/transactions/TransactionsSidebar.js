@@ -7,6 +7,7 @@ const NAV_SECTIONS = [
     items: [
       { id: 'current', icon: '📋', label: 'Current' },
       { id: 'history', icon: '🕓', label: 'History' },
+      { id: 'shared', icon: '🤝', label: 'Shared' },
     ],
   },
 ];
