@@ -8,7 +8,8 @@ function formatOwesCell(value) {
 export default function SharedRow({ row, onDispute }) {
   const isMe = row.owner === 'me';
   const hasDispute = row.dispute_flag === 'Y';
-  const rowClass = `shared-row${row.publishable === false ? ' shared-row--blocked' : ''}`;
+  const isBlocked = row.publishable === false;
+  const rowClass = `shared-row${isBlocked ? ' shared-row--blocked' : ''}${hasDispute ? ' shared-row--disputed' : ''}`;
 
   const [formOpen, setFormOpen] = useState(false);
   const [note, setNote] = useState('');
@@ -45,58 +46,53 @@ export default function SharedRow({ row, onDispute }) {
   return (
     <tr className={rowClass}>
       <td className="shared-td-owner">
-        <span
-          className={`shared-owner-dot${isMe ? ' shared-owner-dot--me' : ' shared-owner-dot--peer'}`}
-          aria-hidden="true"
-        >
-          {isMe ? '●' : '○'}
+        <span className="shared-owner">
+          <span
+            className={`shared-owner-dot${isMe ? ' shared-owner-dot--me' : ' shared-owner-dot--peer'}`}
+            aria-hidden="true"
+          >
+            {isMe ? '●' : '○'}
+          </span>
+          <span className="shared-owner-name">{row.owner_name}</span>
         </span>
-        <span className="shared-owner-name">{row.owner_name}</span>
       </td>
       <td className="shared-td-date">{fmtDate(row.date)}</td>
       <td className="shared-td-desc">
-        {row.description}
+        <span className="shared-desc-text">{row.description}</span>
+
         {isMe && hasDispute && (
           <span
-            className="shared-flag shared-flag--dispute"
+            className="shared-note shared-note--dispute"
             title={`${row.dispute_by} is disputing this: ${row.dispute_note}`}
           >
-            ⚑ {row.dispute_by} is disputing this: {row.dispute_note}
+            <span className="shared-note-icon" aria-hidden="true">⚑</span>
+            <span className="shared-note-body">
+              <strong>{row.dispute_by} is disputing this</strong>
+              {row.dispute_note ? <> — {row.dispute_note}</> : null}
+            </span>
           </span>
         )}
+
         {!isMe && hasDispute && !formOpen && (
           <span
-            className="shared-flag shared-flag--dispute"
+            className="shared-note shared-note--dispute"
             title={`You disputed this: ${row.dispute_note}`}
           >
-            ⚑ You disputed this: {row.dispute_note}
+            <span className="shared-note-icon" aria-hidden="true">⚑</span>
+            <span className="shared-note-body">
+              <strong>You disputed this</strong>
+              {row.dispute_note ? <> — {row.dispute_note}</> : null}
+            </span>
           </span>
         )}
-        {!isMe && hasDispute && !formOpen && (
-          <span className="shared-dispute-actions">
-            <button
-              type="button"
-              className="shared-dispute-btn"
-              onClick={openEdit}
-              aria-label={`Edit dispute for ${row.description}`}
-            >Edit</button>
-            <button
-              type="button"
-              className="shared-dispute-btn"
-              onClick={withdraw}
-              disabled={submitting}
-              aria-label={`Withdraw dispute for ${row.description}`}
-            >Withdraw</button>
+
+        {isBlocked && (
+          <span className="shared-note shared-note--blocked" title={row.blocked_reason}>
+            <span className="shared-note-icon" aria-hidden="true">⚠</span>
+            <span className="shared-note-body">{row.blocked_reason}</span>
           </span>
         )}
-        {!isMe && !hasDispute && !formOpen && (
-          <button
-            type="button"
-            className="shared-dispute-btn"
-            onClick={openRaise}
-            aria-label={`Dispute ${row.description}`}
-          >Dispute</button>
-        )}
+
         {!isMe && formOpen && (
           <span className="shared-dispute-form">
             <label htmlFor={`dispute-note-${row.transaction_id}`} className="shared-dispute-label">
@@ -107,31 +103,57 @@ export default function SharedRow({ row, onDispute }) {
               className="shared-dispute-input"
               value={note}
               onChange={(e) => setNote(e.target.value)}
+              placeholder="What's wrong with this one?"
               autoFocus
             />
-            <button
-              type="button"
-              className="shared-dispute-btn shared-dispute-btn--primary"
-              onClick={submit}
-              disabled={submitting}
-            >{submitting ? 'Saving…' : 'Save'}</button>
-            <button
-              type="button"
-              className="shared-dispute-btn"
-              onClick={cancel}
-              disabled={submitting}
-            >Cancel</button>
-          </span>
-        )}
-        {row.publishable === false && (
-          <span className="shared-flag shared-flag--blocked" title={row.blocked_reason}>
-            ⚠ {row.blocked_reason}
+            <span className="shared-dispute-form-actions">
+              <button
+                type="button"
+                className="shared-dispute-btn shared-dispute-btn--primary"
+                onClick={submit}
+                disabled={submitting}
+              >{submitting ? 'Saving…' : 'Save'}</button>
+              <button
+                type="button"
+                className="shared-dispute-btn"
+                onClick={cancel}
+                disabled={submitting}
+              >Cancel</button>
+            </span>
           </span>
         )}
       </td>
       <td className="shared-td-amt">{fmt$(row.amount)}</td>
-      <td className="shared-td-amt">{formatOwesCell(row.you_owe)}</td>
-      <td className="shared-td-amt">{formatOwesCell(row.they_owe)}</td>
+      <td className="shared-td-amt shared-td-owes">{formatOwesCell(row.you_owe)}</td>
+      <td className="shared-td-amt shared-td-owes">{formatOwesCell(row.they_owe)}</td>
+      <td className="shared-td-actions">
+        {!isMe && !formOpen && (
+          hasDispute ? (
+            <span className="shared-actions">
+              <button
+                type="button"
+                className="shared-dispute-btn"
+                onClick={openEdit}
+                aria-label={`Edit dispute for ${row.description}`}
+              >Edit</button>
+              <button
+                type="button"
+                className="shared-dispute-btn"
+                onClick={withdraw}
+                disabled={submitting}
+                aria-label={`Withdraw dispute for ${row.description}`}
+              >Withdraw</button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="shared-dispute-btn"
+              onClick={openRaise}
+              aria-label={`Dispute ${row.description}`}
+            >Dispute</button>
+          )
+        )}
+      </td>
     </tr>
   );
 }

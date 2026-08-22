@@ -175,15 +175,16 @@ export default function SharedPage() {
               <th className="tx-col-amt">Amount</th>
               <th className="tx-col-amt">You owe</th>
               <th className="tx-col-amt">{peer && peer.display_name ? `${peer.display_name} owes` : 'They owe'}</th>
+              <th className="shared-col-actions"><span className="shared-sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6}>
+              <tr><td colSpan={7}>
                 <div className="tx-empty"><div style={{ fontSize: 28 }}>⏳</div><p>Loading…</p></div>
               </td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={6}>
+              <tr><td colSpan={7}>
                 <div className="tx-empty">
                   <div style={{ fontSize: 28 }}>🔍</div>
                   <p>No shared expenses for this month.</p>
