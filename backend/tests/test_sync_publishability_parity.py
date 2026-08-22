@@ -55,14 +55,15 @@ class TestPublishabilityAgreesWithProjectPush:
         state.stored_transactions["no_split"] = txn(
             person_1_owes=0.0, person_2_owes=0.0
         )
+        state.stored_transactions["blank_who"] = txn(who="")
 
         body = client.get("/api/sync/shared-rows?period=2026-06").json()
         my_rows = [r for r in body["rows"] if r["owner"] == "me"]
-        assert len(my_rows) == 6  # every fixture appears — none silently dropped
+        assert len(my_rows) == 7  # every fixture appears — none silently dropped
 
         desired, _unpublishable = projection.project_push(
             list(state.stored_transactions.items()), "2026-06",
-            me["user_id"], P1, P2,
+            me["user_id"], P1, P2, me["person_slot"],
         )
         desired_txn_ids = {d.txn_id for d in desired}
 

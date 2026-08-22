@@ -260,7 +260,7 @@ def sync_period(
 
         items = list(state.stored_transactions.items())
         desired, unpublishable = projection.project_push(
-            items, period, mine.user_id, PERSON_1_NAME, PERSON_2_NAME
+            items, period, mine.user_id, PERSON_1_NAME, PERSON_2_NAME, mine.person_slot
         )
         outcome.unpublishable = [u.__dict__ for u in unpublishable]
 
@@ -418,6 +418,7 @@ def status() -> Dict[str, Any]:
             mine.user_id,
             PERSON_1_NAME,
             PERSON_2_NAME,
+            mine.person_slot,
         )
         pending += len(desired)
 

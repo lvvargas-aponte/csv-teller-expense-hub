@@ -54,9 +54,22 @@ class TestPayerSlot:
         assert projection.payer_slot("", P1, P2) is None
 
 
+class TestOwnedPayerSlot:
+    def test_a_blank_who_resolves_to_us(self):
+        assert projection.owned_payer_slot("", P1, P2, 1) == 1
+        assert projection.owned_payer_slot("   ", P1, P2, 2) == 2
+
+    def test_a_named_payer_still_wins_over_the_default(self):
+        assert projection.owned_payer_slot("Christy", P1, P2, 1) == 2
+
+    def test_an_unrecognised_name_is_still_none(self):
+        """A value someone chose; guessing past it would fill the wrong cell."""
+        assert projection.owned_payer_slot("Mom", P1, P2, 1) is None
+
+
 class TestProjectPush:
-    def _project(self, items, period="2026-06"):
-        return projection.project_push(items, period, ME, P1, P2)
+    def _project(self, items, period="2026-06", my_slot=1):
+        return projection.project_push(items, period, ME, P1, P2, my_slot)
 
     def test_fills_only_the_non_payers_owes_cell(self):
         rows, bad = self._project([("t1", txn(who="Valeria"))])
@@ -115,12 +128,25 @@ class TestProjectPush:
         assert bad == []
         assert rows[0].owes_2 == Decimal("56.13")
 
-    def test_skips_unshared_and_unreviewed(self):
-        rows, bad = self._project([
-            ("t1", txn(is_shared=False)),
-            ("t2", txn(reviewed=False)),
-        ])
+    def test_skips_unshared(self):
+        rows, bad = self._project([("t1", txn(is_shared=False))])
         assert rows == [] and bad == []
+
+    def test_an_unreviewed_row_still_publishes(self):
+        """Sharing is the decision to publish; ``reviewed`` only rides along.
+
+        The app's bulk action sets reviewed False *because* a row is shared, so
+        gating on it would make a shared row unpublishable by construction.
+        """
+        rows, bad = self._project([("t1", txn(reviewed=False))])
+
+        assert bad == []
+        assert len(rows) == 1
+        assert rows[0].reviewed is False
+
+    def test_a_reviewed_row_publishes_as_reviewed(self):
+        rows, _ = self._project([("t1", txn(reviewed=True))])
+        assert rows[0].reviewed is True
 
     def test_skips_other_periods(self):
         rows, bad = self._project([("t1", txn(date="07/04/2026"))])
@@ -133,9 +159,26 @@ class TestProjectPush:
         assert bad[0].transaction_id == "t1"
         assert "Mom" in bad[0].reason
 
-    def test_a_blank_who_is_reported(self):
-        rows, bad = self._project([("t1", txn(who=""))])
-        assert rows == [] and bad[0].transaction_id == "t1"
+    def test_a_blank_who_means_this_instance_paid(self):
+        """The row came off our own account, so we are the payer.
+
+        The app has never modelled a payer — ``who`` is blank on every stored
+        transaction, because it used to be typed into the sheet by hand.
+        """
+        rows, bad = self._project([("t1", txn(who=""))], my_slot=1)
+
+        assert bad == []
+        assert rows[0].who == P1
+        assert rows[0].owes_1 is None
+        assert rows[0].owes_2 == Decimal("56.13")
+
+    def test_a_blank_who_follows_our_slot_not_a_fixed_one(self):
+        rows, bad = self._project([("t1", txn(who=""))], my_slot=2)
+
+        assert bad == []
+        assert rows[0].who == P2
+        assert rows[0].owes_2 is None
+        assert rows[0].owes_1 == Decimal("56.13")
 
     def test_an_unparseable_date_is_reported(self):
         rows, bad = self._project([("t1", txn(date="soon", settles_in_period="2026-06"))])

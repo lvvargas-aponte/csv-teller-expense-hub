@@ -16,27 +16,25 @@ from sheet_sync import contract, projection
 
 
 def _blocked_reason(
-    txn: Dict[str, Any], person_1_name: str, person_2_name: str
+    txn: Dict[str, Any], person_1_name: str, person_2_name: str, my_slot: int
 ) -> Optional[str]:
     """Why ``project_push`` would withhold this row, or None if it would not.
 
-    Mirrors ``projection.project_push``'s checks in the same order (reviewed,
-    then date, then who/slot, then amount, then split), so the page never
-    disagrees with what a sync cycle actually does — including which reason it
-    reports first when a row fails more than one check.
+    Mirrors ``projection.project_push``'s checks in the same order (date, then
+    who/slot, then amount, then split), so the page never disagrees with what a
+    sync cycle actually does — including which reason it reports first when a
+    row fails more than one check. ``reviewed`` is not among them: it is triage
+    state, not a gate.
     """
-    if not txn.get("reviewed"):
-        return "Not reviewed yet — review it in Transactions to publish."
-
     when = contract.parse_date_loose(txn.get("date"))
     if when is None:
         return f"Cannot read {txn.get('date')!r} as a date."
 
     who = txn.get("who") or ""
-    slot = projection.payer_slot(who, person_1_name, person_2_name)
+    slot = projection.owned_payer_slot(who, person_1_name, person_2_name, my_slot)
     if slot is None:
         return (
-            f"Who is {who or '(blank)'!r}, which is neither "
+            f"Who is {who!r}, which is neither "
             f"{person_1_name!r} nor {person_2_name!r}, so sync cannot tell "
             f"whose owes cell to fill."
         )
@@ -87,12 +85,14 @@ def _my_row(
     person_2_name: str,
 ) -> Dict[str, Any]:
     who = txn.get("who") or ""
-    txn_slot = projection.payer_slot(who, person_1_name, person_2_name)
+    txn_slot = projection.owned_payer_slot(
+        who, person_1_name, person_2_name, my_slot
+    )
     you_owe, they_owe = _owes_by_slot(
         my_slot, txn_slot, txn.get("person_1_owes"), txn.get("person_2_owes")
     )
     when = contract.parse_date_loose(txn.get("date"))
-    reason = _blocked_reason(txn, person_1_name, person_2_name)
+    reason = _blocked_reason(txn, person_1_name, person_2_name, my_slot)
 
     row_state = sync_state_repo.get_row_state(
         contract.make_txn_id(my_user_id, transaction_id)

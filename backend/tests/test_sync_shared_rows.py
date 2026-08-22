@@ -126,11 +126,16 @@ class TestPublishability:
         mine("t1")
         assert self._reason(client) == (True, None)
 
-    def test_an_unreviewed_row_is_flagged(self, client):
+    def test_an_unreviewed_row_is_still_publishable(self, client):
+        """Reviewed is triage state, not a gate — see project_push's docstring."""
         identity_service.ensure_identity()
         mine("t1", reviewed=False)
-        publishable, reason = self._reason(client)
-        assert publishable is False and "review" in reason.lower()
+        assert self._reason(client) == (True, None)
+
+    def test_a_row_with_a_blank_who_is_publishable_as_ours(self, client):
+        identity_service.ensure_identity()
+        mine("t1", who="")
+        assert self._reason(client) == (True, None)
 
     def test_a_row_with_no_split_is_flagged(self, client):
         """The rows sub-project B deliberately withholds must not be invisible."""

@@ -45,6 +45,24 @@ def payer_slot(who: str, person_1_name: str, person_2_name: str) -> Optional[int
     return None
 
 
+def owned_payer_slot(
+    who: str, person_1_name: str, person_2_name: str, my_slot: int
+) -> Optional[int]:
+    """The payer's slot for a transaction *this* instance owns.
+
+    A blank ``who`` resolves to us. The row came off our own account, so we
+    paid it — an expense the peer paid reaches the sheet from their instance,
+    never ours. The app has never modelled a payer (``who`` is blank on every
+    stored transaction); it used to be typed straight into the sheet by hand.
+
+    A ``who`` that is present but matches neither name still returns None: that
+    is a value someone chose, and guessing past it would fill the wrong cell.
+    """
+    if not (who or "").strip():
+        return my_slot
+    return payer_slot(who, person_1_name, person_2_name)
+
+
 def _decimal(value: Any) -> Optional[Decimal]:
     if value is None or value == "":
         return None
@@ -60,18 +78,22 @@ def project_push(
     me: str,
     person_1_name: str,
     person_2_name: str,
+    my_slot: int,
 ) -> Tuple[List[DesiredRow], List[Unpublishable]]:
     """Select and shape the local rows this instance should publish for ``period``.
 
-    Only shared *and* reviewed rows qualify. Triage happens in the app, which is
-    what keeps a blank owes cell unambiguous: it means "not yet published",
-    never "published but undecided".
+    Sharing a row is the decision to publish it; ``reviewed`` rides along as
+    triage state rather than gating the push. It cannot gate: the app's own
+    bulk action sets ``reviewed`` False precisely *because* a row is shared, so
+    requiring both would make a shared row unpublishable by construction.
+
+    A blank owes cell therefore means "no split set", not "not yet published".
     """
     desired: List[DesiredRow] = []
     unpublishable: List[Unpublishable] = []
 
     for transaction_id, txn in items:
-        if not (txn.get("is_shared") and txn.get("reviewed")):
+        if not txn.get("is_shared"):
             continue
         if period_of(txn) != period:
             continue
@@ -88,13 +110,15 @@ def project_push(
             )
             continue
 
-        slot = payer_slot(txn.get("who") or "", person_1_name, person_2_name)
+        slot = owned_payer_slot(
+            txn.get("who") or "", person_1_name, person_2_name, my_slot
+        )
         if slot is None:
             unpublishable.append(
                 Unpublishable(
                     transaction_id,
                     description,
-                    f"Who is {txn.get('who') or '(blank)'!r}, which is neither "
+                    f"Who is {txn.get('who')!r}, which is neither "
                     f"{person_1_name!r} nor {person_2_name!r}, so sync cannot tell "
                     f"whose owes cell to fill.",
                 )
@@ -138,7 +162,7 @@ def project_push(
                 owes_1=owes_1,
                 owes_2=owes_2,
                 notes=txn.get("notes") or "",
-                reviewed=True,
+                reviewed=bool(txn.get("reviewed")),
                 carried_from=(txn.get("carried_from_period") or "") or None,
             )
         )
