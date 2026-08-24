@@ -126,7 +126,7 @@ async def compute_health_score() -> Dict[str, Any]:
     """
     summary = await balances_service.build_summary()
     trend = analytics.compute_balance_trend()
-    credit = credit_health_service.build()
+    credit = await credit_health_service.build()
     comparison = analytics.compute_month_to_date_comparison()
 
     signals: List[Dict[str, Any]] = [

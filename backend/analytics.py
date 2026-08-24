@@ -191,7 +191,7 @@ _INVESTMENT_SUBTYPES = frozenset({
 })
 
 
-def _classify_account_bucket(acct_type: str, subtype: str) -> str:
+def classify_account_bucket(acct_type: str, subtype: str) -> str:
     """Return ``'cash'`` / ``'credit'`` / ``'investment'`` / ``'other'``.
 
     Investment matching is intentionally permissive — both ``type='investment'``
@@ -208,6 +208,11 @@ def _classify_account_bucket(acct_type: str, subtype: str) -> str:
     if t == "credit":
         return "credit"
     return "other"
+
+
+# Was private until several modules outside analytics needed it; the old name
+# is kept so nothing that imported it breaks.
+_classify_account_bucket = classify_account_bucket
 
 
 def summarize_holdings(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -289,7 +294,7 @@ def _balances_snapshot() -> Dict[str, Any]:
     """Read cached SimpleFIN balances + live manual accounts without calling SimpleFIN.
 
     Walks the raw account list and reclassifies each one through
-    ``_classify_account_bucket`` so investment / retirement accounts surface
+    ``classify_account_bucket`` so investment / retirement accounts surface
     as their own bucket — the pre-summed ``simplefin_cash`` /
     ``simplefin_credit_debt`` scalars in the cache only cover depository +
     credit and would otherwise silently drop investment value from net worth.
@@ -317,7 +322,7 @@ def _balances_snapshot() -> Dict[str, Any]:
     total_credit = 0.0
     total_investments = 0.0
     for acct in list(linked_accounts) + list(snaptrade_accounts) + manual_accounts:
-        bucket = _classify_account_bucket(acct.get("type", ""), acct.get("subtype", ""))
+        bucket = classify_account_bucket(acct.get("type", ""), acct.get("subtype", ""))
         if bucket == "cash":
             total_cash += float(acct.get("available", 0.0) or 0.0)
         elif bucket == "credit":
@@ -820,7 +825,7 @@ def _net_worth_at(
 
     total = 0.0
     for snap in chosen.values():
-        bucket = _classify_account_bucket(
+        bucket = classify_account_bucket(
             snap.get("type") or "", snap.get("subtype") or ""
         )
         if bucket == "cash":

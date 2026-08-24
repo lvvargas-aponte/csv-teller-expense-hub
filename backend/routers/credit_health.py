@@ -14,4 +14,4 @@ router = APIRouter()
 
 @router.get("/accounts/credit-health")
 async def credit_health() -> Dict[str, Any]:
-    return credit_health_service.build()
+    return await credit_health_service.build()

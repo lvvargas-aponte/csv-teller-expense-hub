@@ -88,7 +88,7 @@ async def build_digest() -> Dict[str, Any]:
     from routers.subscriptions import list_subscriptions
 
     today = date.today()
-    alerts_feed = collect_alerts()
+    alerts_feed = await collect_alerts()
     bills = (await upcoming_bills(window_days=7))["bills"]
     subs = await list_subscriptions()
 

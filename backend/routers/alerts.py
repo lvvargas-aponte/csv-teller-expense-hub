@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter
 
-import state
+import credit_health_service
 from analytics import (
     compute_budget_statuses,
     compute_goal_statuses,
@@ -64,27 +64,22 @@ def _goal_alerts() -> List[Dict[str, Any]]:
     return out
 
 
-def _credit_utilization_alerts() -> List[Dict[str, Any]]:
+async def _credit_utilization_alerts() -> List[Dict[str, Any]]:
+    """Read the same composition the Credit Health card shows.
+
+    This used to walk the account stores itself and take a manual account's
+    *starting* ledger, so the feed could warn about a utilization no other
+    screen agreed with. Cards with no limit and installment loans carry a
+    null ``utilization_pct`` and drop out here.
+    """
     out: List[Dict[str, Any]] = []
-    linked_accounts = state._balances_cache.get("simplefin_accounts", []) or []
-    manual_accounts = list(state._manual_accounts.values())
-    for acct in list(linked_accounts) + manual_accounts:
-        if (acct.get("type") or "").lower() != "credit":
-            continue
-        details = state.account_details.get(acct.get("id") or "") or {}
-        limit = details.get("credit_limit")
-        try:
-            limit_f = float(limit) if limit is not None else None
-        except (TypeError, ValueError):
-            limit_f = None
-        if not limit_f or limit_f <= 0:
-            continue
-        balance = float(acct.get("ledger") or 0.0)
-        pct = balance / limit_f * 100.0
-        if pct < 50.0:
+    composition = await credit_health_service.build()
+    for row in composition["accounts"]:
+        pct = row["utilization_pct"]
+        if pct is None or pct < 50.0:
             continue
         sev = "error" if pct >= 80.0 else "warn"
-        name = acct.get("name") or "Credit card"
+        name = row["name"] or "Credit card"
         out.append({
             "severity": sev,
             "category": "credit",
@@ -118,13 +113,13 @@ def _recurring_anomaly_alerts() -> List[Dict[str, Any]]:
     return out
 
 
-def collect_alerts() -> Dict[str, Any]:
+async def collect_alerts() -> Dict[str, Any]:
     """Compose every alert source, sorted by severity. Shared with the
     weekly digest builder so both surfaces show the same feed."""
     alerts: List[Dict[str, Any]] = []
     alerts.extend(_budget_alerts())
     alerts.extend(_goal_alerts())
-    alerts.extend(_credit_utilization_alerts())
+    alerts.extend(await _credit_utilization_alerts())
     alerts.extend(_recurring_anomaly_alerts())
 
     severity_rank = {"error": 0, "warn": 1, "info": 2}
@@ -139,4 +134,4 @@ def collect_alerts() -> Dict[str, Any]:
 
 @router.get("/alerts")
 async def list_alerts() -> Dict[str, Any]:
-    return collect_alerts()
+    return await collect_alerts()

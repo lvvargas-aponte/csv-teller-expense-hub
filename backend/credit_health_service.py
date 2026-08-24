@@ -1,12 +1,21 @@
 """Credit utilization composition — per-card balance vs. configured limit.
 
-Extracted from ``routers/credit_health.py`` so the health score can read the
-same numbers the Credit Health card shows without calling a router handler.
-The router is now a thin serializer over :func:`build`.
+One composition, three readers: the Credit Health card, the alert feed, and
+the health score. It reads balances from ``balances_service.build_summary``
+rather than walking the account stores itself — a manual account's stored
+``ledger`` is only its *starting* balance, so a hand-rolled walk reports a
+figure the Accounts page contradicts.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+import balances_service
 import state
+from analytics import classify_account_bucket
+
+# Installment debt (mortgage, auto, student). ``simplefin.infer_account_bucket``
+# tags these ``subtype="loan"``. A revolving-utilization ratio says nothing
+# useful about them, so they are listed but not rated.
+_INSTALLMENT_SUBTYPES = frozenset({"loan", "mortgage", "student", "auto"})
 
 
 def _status_for(pct: float) -> str:
@@ -17,35 +26,39 @@ def _status_for(pct: float) -> str:
     return "good"
 
 
-def build() -> Dict[str, Any]:
+def _limit_for(account_id: str) -> Optional[float]:
+    raw = (state.account_details.get(account_id) or {}).get("credit_limit")
+    try:
+        return float(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+async def build() -> Dict[str, Any]:
     """Per-card utilization plus the household totals.
 
     Cards without a configured limit are still returned so the UI can prompt
-    the user to fill one in; they contribute nothing to the overall figure.
+    the user to fill one in; they contribute nothing to the overall figure,
+    and neither do installment loans.
     """
-    linked_accounts = state._balances_cache.get("simplefin_accounts", []) or []
-    manual_accounts = list(state._manual_accounts.values())
+    summary = await balances_service.build_summary()
 
     out: List[Dict[str, Any]] = []
     total_balance = 0.0
     total_limit = 0.0
 
-    for acct in list(linked_accounts) + manual_accounts:
-        if (acct.get("type") or "").lower() != "credit":
+    for acct in summary.accounts:
+        if classify_account_bucket(acct.type, acct.subtype) != "credit":
             continue
-        acct_id = acct.get("id") or ""
-        details = state.account_details.get(acct_id) or {}
-        try:
-            balance = float(acct.get("ledger") or 0.0)
-        except (TypeError, ValueError):
-            balance = 0.0
-        raw_limit = details.get("credit_limit")
-        try:
-            limit = float(raw_limit) if raw_limit is not None else None
-        except (TypeError, ValueError):
-            limit = None
 
-        if limit and limit > 0:
+        balance = float(acct.ledger or 0.0)
+        limit = _limit_for(acct.id)
+        installment = (acct.subtype or "").lower().strip() in _INSTALLMENT_SUBTYPES
+
+        if installment:
+            pct = None
+            status = "not_applicable"
+        elif limit and limit > 0:
             pct = round(balance / limit * 100.0, 1)
             status = _status_for(pct)
             total_balance += balance
@@ -55,10 +68,9 @@ def build() -> Dict[str, Any]:
             status = "unknown"
 
         out.append({
-            "account_id": acct_id,
-            "institution": acct.get("institution") if isinstance(acct.get("institution"), str)
-                           else (acct.get("institution") or {}).get("name", ""),
-            "name": acct.get("name", ""),
+            "account_id": acct.id,
+            "institution": acct.institution,
+            "name": acct.name,
             "balance": round(balance, 2),
             "credit_limit": round(limit, 2) if limit is not None else None,
             "utilization_pct": pct,
