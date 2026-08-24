@@ -37,6 +37,16 @@ function formatToday(date) {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
 }
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function monthName(monthKey) {
+  const idx = parseInt((monthKey || '').slice(5, 7), 10) - 1;
+  return MONTH_NAMES[idx] || 'the prior month';
+}
+
 export default function DashboardTab({ healthScore }) {
   const [months, setMonths] = useState(6);
   const [dashboard, setDashboard] = useState(null);
@@ -82,18 +92,42 @@ export default function DashboardTab({ healthScore }) {
   // ── Derived banner + KPI values ──────────────────────────────────
   const trend = dashboard?.balance_trend;
   const monthlyTotals = dashboard?.monthly_totals || [];
-  const thisMonth = monthlyTotals[monthlyTotals.length - 1]?.total ?? 0;
-  const prevMonth = monthlyTotals[monthlyTotals.length - 2]?.total ?? null;
-  const thisMonthDelta = (prevMonth !== null && prevMonth !== undefined) ? thisMonth - prevMonth : null;
+
+  // The backend bounds both months by the same day number, so this delta is
+  // like-for-like all month long. Fall back to the raw month totals only for
+  // a payload that predates spend_comparison.
+  const spendComparison = dashboard?.spend_comparison || null;
+  const thisMonth = spendComparison
+    ? spendComparison.current_month_to_date
+    : (monthlyTotals[monthlyTotals.length - 1]?.total ?? 0);
+  const thisMonthDelta = spendComparison ? spendComparison.delta : null;
 
   const incomeRows = incomeData?.rows || [];
-  const latestIncome = incomeRows[incomeRows.length - 1];
+  const completeRows = incomeRows.filter((r) => r.is_partial !== true);
+  // Nothing complete yet (a brand-new import, or the 1st of the month): show
+  // the month in progress rather than an empty card, but without a delta.
+  const incomeIsPartial = completeRows.length === 0 && incomeRows.length > 0;
+  const kpiRows = incomeIsPartial ? incomeRows : completeRows;
+  const latestIncome = kpiRows[kpiRows.length - 1];
   const incomeAmt = latestIncome?.income ?? 0;
   const expensesAmt = latestIncome?.expenses ?? 0;
   const netCashFlow = (latestIncome?.net) ?? (incomeAmt - expensesAmt);
-  const prevIncomeRow = incomeRows[incomeRows.length - 2];
+  const prevIncomeRow = incomeIsPartial ? null : kpiRows[kpiRows.length - 2];
   const incomeDelta = prevIncomeRow ? incomeAmt - prevIncomeRow.income : null;
   const cashFlowDelta = prevIncomeRow ? netCashFlow - prevIncomeRow.net : null;
+
+  const asOfDay = spendComparison?.as_of_day;
+  const thisMonthHelp = spendComparison
+    ? `Total spending in ${monthName(spendComparison.current_month)} through day ${asOfDay} (debits only). Compared with the first ${asOfDay} days of ${monthName(spendComparison.prior_month)} — a drop is good.`
+    : 'Total spending so far in the current calendar month (debits only).';
+
+  const kpiMonthName = monthName(latestIncome?.month);
+  const incomeHelp = incomeIsPartial
+    ? `Credits received in ${kpiMonthName} so far (paychecks, transfers in, refunds). The month is still in progress, so no month-over-month delta is shown.`
+    : `Credits received in ${kpiMonthName} — the most recent complete month. The delta compares against the complete month before it.`;
+  const cashFlowHelp = incomeIsPartial
+    ? `Income minus expenses in ${kpiMonthName} so far. The month is still in progress, so no delta is shown.`
+    : `Income minus expenses in ${kpiMonthName} — the most recent complete month. Positive means you saved; negative means you spent more than you earned.`;
 
   const netWorth = summary?.net_worth ?? trend?.current_net_worth ?? 0;
   const netWorthDelta = trend?.delta_30d ?? null;
@@ -193,7 +227,7 @@ export default function DashboardTab({ healthScore }) {
             deltaInverse
             barColor="#6366f1"
             blur={blurSensitive}
-            help="Total spending so far in the current calendar month (debits only). The delta compares against the same point in the prior month — a drop is good."
+            help={thisMonthHelp}
           />
           <KpiCard
             label="Income"
@@ -201,7 +235,8 @@ export default function DashboardTab({ healthScore }) {
             delta={incomeDelta}
             barColor="#059669"
             blur={blurSensitive}
-            help="Credits received in the most recent full month (paychecks, transfers in, refunds). The delta compares against the prior month."
+            inProgress={incomeIsPartial}
+            help={incomeHelp}
           />
           <KpiCard
             label="Net Cash Flow"
@@ -210,7 +245,8 @@ export default function DashboardTab({ healthScore }) {
             delta={cashFlowDelta}
             barColor={netCashFlow < 0 ? '#ef4444' : '#059669'}
             blur={blurSensitive}
-            help="Income minus expenses for the most recent full month. Positive means you saved; negative means you spent more than you earned."
+            inProgress={incomeIsPartial}
+            help={cashFlowHelp}
           />
         </section>
 
@@ -247,7 +283,7 @@ export default function DashboardTab({ healthScore }) {
   );
 }
 
-function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur, help }) {
+function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur, help, inProgress }) {
   let arrow = null;
   let deltaColor = 'var(--text-muted)';
   if ((delta !== null && delta !== undefined)) {
@@ -257,7 +293,7 @@ function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur
     deltaColor = good ? '#059669' : '#ef4444';
   }
   return (
-    <div className="eh-kpi">
+    <div className="eh-kpi" role="group" aria-label={label}>
       <div className="eh-kpi-label">
         <span>{label}</span>
         {help && (
@@ -276,6 +312,17 @@ function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur
           <span>{arrow}</span>
           <span className={blur ? 'eh-blur' : ''}>{fmt$(delta)}</span>
           <span className="eh-kpi-delta-suffix">vs prior</span>
+        </div>
+      )}
+      {inProgress && (
+        <div
+          className="eh-kpi-inprogress"
+          style={{
+            fontSize: 12, fontWeight: 600, marginTop: 4,
+            color: 'var(--text-muted)', fontStyle: 'italic',
+          }}
+        >
+          Month in progress
         </div>
       )}
       <div className="eh-kpi-bar" style={{ background: barColor }} />

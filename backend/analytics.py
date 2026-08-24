@@ -77,6 +77,77 @@ def group_debit_spending() -> Dict[str, Dict[str, float]]:
     return spending
 
 
+def _last_day_of_month(any_day: date) -> int:
+    """Number of days in the calendar month containing ``any_day``."""
+    first_next = date(
+        any_day.year + (1 if any_day.month == 12 else 0),
+        1 if any_day.month == 12 else any_day.month + 1,
+        1,
+    )
+    return (first_next - timedelta(days=1)).day
+
+
+def compute_month_to_date_comparison(today: Optional[date] = None) -> Dict[str, Any]:
+    """Spending so far this month against the same stretch of the prior month.
+
+    The dashboard used to hold a partial current month against a complete
+    prior one, so every early-month delta read as a large drop. Both sides
+    are bounded by the same day number here. ``today`` is a parameter so
+    callers and tests never have to patch a clock.
+
+    What counts as spending is ``_is_expense`` — the same gate
+    ``group_debit_spending`` uses.
+    """
+    today = today or date.today()
+    as_of_day = today.day
+    current_month = f"{today.year:04d}-{today.month:02d}"
+
+    prior_last_day = date(today.year, today.month, 1) - timedelta(days=1)
+    prior_month = f"{prior_last_day.year:04d}-{prior_last_day.month:02d}"
+    # A 31st has no counterpart in a 30-day month: clamp so the comparison
+    # covers the whole prior month rather than silently dropping its last day.
+    prior_cutoff_day = min(as_of_day, prior_last_day.day)
+
+    current_month_to_date = 0.0
+    prior_month_same_period = 0.0
+    prior_month_full = 0.0
+
+    for txn in state.stored_transactions.values():
+        if not _is_expense(txn):
+            continue
+        txn_date = _parse_date_obj(txn.get("date", ""))
+        if txn_date is None:
+            continue
+        amount = float(txn.get("amount", 0))
+        month_key = f"{txn_date.year:04d}-{txn_date.month:02d}"
+        if month_key == current_month:
+            if txn_date.day <= as_of_day:
+                current_month_to_date += amount
+        elif month_key == prior_month:
+            prior_month_full += amount
+            if txn_date.day <= prior_cutoff_day:
+                prior_month_same_period += amount
+
+    delta = current_month_to_date - prior_month_same_period
+    pct_change = (
+        round(delta / prior_month_same_period * 100.0, 2)
+        if prior_month_same_period
+        else None
+    )
+
+    return {
+        "as_of_day": as_of_day,
+        "current_month": current_month,
+        "current_month_to_date": round(current_month_to_date, 2),
+        "prior_month": prior_month,
+        "prior_month_same_period": round(prior_month_same_period, 2),
+        "prior_month_full": round(prior_month_full, 2),
+        "delta": round(delta, 2),
+        "pct_change": pct_change,
+        "current_month_is_partial": as_of_day < _last_day_of_month(today),
+    }
+
+
 def _shared_split_totals(recent_months: int = 2) -> Dict[str, Any]:
     """Sum per-person shared contributions across the N most recent months."""
     spending = group_debit_spending()

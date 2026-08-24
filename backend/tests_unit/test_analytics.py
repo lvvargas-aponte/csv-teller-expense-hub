@@ -2,6 +2,7 @@
 from datetime import date, timedelta
 
 import state
+import analytics
 from analytics import (
     _normalize_merchant,
     build_financial_snapshot,
@@ -175,3 +176,41 @@ class TestSnapshotEnrichment:
         assert snap["goals"][0]["name"] == "Vacation"
         assert snap["goals"][0]["progress_pct"] == 25.0
         assert any("spotify" in r["merchant_key"] for r in snap["recurring_charges"])
+
+
+def _seed_dated_txn(tid, date_str, amount, category="Dining"):
+    """Seed an outflow on an explicit calendar date (no days_ago drift)."""
+    state.stored_transactions[tid] = {
+        "id": tid, "date": date_str, "description": "MERCHANT", "amount": amount,
+        "category": category, "transaction_type": "debit", "direction": "outflow",
+        "source": "simplefin",
+    }
+
+
+class TestMonthToDateComparison:
+    def test_month_to_date_compares_the_same_period(self):
+        _seed_dated_txn("a", "2026-07-05", 100.0)
+        _seed_dated_txn("b", "2026-07-20", 400.0)   # after the cutoff day
+        _seed_dated_txn("c", "2026-08-05", 120.0)
+
+        out = analytics.compute_month_to_date_comparison(date(2026, 8, 10))
+
+        assert out["as_of_day"] == 10
+        assert out["current_month"] == "2026-08"
+        assert out["prior_month"] == "2026-07"
+        assert out["current_month_to_date"] == 120.0
+        assert out["prior_month_same_period"] == 100.0   # NOT 500.0
+        assert out["prior_month_full"] == 500.0
+        assert out["delta"] == 20.0
+        assert out["pct_change"] == 20.0
+        assert out["current_month_is_partial"] is True
+
+    def test_cutoff_is_clamped_to_the_prior_months_length(self):
+        """Oct 31 has no counterpart in September; the whole month counts."""
+        _seed_dated_txn("a", "2026-09-30", 50.0)
+        _seed_dated_txn("b", "2026-10-31", 10.0)
+
+        out = analytics.compute_month_to_date_comparison(date(2026, 10, 31))
+
+        assert out["prior_month_same_period"] == 50.0
+        assert out["current_month_is_partial"] is False

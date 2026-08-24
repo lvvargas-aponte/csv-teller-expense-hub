@@ -1,0 +1,88 @@
+import React from 'react';
+import { render, screen, waitFor } from '@testing-library/react';
+import DashboardTab from '../DashboardTab';
+import { getDashboard, getIncomeVsExpenses } from '../../../api/dashboard';
+import { getBalancesSummary } from '../../../api/balances';
+
+jest.mock('axios');
+jest.mock('../../../api/dashboard');
+jest.mock('../../../api/balances');
+
+// The cards each fetch for themselves; this test is about the KPI row only.
+jest.mock('../cards/WeeklyDigestCard', () => () => <div />);
+jest.mock('../cards/NetWorthCard', () => () => <div />);
+jest.mock('../cards/CashFlowCard', () => () => <div />);
+jest.mock('../cards/SpendingByCategoryCard', () => () => <div />);
+jest.mock('../cards/IncomeVsExpensesCard', () => () => <div />);
+jest.mock('../cards/BalancesCard', () => () => <div />);
+jest.mock('../cards/PortfolioCard', () => () => <div />);
+jest.mock('../cards/CreditUtilizationCard', () => () => <div />);
+jest.mock('../cards/BudgetsCard', () => () => <div />);
+jest.mock('../cards/RecurringChargesCard', () => () => <div />);
+jest.mock('../cards/AlertsCard', () => () => <div />);
+
+const spendComparison = (over = {}) => ({
+  as_of_day: 10,
+  current_month: '2026-08',
+  current_month_to_date: 120.0,
+  prior_month: '2026-07',
+  prior_month_same_period: 100.0,
+  prior_month_full: 500.0,
+  delta: 20.0,
+  pct_change: 20.0,
+  current_month_is_partial: true,
+  ...over,
+});
+
+const renderTab = ({ rows, comparison = spendComparison() }) => {
+  getDashboard.mockResolvedValue({
+    data: {
+      months: [], spending_by_month: {}, monthly_totals: [],
+      net_worth_timeseries: [], recurring_charges: [],
+      balance_trend: { available: false },
+      spend_comparison: comparison,
+    },
+  });
+  getIncomeVsExpenses.mockResolvedValue({ data: { months: [], rows } });
+  getBalancesSummary.mockResolvedValue({ data: { net_worth: 0 } });
+  return render(<DashboardTab healthScore={70} />);
+};
+
+const kpi = (label) => screen.getByRole('group', { name: label });
+
+beforeEach(() => jest.clearAllMocks());
+
+test('an income month still in progress renders no delta arrow', async () => {
+  renderTab({
+    rows: [
+      { month: '2026-08', income: 900, expenses: 400, net: 500, is_partial: true },
+    ],
+  });
+
+  await waitFor(() => expect(kpi('Income')).toHaveTextContent('$900.00'));
+  expect(kpi('Income')).not.toHaveTextContent(/vs prior/i);
+  expect(kpi('Income')).toHaveTextContent(/month in progress/i);
+});
+
+test('income and net cash flow read the most recent complete month', async () => {
+  renderTab({
+    rows: [
+      { month: '2026-06', income: 800, expenses: 300, net: 500, is_partial: false },
+      { month: '2026-07', income: 1000, expenses: 400, net: 600, is_partial: false },
+      { month: '2026-08', income: 120, expenses: 60, net: 60, is_partial: true },
+    ],
+  });
+
+  await waitFor(() => expect(kpi('Income')).toHaveTextContent('$1,000.00'));
+  expect(kpi('Income')).toHaveTextContent(/\$200\.00\s*vs prior/);
+  expect(kpi('Net Cash Flow')).toHaveTextContent('$600.00');
+  expect(kpi('Net Cash Flow')).not.toHaveTextContent(/month in progress/i);
+});
+
+test('this month compares against the same stretch of the prior month', async () => {
+  renderTab({ rows: [] });
+
+  await waitFor(() => expect(kpi('This Month')).toHaveTextContent('$120.00'));
+  expect(kpi('This Month')).toHaveTextContent(/\$20\.00\s*vs prior/);
+  expect(kpi('This Month')).toHaveTextContent(/first 10 days of July/i);
+});

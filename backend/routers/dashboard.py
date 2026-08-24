@@ -4,6 +4,7 @@ Reuses helpers in :mod:`analytics` so this stays a thin serializer over
 data the advisor already computes.
 """
 import logging
+from datetime import date
 from typing import Any, Dict, List
 
 from fastapi import APIRouter
@@ -36,6 +37,7 @@ async def dashboard(months: int = 6) -> Dict[str, Any]:
         "net_worth_timeseries": analytics.compute_net_worth_timeseries(months),
         "recurring_charges": analytics.detect_recurring_charges()[:10],
         "balance_trend": analytics.compute_balance_trend(),
+        "spend_comparison": analytics.compute_month_to_date_comparison(),
     }
 
 
@@ -81,6 +83,10 @@ async def income_vs_expenses(months: int = 6) -> Dict[str, Any]:
             income_by_month[month_key] = income_by_month.get(month_key, 0.0) + amount
 
     all_months = sorted(set(income_by_month) | set(expense_by_month))[-months:]
+    today = date.today()
+    current_month = f"{today.year:04d}-{today.month:02d}"
+    current_is_partial = today.day < analytics._last_day_of_month(today)
+
     rows: List[Dict[str, Any]] = []
     for m in all_months:
         income = round(income_by_month.get(m, 0.0), 2)
@@ -90,6 +96,7 @@ async def income_vs_expenses(months: int = 6) -> Dict[str, Any]:
             "income": income,
             "expenses": expense,
             "net": round(income - expense, 2),
+            "is_partial": m == current_month and current_is_partial,
         })
 
     return {"months": all_months, "rows": rows}

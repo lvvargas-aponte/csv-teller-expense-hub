@@ -2,11 +2,12 @@
 
 Smoke-tests the GET /api/dashboard route that the Dashboard tab consumes.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import text
 
 import state
+from analytics import _last_day_of_month
 from db.base import sync_engine
 
 
@@ -109,3 +110,32 @@ class TestNetWorthTimeseries:
         assert len(ts) > 0
         # Most recent point should reflect the latest snapshot.
         assert ts[-1]["net_worth"] == 1500.0
+
+
+class TestPartialMonthComparison:
+    def test_dashboard_exposes_spend_comparison(self, client):
+        body = client.get("/api/dashboard").json()
+        assert "spend_comparison" in body
+        comparison = body["spend_comparison"]
+        for key in (
+            "as_of_day", "current_month", "current_month_to_date",
+            "prior_month", "prior_month_same_period", "prior_month_full",
+            "delta", "pct_change", "current_month_is_partial",
+        ):
+            assert key in comparison
+
+    def test_income_rows_flag_the_partial_month(self, client):
+        today = date.today()
+        current = f"{today.year:04d}-{today.month:02d}"
+        prior_last = date(today.year, today.month, 1) - timedelta(days=1)
+        prior = f"{prior_last.year:04d}-{prior_last.month:02d}"
+
+        _seed_txn("p", f"{prior}-05", "Food", 40.0)
+        _seed_txn("c", f"{current}-01", "Food", 25.0)
+
+        rows = client.get("/api/dashboard/income-vs-expenses").json()["rows"]
+        by_month = {row["month"]: row for row in rows}
+        assert by_month[prior]["is_partial"] is False
+        assert by_month[current]["is_partial"] == (
+            today.day < _last_day_of_month(today)
+        )
