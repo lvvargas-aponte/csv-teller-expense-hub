@@ -9,6 +9,7 @@ jest.mock('../../../api/dashboard');
 jest.mock('../../../api/balances');
 
 // The cards each fetch for themselves; this test is about the KPI row only.
+jest.mock('../SpendingInsights', () => () => <div />);
 jest.mock('../cards/StandingCard', () => () => <div />);
 jest.mock('../cards/WeeklyDigestCard', () => () => <div />);
 jest.mock('../cards/NetWorthCard', () => () => <div />);
@@ -35,7 +36,7 @@ const spendComparison = (over = {}) => ({
   ...over,
 });
 
-const renderTab = ({ rows, comparison = spendComparison(), signals }) => {
+const renderTab = ({ rows, comparison = spendComparison(), signals, summary = { net_worth: 0 } }) => {
   getDashboard.mockResolvedValue({
     data: {
       months: [], spending_by_month: {}, monthly_totals: [],
@@ -45,8 +46,10 @@ const renderTab = ({ rows, comparison = spendComparison(), signals }) => {
     },
   });
   getIncomeVsExpenses.mockResolvedValue({ data: { months: [], rows } });
-  getBalancesSummary.mockResolvedValue({ data: { net_worth: 0 } });
-  return render(<DashboardTab healthScore={70} healthSignals={signals} />);
+  getBalancesSummary.mockResolvedValue({ data: summary });
+  return render(
+    <DashboardTab healthScore={70} healthSignals={signals} summary={summary} />,
+  );
 };
 
 const kpi = (label) => screen.getByRole('group', { name: label });
@@ -110,4 +113,11 @@ test('full coverage does not clutter the banner with a caveat', async () => {
 
   await waitFor(() => expect(kpi('This Month')).toHaveTextContent('$120.00'));
   expect(screen.queryByText('Based on 5 of 5 signals.')).toBeNull();
+});
+
+test('balances come from the page, not a second round-trip', async () => {
+  renderTab({ rows: [], summary: { net_worth: 4200 } });
+
+  await waitFor(() => expect(kpi('Net Worth')).toHaveTextContent('$4,200.00'));
+  expect(getBalancesSummary).not.toHaveBeenCalled();
 });

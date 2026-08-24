@@ -4,7 +4,6 @@ import {
   getDashboard,
   getIncomeVsExpenses,
 } from '../../api/dashboard';
-import { getBalancesSummary } from '../../api/balances';
 import { fmt$, fmtSigned } from '../../utils/formatting';
 
 import NetWorthCard from './cards/NetWorthCard';
@@ -19,6 +18,7 @@ import AlertsCard from './cards/AlertsCard';
 import IncomeVsExpensesCard from './cards/IncomeVsExpensesCard';
 import WeeklyDigestCard from './cards/WeeklyDigestCard';
 import StandingCard from './cards/StandingCard';
+import SpendingInsights from './SpendingInsights';
 import { BlurContext } from './Num';
 
 const RANGE_OPTIONS = [
@@ -48,15 +48,17 @@ function monthName(monthKey) {
   return MONTH_NAMES[idx] || 'the prior month';
 }
 
-export default function DashboardTab({ healthScore, healthSignals, onOpenSettings, onNavigate }) {
+export default function DashboardTab({
+  healthScore, healthSignals, onOpenSettings, onNavigate,
+  // Balances are fetched once by FinancesPage, which needs them for the
+  // sidebar anyway; the dashboard used to request the same payload again on
+  // the landing view. The `months` range stays owned here.
+  summary, summaryLoading, summaryError, onInsightAction,
+}) {
   const [months, setMonths] = useState(6);
   const [dashboard, setDashboard] = useState(null);
   const [dashboardErr, setDashboardErr] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
-
-  const [summary, setSummary] = useState(null);
-  const [summaryErr, setSummaryErr] = useState(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
 
   const [incomeData, setIncomeData] = useState(null);
 
@@ -76,15 +78,6 @@ export default function DashboardTab({ healthScore, healthSignals, onOpenSetting
       .catch(() => setDashboardErr('Could not load dashboard data.'))
       .finally(() => setDashboardLoading(false));
   }, [months]);
-
-  useEffect(() => {
-    setSummaryLoading(true);
-    setSummaryErr(null);
-    getBalancesSummary(false)
-      .then((r) => setSummary(r.data))
-      .catch(() => setSummaryErr('Could not load balances.'))
-      .finally(() => setSummaryLoading(false));
-  }, []);
 
   useEffect(() => {
     getIncomeVsExpenses(months).then((r) => setIncomeData(r.data)).catch(() => {});
@@ -298,7 +291,7 @@ export default function DashboardTab({ healthScore, healthSignals, onOpenSetting
             <div className="eh-card-full">
               <IncomeVsExpensesCard months={months} />
             </div>
-            <BalancesCard summary={summary} loading={summaryLoading} error={summaryErr} />
+            <BalancesCard summary={summary} loading={summaryLoading} error={summaryError} />
             <PortfolioCard />
             <CreditUtilizationCard onNavigate={onNavigate} />
             <BudgetsCard />
@@ -306,7 +299,14 @@ export default function DashboardTab({ healthScore, healthSignals, onOpenSetting
               <RecurringChargesCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
             </div>
             <div className="eh-card-full">
-              <AlertsCard />
+              <AlertsCard onNavigate={onNavigate} />
+            </div>
+            <div className="eh-card-full">
+              <SpendingInsights
+                summary={summary}
+                dashboard={dashboard}
+                onNavigate={onInsightAction}
+              />
             </div>
           </section>
         </BlurContext.Provider>

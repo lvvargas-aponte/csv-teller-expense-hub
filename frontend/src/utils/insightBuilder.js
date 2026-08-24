@@ -33,8 +33,27 @@ function txnMonth(t) {
   return m ? `${m[1]}-${m[2]}` : null;
 }
 
+// Categories that move money between the household's own pockets. Mirrors the
+// backend's _NON_SPENDING_CATEGORIES; a card payment is not spending twice.
+const NON_SPENDING_CATEGORIES = new Set([
+  'credit card payment', 'credit card payments', 'card payment',
+  'transfer', 'transfers', 'zelle', 'zelle out', 'venmo', 'payment',
+]);
+
+// The same gate the backend's `_is_expense` applies: a tagged transfer drops
+// out, a known non-spending category drops out, and what's left counts only
+// when the money-flow direction is outflow.
+function isExpense(t) {
+  if (t.transfer_to_account_id) return false;
+  const category = String(t.category || '').trim().toLowerCase();
+  if (NON_SPENDING_CATEGORIES.has(category)) return false;
+  const direction = t.direction
+    || ((t.transaction_type || 'debit') === 'debit' ? 'outflow' : 'inflow');
+  return direction === 'outflow';
+}
+
 // ── Rule 1: Large uncategorized spending ──────────────────────────────────────
-// Trigger: this month's debit-without-category total > $500 OR > 20% of month spend.
+// Trigger: this month's uncategorized spend > $500 OR > 20% of month spend.
 function ruleUncategorized(transactions) {
   if (!Array.isArray(transactions) || transactions.length === 0) return null;
   const monthKey = currentMonthKey();
@@ -42,7 +61,7 @@ function ruleUncategorized(transactions) {
   let uncat = 0;
   for (const t of transactions) {
     if (txnMonth(t) !== monthKey) continue;
-    if ((t.transaction_type || 'debit') !== 'debit') continue;
+    if (!isExpense(t)) continue;
     const amt = Math.abs(parseFloat(t.amount) || 0);
     total += amt;
     if (!t.category || String(t.category).trim() === '') uncat += amt;
@@ -88,22 +107,27 @@ function ruleSpendingHigh(dashboard) {
   };
 }
 
-// ── Rule 3: Net worth up this quarter ─────────────────────────────────────────
+// ── Rule 3: Net worth trending up ─────────────────────────────────────────
 function ruleNetWorthUp(dashboard) {
   const trend = dashboard?.balance_trend;
   if (!trend) return null;
   const delta = parseFloat(trend.delta_30d ?? 0);
   if (delta <= 0) return null;
-  // Best-effort quarterly delta: prefer delta_90d if backend provides it,
-  // otherwise extrapolate from the 30-day delta as a rough estimate.
-  const quarterly = parseFloat(trend.delta_90d ?? delta * 3);
+  // Only claim a quarter when there is a real 90-day delta. Tripling the
+  // 30-day figure headlined a number the household never earned.
+  const quarterly = trend.delta_90d === null || trend.delta_90d === undefined
+    ? null
+    : parseFloat(trend.delta_90d);
+  const headline = quarterly !== null
+    ? `Net worth up ${fmt$(quarterly)} this quarter`
+    : `Net worth up ${fmt$(delta)} this month`;
   return {
     id: 'net-worth-up',
     icon: '🎉',
     iconBg: TAG_COLORS.green.bg,
     tag: 'Win',
     tagClass: TAG_COLORS.green.cls,
-    title: `Net worth up ${fmt$(quarterly)} this quarter`,
+    title: headline,
     body: `Your net worth has improved by ${fmt$(delta)} over the past 30 days — ` +
           `consistent progress. Keep paying down debt and building cash.`,
     action: null,
@@ -138,7 +162,7 @@ function ruleLargestBalance(summary, accountDetails = {}) {
             ? ` At ${apr}% APR, that costs about ${fmt$(monthlyInterest)}/month in interest. ` +
               `Prioritizing this in your payoff plan saves the most.`
             : ' Add an APR in the Debt Payoff Planner below to see what it costs you each month.'),
-    action: { label: 'See payoff plan →', target: { financesTab: 'overview' } },
+    action: { label: 'See payoff plan →', target: { financesTab: 'accounts' } },
   };
 }
 

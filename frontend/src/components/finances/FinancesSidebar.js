@@ -6,7 +6,6 @@ const NAV_SECTIONS = [
     label: 'Overview',
     items: [
       { id: 'dashboard',   icon: '📊', label: 'Dashboard' },
-      { id: 'overview',    icon: '📋', label: 'Overview' },
       { id: 'accounts',    icon: '🏦', label: 'Accounts' },
       { id: 'investments', icon: '📈', label: 'Investments' },
     ],
@@ -36,6 +35,9 @@ const NAV_SECTIONS = [
 const RETIRED_TAB_IDS = {
   bills:         { tab: 'commitments', view: 'due' },
   subscriptions: { tab: 'commitments', view: 'recurring' },
+  // Overview held net worth, the payoff planner and spending insights — three
+  // unrelated things whose identity against Dashboard was never predictable.
+  overview:      { tab: 'dashboard', view: 'due' },
 };
 
 export function resolveStoredTab(stored) {

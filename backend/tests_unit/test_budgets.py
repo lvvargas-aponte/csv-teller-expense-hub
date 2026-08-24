@@ -222,3 +222,37 @@ class TestPaceAlert:
         assert len(budget_alerts) == 1
         assert budget_alerts[0]["severity"] == "error"
         assert "over budget" in budget_alerts[0]["message"]
+
+
+class TestAlertTargets:
+    """Alerts pointed at /finances/plan, a route that does not exist, and the
+    card never rendered the field — every alert was unactionable. They now
+    carry the tab id the sidebar uses."""
+
+    def test_budget_alerts_target_the_budgets_tab(self, client, monkeypatch):
+        monkeypatch.setattr(alerts_router, "compute_budget_statuses", lambda: [{
+            "category": "Dining", "monthly_limit": 500.0, "notes": "",
+            "current_month_spent": 600.0, "percent_used": 120.0,
+            "over_budget": True, "month_progress_pct": 50.0,
+            "projected_month_end": 1200.0, "pace_status": "over_budget",
+            "projected_overage": 700.0,
+        }])
+
+        alert = client.get("/api/alerts").json()["alerts"][0]
+
+        assert alert["tab"] == "budgets"
+        assert "link" not in alert
+
+    def test_utilization_alerts_target_the_accounts_tab(self, client):
+        state._manual_accounts["c1"] = {
+            "id": "c1", "institution": "Bank", "name": "Card", "type": "credit",
+            "subtype": "", "available": 0.0, "ledger": 900.0, "manual": True,
+        }
+        state.account_details["c1"] = {"credit_limit": 1000.0}
+
+        alert = [
+            a for a in client.get("/api/alerts").json()["alerts"]
+            if a["category"] == "credit"
+        ][0]
+
+        assert alert["tab"] == "accounts"

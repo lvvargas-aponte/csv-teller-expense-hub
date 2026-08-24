@@ -9,7 +9,7 @@ const SEVERITY = {
   info:  { color: '#059669', icon: 'i' },
 };
 
-export default function AlertsCard({ onHide, index, kicker }) {
+export default function AlertsCard({ onHide, index, kicker, onNavigate }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -37,21 +37,37 @@ export default function AlertsCard({ onHide, index, kicker }) {
       <div style={{ display: 'grid', gap: 6 }}>
         {alerts.map((a, i) => {
           const sev = SEVERITY[a.severity] || SEVERITY.info;
-          return (
-            <div
-              key={i}
-              style={{
-                display: 'flex',
-                gap: 8,
-                padding: '6px 8px',
-                borderLeft: `3px solid ${sev.color}`,
-                background: 'var(--bg-secondary)',
-                fontSize: 13,
-              }}
-            >
+          // An alert nobody can act on is just a notification. Where the feed
+          // names a tab, the whole row is the way there.
+          const actionable = Boolean(a.tab && onNavigate);
+          const rowStyle = {
+            display: 'flex',
+            gap: 8,
+            padding: '6px 8px',
+            borderLeft: `3px solid ${sev.color}`,
+            background: 'var(--bg-secondary)',
+            fontSize: 13,
+            textAlign: 'left',
+            width: '100%',
+            font: 'inherit',
+            border: 'none',
+            borderLeftWidth: 3,
+            borderLeftStyle: 'solid',
+            borderLeftColor: sev.color,
+            cursor: actionable ? 'pointer' : 'default',
+          };
+          const content = (
+            <>
               <span style={{ color: sev.color, fontWeight: 700 }}>{sev.icon}</span>
               <span><BlurMoney text={a.message} /></span>
-            </div>
+            </>
+          );
+          return actionable ? (
+            <button key={i} type="button" style={rowStyle} onClick={() => onNavigate(a.tab)}>
+              {content}
+            </button>
+          ) : (
+            <div key={i} style={rowStyle}>{content}</div>
           );
         })}
       </div>

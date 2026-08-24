@@ -35,3 +35,10 @@ describe('the stored tab id survives the merge', () => {
     expect(resolveStoredTab(null)).toEqual({ tab: 'dashboard', view: 'due' });
   });
 });
+
+test('Overview is retired — the dashboard is the landing view', () => {
+  renderSidebar();
+
+  expect(screen.queryByRole('button', { name: 'Overview' })).toBeNull();
+  expect(resolveStoredTab('overview')).toEqual({ tab: 'dashboard', view: 'due' });
+});

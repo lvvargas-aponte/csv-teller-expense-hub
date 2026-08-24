@@ -34,7 +34,7 @@ def _budget_alerts() -> List[Dict[str, Any]]:
                         f"${status['projected_month_end']:.0f} against a "
                         f"${status['monthly_limit']:.0f} cap"
                     ),
-                    "link": "/finances/plan",
+                    "tab": "budgets",
                 })
                 continue
             # Also warn at 90%+ of cap.
@@ -46,7 +46,7 @@ def _budget_alerts() -> List[Dict[str, Any]]:
                         f"{status['category']} budget at {status['percent_used']:.0f}% "
                         f"(${status['current_month_spent']:.0f} / ${status['monthly_limit']:.0f})"
                     ),
-                    "link": "/finances/plan",
+                    "tab": "budgets",
                 })
             continue
         out.append({
@@ -56,7 +56,7 @@ def _budget_alerts() -> List[Dict[str, Any]]:
                 f"{status['category']} over budget — spent ${status['current_month_spent']:.0f} "
                 f"vs. ${status['monthly_limit']:.0f} cap"
             ),
-            "link": "/finances/plan",
+            "tab": "budgets",
         })
     return out
 
@@ -73,7 +73,7 @@ def _goal_alerts() -> List[Dict[str, Any]]:
                     f"Goal '{goal['name']}' is {pace.replace('_', ' ')} — "
                     f"need ~${goal.get('monthly_required') or 0:.0f}/mo to hit target"
                 ),
-                "link": "/finances/plan",
+                "tab": "goals",
             })
     return out
 
@@ -98,7 +98,7 @@ async def _credit_utilization_alerts() -> List[Dict[str, Any]]:
             "severity": sev,
             "category": "credit",
             "message": f"{name} utilization at {pct:.0f}% — consider paying down",
-            "link": "/finances/accounts",
+            "tab": "accounts",
         })
     return out
 
@@ -122,7 +122,7 @@ def _recurring_anomaly_alerts() -> List[Dict[str, Any]]:
                 f"{entry['sample_description'][:40]} charged ${latest:.2f} "
                 f"({diff_pct:.0f}% {direction} vs. usual ${usual:.2f})"
             ),
-            "link": None,
+            "tab": "commitments",
         })
     return out
 

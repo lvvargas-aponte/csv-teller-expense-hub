@@ -45,11 +45,10 @@ export default function BalancesSection({ summary, loading, error, onRefresh, on
     () => summary?.accounts?.filter((a) => isInvestment(a)) ?? [],
     [summary]
   );
+  // Paid-off cards stay listed: a card you just cleared used to vanish from
+  // the page where you would go to close or edit it.
   const credit = useMemo(
-    () => summary?.accounts?.filter(
-      (a) => classifyAccountBucket(a) === 'credit'
-             && Math.abs(parseFloat(a.ledger) || 0) >= 0.005,
-    ) ?? [],
+    () => summary?.accounts?.filter((a) => classifyAccountBucket(a) === 'credit') ?? [],
     [summary]
   );
 
@@ -281,6 +280,7 @@ function AccountRow({ acct, onEdit, onDelete }) {
         <div className="ov-balance-name">
           {acct.name}
           {acct.manual && <span className="ov-tag-manual">Manual</span>}
+          {isCredit && isZero && <span className="ov-tag-paid">Paid off</span>}
         </div>
         <div className="ov-balance-inst">{acct.institution}</div>
         {acct.manual && acct.linked_txn_count > 0 && (

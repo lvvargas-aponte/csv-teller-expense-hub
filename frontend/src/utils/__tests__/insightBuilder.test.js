@@ -69,3 +69,37 @@ test('largest-balance rule skips when there are no credit accounts', () => {
   const out = buildInsights({ summary });
   expect(out.find((c) => c.id === 'largest-balance')).toBeFalsy();
 });
+
+// ── The two rule bugs the Finances remediation fixed ────────────────────────
+
+const expenseTxn = (over = {}) => ({
+  id: 't1', date: `${monthKey()}-15`, amount: 600,
+  category: '', transaction_type: 'debit', direction: 'outflow', ...over,
+});
+
+const uncategorizedCard = (transactions) =>
+  buildInsights({ transactions }).find((c) => c.id === 'uncategorized');
+
+test('a credit-card payment is not uncategorized spending', () => {
+  // The rule filtered on transaction_type alone, so card payments and tagged
+  // transfers counted as spending. It now applies the backend's _is_expense.
+  expect(uncategorizedCard([expenseTxn()])).toBeTruthy();
+  expect(uncategorizedCard([expenseTxn({ direction: 'inflow' })])).toBeFalsy();
+  expect(uncategorizedCard([expenseTxn({ transfer_to_account_id: 'a1' })])).toBeFalsy();
+  expect(uncategorizedCard([expenseTxn({ category: 'Credit Card Payment' })])).toBeFalsy();
+});
+
+const netWorthCard = (balance_trend) =>
+  buildInsights({ dashboard: { balance_trend } }).find((c) => c.id === 'net-worth-up');
+
+test('a real 90-day delta is reported as the quarter', () => {
+  const card = netWorthCard({ delta_30d: 400, delta_90d: 1500, current_net_worth: 50000 });
+  expect(card.title).toMatch(/\$1,500 this quarter/);
+});
+
+test('without a 90-day delta it says this month, not a tripled guess', () => {
+  const card = netWorthCard({ delta_30d: 400, current_net_worth: 50000 });
+  expect(card.title).toMatch(/\$400 this month/);
+  expect(card.title).not.toMatch(/quarter/);
+  expect(card.title).not.toMatch(/1,200/);
+});

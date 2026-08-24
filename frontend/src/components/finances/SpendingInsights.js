@@ -10,17 +10,16 @@ export default function SpendingInsights({
   dashboard,
   onNavigate,
 }) {
-  const [revealed,         setRevealed]         = useState(false);
   const [transactions,     setTransactions]     = useState(null);
   const [accountDetails,   setAccountDetails]   = useState({});
-  const [loading,          setLoading]          = useState(false);
+  const [loading,          setLoading]          = useState(true);
   const [error,            setError]            = useState(null);
 
-  // Lazy-load transactions + account details the first time the user reveals.
-  // We don't refetch summary/dashboard — those are loaded once by the parent
-  // FinancesPage and passed down as props.
+  // The one section that interprets rather than reports used to sit behind a
+  // "✨ Show Insights" click. Transactions and account details now load with
+  // the rest of the grid; summary/dashboard arrive as props, fetched once.
   useEffect(() => {
-    if (!revealed || transactions !== null) return;
+    if (transactions !== null) return;
     setLoading(true);
     setError(null);
     Promise.all([
@@ -33,7 +32,7 @@ export default function SpendingInsights({
       })
       .catch(() => setError('Could not load insights — is the backend running?'))
       .finally(() => setLoading(false));
-  }, [revealed, transactions]);
+  }, [transactions]);
 
   const cards = useMemo(
     () => buildInsights({
@@ -57,21 +56,10 @@ export default function SpendingInsights({
           <div className="ov-card-title">Spending Insights</div>
           <div className="ov-card-subtitle">Observations drawn from your latest data</div>
         </div>
-        {!revealed && (
-          <button
-            type="button"
-            className="ov-btn ov-btn-primary ov-btn-sm"
-            onClick={() => setRevealed(true)}
-          >
-            ✨ Show Insights
-          </button>
-        )}
       </div>
 
       <div className="ov-card-body">
-        {!revealed ? (
-          <EmptyState onShow={() => setRevealed(true)} />
-        ) : loading ? (
+        {loading ? (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <Spin /> Loading insights…
           </div>
@@ -79,8 +67,6 @@ export default function SpendingInsights({
           <div className="ov-error">{error}</div>
         ) : cards.length === 0 ? (
           <EmptyState
-            onShow={() => setRevealed(true)}
-            hideButton
             icon="🌱"
             title="No insights yet"
             sub="Once you have a couple of months of transactions, we'll surface trends, wins, and things to watch."
@@ -115,17 +101,12 @@ export default function SpendingInsights({
   );
 }
 
-function EmptyState({ onShow, hideButton, icon = '✨', title = 'Ready to surface insights', sub = "Get a plain-English summary of your spending patterns, wins, and areas to watch — generated from your transaction data." }) {
+function EmptyState({ icon, title, sub }) {
   return (
     <div className="ov-insights-empty">
       <div className="ov-insights-empty-icon">{icon}</div>
       <div className="ov-insights-empty-title">{title}</div>
       <div className="ov-insights-empty-sub">{sub}</div>
-      {!hideButton && (
-        <button type="button" className="ov-btn ov-btn-primary" onClick={onShow}>
-          ✨ Show Insights
-        </button>
-      )}
     </div>
   );
 }

@@ -6,7 +6,6 @@ import AccountsTab from './AccountsTab';
 import InvestmentsTab from './InvestmentsTab';
 import BalancesSection from './BalancesSection';
 import PayoffPlanner from './PayoffPlanner';
-import SpendingInsights from './SpendingInsights';
 import BudgetsSection from './BudgetsSection';
 import GoalsSection from './GoalsSection';
 import AdvisorChat from './AdvisorChat';
@@ -17,7 +16,6 @@ import useConnectionHealth from './accounts/useConnectionHealth';
 import { useCategories } from '../../hooks/useCategories';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
-import { getDashboard } from '../../api/dashboard';
 import { getHealthScore } from '../../api/health';
 import { getBalancesSummary } from '../../api/balances';
 
@@ -53,7 +51,6 @@ export default function FinancesPage() {
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState(null);
-  const [dashboard, setDashboard] = useState(null);
   const [healthData, setHealthData] = useState(null);
 
   const loadBalances = useCallback((force = false) => {
@@ -67,7 +64,6 @@ export default function FinancesPage() {
 
   useEffect(() => {
     loadBalances(false);
-    getDashboard(6).then((r) => setDashboard(r.data)).catch(() => {});
     getHealthScore().then((r) => setHealthData(r.data)).catch(() => {});
   }, [loadBalances]);
 
@@ -119,27 +115,13 @@ export default function FinancesPage() {
           <DashboardTab
             healthScore={healthScore}
             healthSignals={healthData?.signals}
+            summary={summary}
+            summaryLoading={summaryLoading}
+            summaryError={summaryError}
             onOpenSettings={openSettings}
             onNavigate={handleNavigate}
+            onInsightAction={handleInsightAction}
           />
-        )}
-
-        {activeId === 'overview' && (
-          <SimplePage title="Overview">
-            <BalancesSection
-              summary={summary}
-              loading={summaryLoading}
-              error={summaryError}
-              onRefresh={() => loadBalances(true)}
-              onMutate={() => loadBalances(false)}
-            />
-            <PayoffPlanner creditAccounts={creditAccounts} />
-            <SpendingInsights
-              summary={summary}
-              dashboard={dashboard}
-              onNavigate={handleInsightAction}
-            />
-          </SimplePage>
         )}
 
         {activeId === 'accounts' && (
@@ -151,6 +133,16 @@ export default function FinancesPage() {
               onRefresh={() => loadBalances(true)}
               onManageConnections={() => openSettings('connections')}
             />
+            {/* Manual balances and the payoff planner belong beside the
+                accounts they act on, not on a separate Overview page. */}
+            <BalancesSection
+              summary={summary}
+              loading={summaryLoading}
+              error={summaryError}
+              onRefresh={() => loadBalances(true)}
+              onMutate={() => loadBalances(false)}
+            />
+            <PayoffPlanner creditAccounts={creditAccounts} />
           </SimplePage>
         )}
 
