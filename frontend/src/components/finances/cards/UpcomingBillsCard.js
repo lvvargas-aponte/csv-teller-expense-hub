@@ -13,6 +13,7 @@ export default function UpcomingBillsCard({ onHide, onNavigateToAccounts }) {
       .catch(() => setError('Could not load upcoming bills.'));
   }, []);
 
+  const byKind = data?.total_due_by_kind;
   const loading = data === null && !error;
   const bills = data?.bills || [];
   const empty = !loading && !error && bills.length === 0;
@@ -48,6 +49,15 @@ export default function UpcomingBillsCard({ onHide, onNavigateToAccounts }) {
       onHide={onHide}
     >
       {empty && emptyCta}
+      {!empty && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 22, fontWeight: 700 }}>{fmt$(data?.total_due ?? 0)}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            due in the next {data?.window_days ?? 30} days
+            {byKind ? ` · ${fmt$(byKind.credit)} cards, ${fmt$(byKind.recurring)} bills` : ''}
+          </div>
+        </div>
+      )}
       <div style={{ display: 'grid', gap: 6 }}>
         {bills.map((b, i) => {
           const urgent = b.days_until <= 5;
@@ -68,10 +78,13 @@ export default function UpcomingBillsCard({ onHide, onNavigateToAccounts }) {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ color: urgent ? '#f87171' : 'inherit', fontWeight: 600 }}>
-                  in {b.days_until}d
+                  {(b.amount_due !== null && b.amount_due !== undefined)
+                    ? fmt$(b.amount_due)
+                    : 'no minimum set'}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  {fmt$(b.balance)}
+                  in {b.days_until}d
+                  {b.type !== 'recurring' && ` · ${fmt$(b.balance)} balance`}
                 </div>
               </div>
             </div>

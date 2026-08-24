@@ -10,8 +10,16 @@ from typing import Any, Dict, List
 from fastapi import APIRouter
 
 import state
+from analytics import _ALWAYS_RECURRING_CATEGORIES
 
 router = APIRouter()
+
+# What counts as a bill, seeded from the detector's own list of categories that
+# are obligations by nature rather than a fourth hand-maintained copy — a
+# category that repeats every month for everyone is a bill. Loans and childcare
+# are obligations the detector doesn't need to special-case but a household
+# certainly plans around.
+_BILL_CATEGORIES = _ALWAYS_RECURRING_CATEGORIES | {"loan", "loans", "childcare"}
 
 
 def _next_due_date(today: date, due_day: int) -> date:
@@ -75,6 +83,14 @@ async def upcoming_bills(window_days: int = 30) -> Dict[str, Any]:
         next_due = _next_due_date(today, int(due_day))
         if next_due > horizon:
             continue
+        # What is due on a card is its minimum, not its whole ledger — the
+        # balance stays as context, but it is not a commitment for this month.
+        minimum = details.get("minimum_payment")
+        try:
+            amount_due = float(minimum) if minimum is not None else None
+        except (TypeError, ValueError):
+            amount_due = None
+
         bills.append({
             "account_id": account_id,
             "name": meta.get("name", ""),
@@ -84,7 +100,8 @@ async def upcoming_bills(window_days: int = 30) -> Dict[str, Any]:
             "due_date": next_due.isoformat(),
             "days_until": (next_due - today).days,
             "balance": round(meta.get("ledger", 0.0), 2),
-            "minimum_payment": details.get("minimum_payment"),
+            "minimum_payment": minimum,
+            "amount_due": amount_due,
         })
 
     # Merge in transaction-derived bills — obligatory monthly commitments only
@@ -93,13 +110,9 @@ async def upcoming_bills(window_days: int = 30) -> Dict[str, Any]:
     # (groceries, parking, hair, therapy, etc.); those don't belong here.
     from analytics import detect_recurring_charges
 
-    # Only true monthly obligations belong here. Credit cards are surfaced via
-    # the due_day path above; subscriptions / insurance / phone etc. live in
-    # the Dashboard's Recurring Charges card.
-    BILL_CATEGORIES = {"utilities", "mortgage", "rent"}
     for r in detect_recurring_charges():
         cat = (r.get("category") or "").strip().lower()
-        if cat not in BILL_CATEGORIES:
+        if cat not in _BILL_CATEGORIES:
             continue
         typical_day = r.get("typical_day")
         if not typical_day:
@@ -119,9 +132,28 @@ async def upcoming_bills(window_days: int = 30) -> Dict[str, Any]:
             "days_until": (projected - today).days,
             "balance": r["average_amount"],
             "minimum_payment": None,
+            # A recurring charge is due for its typical amount in full.
+            "amount_due": r["average_amount"],
             "category": r.get("category"),
             "merchant_key": r.get("merchant_key"),
         })
 
     bills.sort(key=lambda b: b["due_date"])
-    return {"today": today.isoformat(), "window_days": window_days, "bills": bills}
+
+    # "What is due in the next 30 days, in total" — the question the page
+    # exists to answer, and the one no screen answered before.
+    by_kind = {"credit": 0.0, "recurring": 0.0}
+    for bill in bills:
+        due = bill.get("amount_due")
+        if due is None:
+            continue
+        kind = "recurring" if bill["type"] == "recurring" else "credit"
+        by_kind[kind] += float(due)
+
+    return {
+        "today": today.isoformat(),
+        "window_days": window_days,
+        "bills": bills,
+        "total_due": round(sum(by_kind.values()), 2),
+        "total_due_by_kind": {k: round(v, 2) for k, v in by_kind.items()},
+    }

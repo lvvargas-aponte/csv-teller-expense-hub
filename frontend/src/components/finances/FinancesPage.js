@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import FinancesSidebar from './FinancesSidebar';
+import FinancesSidebar, { resolveStoredTab } from './FinancesSidebar';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
 import InvestmentsTab from './InvestmentsTab';
@@ -23,10 +23,20 @@ import { getBalancesSummary } from '../../api/balances';
 
 const ACTIVE_TAB_KEY = 'finances.activeTab';
 
+const COMMITMENT_VIEWS = [
+  { id: 'due',       label: 'Due soon' },
+  { id: 'recurring', label: 'Recurring' },
+];
+
 export default function FinancesPage() {
-  const [activeId, setActiveIdState] = useState(
-    () => localStorage.getItem(ACTIVE_TAB_KEY) || 'dashboard',
+  // A user returning with 'bills' or 'subscriptions' in localStorage has to
+  // land on Commitments, not a blank page.
+  const restored = useMemo(
+    () => resolveStoredTab(localStorage.getItem(ACTIVE_TAB_KEY)),
+    [],
   );
+  const [activeId, setActiveIdState] = useState(restored.tab);
+  const [commitmentView, setCommitmentView] = useState(restored.view);
   const setActiveId = useCallback((id) => {
     setActiveIdState(id);
     try { localStorage.setItem(ACTIVE_TAB_KEY, id); } catch { /* quota / private mode */ }
@@ -156,17 +166,31 @@ export default function FinancesPage() {
           <SimplePage title="Goals"><GoalsSection /></SimplePage>
         )}
 
-        {activeId === 'bills' && (
-          <SimplePage title="Bills">
-            <div style={{ display: 'grid', gap: 16 }}>
-              <UpcomingBillsCard onNavigateToAccounts={() => setActiveId('accounts')} />
-              <RecurringChargesCard variant="detail" />
+        {activeId === 'commitments' && (
+          <SimplePage title="Commitments">
+            <div className="eh-subtabs" role="tablist" aria-label="Commitments views">
+              {COMMITMENT_VIEWS.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={commitmentView === v.id}
+                  className={commitmentView === v.id ? 'eh-subtab--active' : ''}
+                  onClick={() => setCommitmentView(v.id)}
+                >
+                  {v.label}
+                </button>
+              ))}
             </div>
+            {commitmentView === 'due' ? (
+              <div style={{ display: 'grid', gap: 16 }}>
+                <UpcomingBillsCard onNavigateToAccounts={() => setActiveId('accounts')} />
+                <RecurringChargesCard variant="detail" />
+              </div>
+            ) : (
+              <SubscriptionsSection />
+            )}
           </SimplePage>
-        )}
-
-        {activeId === 'subscriptions' && (
-          <SimplePage title="Subscriptions"><SubscriptionsSection /></SimplePage>
         )}
 
         {activeId === 'knowledge' && (

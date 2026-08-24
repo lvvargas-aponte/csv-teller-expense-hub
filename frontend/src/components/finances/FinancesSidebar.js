@@ -14,10 +14,11 @@ const NAV_SECTIONS = [
   {
     label: 'Plan',
     items: [
-      { id: 'budgets',       icon: '🎯', label: 'Budgets' },
-      { id: 'goals',         icon: '⭐', label: 'Goals' },
-      { id: 'bills',         icon: '📅', label: 'Bills' },
-      { id: 'subscriptions', icon: '🔁', label: 'Subscriptions' },
+      { id: 'budgets',     icon: '🎯', label: 'Budgets' },
+      { id: 'goals',       icon: '⭐', label: 'Goals' },
+      // Bills and Subscriptions were two views of the same detector under two
+      // nav entries; Commitments holds both.
+      { id: 'commitments', icon: '📅', label: 'Commitments' },
     ],
   },
   {
@@ -29,6 +30,17 @@ const NAV_SECTIONS = [
     ],
   },
 ];
+
+// Tab ids that no longer exist, and where a returning user holding one should
+// land. Lives beside NAV_SECTIONS so a future rename can't forget the mapping.
+const RETIRED_TAB_IDS = {
+  bills:         { tab: 'commitments', view: 'due' },
+  subscriptions: { tab: 'commitments', view: 'recurring' },
+};
+
+export function resolveStoredTab(stored) {
+  return RETIRED_TAB_IDS[stored] || { tab: stored || 'dashboard', view: 'due' };
+}
 
 export default function FinancesSidebar({ activeId, onNavigate, healthScore, healthSignals }) {
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
