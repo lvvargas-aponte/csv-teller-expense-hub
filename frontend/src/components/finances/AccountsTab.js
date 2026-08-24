@@ -113,6 +113,7 @@ export default function AccountsTab({
       minimum_payment: toNum(next.minimum_payment),
       statement_day:   toInt(next.statement_day),
       due_day:         toInt(next.due_day),
+      opened_on:       next.opened_on || null,
       notes:           next.notes ?? '',
     };
     try {

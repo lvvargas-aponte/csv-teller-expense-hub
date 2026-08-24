@@ -119,6 +119,17 @@ export default function AccountListRow({
               max="31"
             />
           </DrawerField>
+          <DrawerField label="Opened on">
+            {/* Length of credit history is the one score factor no bank feed
+                carries — SimpleFIN reports balances, not an open date. */}
+            <InlineField
+              value={row.openedOn}
+              onChange={(v) => onUpdate('opened_on', v)}
+              type="text"
+              placeholder="YYYY-MM-DD"
+              className="ifield--boxed"
+            />
+          </DrawerField>
           {row.manual && (
             <div className="acct-drawer-note">
               Manual account — these values aren’t synced from {row.institution}.

@@ -102,6 +102,7 @@ class AccountDetailsIn(BaseModel):
     minimum_payment: Optional[float] = None
     statement_day: Optional[int] = None   # 1-31 (day of month the statement cuts)
     due_day: Optional[int] = None         # 1-31 (day of month the payment is due)
+    opened_on: Optional[str] = None       # YYYY-MM-DD, user-entered
     notes: str = ""
 
 

@@ -8,6 +8,7 @@ from typing import Any, Dict
 from fastapi import APIRouter
 
 import analytics
+import credit_factors
 import credit_health_service
 
 router = APIRouter()
@@ -20,3 +21,8 @@ async def credit_health() -> Dict[str, Any]:
     # utilization is where "and it costs you $214/month" belongs.
     composition["carry_cost"] = await analytics.compute_carry_cost()
     return composition
+
+
+@router.get("/accounts/credit-factors")
+async def credit_factors_panel() -> Dict[str, Any]:
+    return await credit_factors.compute()

@@ -6,6 +6,7 @@ import AccountsTab from './AccountsTab';
 import InvestmentsTab from './InvestmentsTab';
 import BalancesSection from './BalancesSection';
 import PayoffPlanner from './PayoffPlanner';
+import CreditFactorsPanel from './CreditFactorsPanel';
 import BudgetsSection from './BudgetsSection';
 import GoalsSection from './GoalsSection';
 import AdvisorChat from './AdvisorChat';
@@ -143,6 +144,7 @@ export default function FinancesPage() {
               onMutate={() => loadBalances(false)}
             />
             <PayoffPlanner creditAccounts={creditAccounts} />
+            <CreditFactorsPanel />
           </SimplePage>
         )}
 

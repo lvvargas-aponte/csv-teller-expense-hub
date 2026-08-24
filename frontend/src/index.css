@@ -2851,6 +2851,47 @@ tr.tx-detail-row > td {
 }
 .ov-tag-paid { background: var(--green-light, #d1fae5); color: #059669; }
 
+/* Credit factors — five rows, each a measured value and its lever. There is
+   deliberately no composite score, gauge or grade anywhere in this block. */
+.cf-framing {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-light);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.cf-factors { display: grid; gap: 14px; }
+.cf-factor {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.cf-factor-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.cf-factor-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.cf-factor-weight { font-size: 11px; color: var(--text-muted); }
+.cf-factor-value { font-size: 22px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
+.cf-factor-body { margin-top: 4px; }
+.cf-note { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.cf-cards { display: grid; gap: 8px; margin-top: 10px; }
+.cf-card-row {
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+}
+.cf-card-name { font-size: 13px; font-weight: 600; }
+.cf-lever {
+  margin-top: 4px;
+  font-size: 12px; font-weight: 600;
+  color: var(--accent);
+}
+
 /* Net worth banner */
 .ov-nw-banner {
   background: linear-gradient(135deg, #059669 0%, #065f46 100%);

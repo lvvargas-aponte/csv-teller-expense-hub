@@ -149,6 +149,9 @@ class AccountDetails(Base):
     minimum_payment: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     statement_day: Mapped[Optional[int]] = mapped_column(Integer)
     due_day: Mapped[Optional[int]] = mapped_column(Integer)
+    # Length of credit history is the one score factor a bank feed cannot
+    # infer — SimpleFIN reports balances, not an open date.
+    opened_on: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 

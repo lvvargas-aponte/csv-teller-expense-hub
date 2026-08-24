@@ -297,6 +297,7 @@ async def upsert_account_details(account_id: str, req: AccountDetailsIn):
         "minimum_payment": req.minimum_payment,
         "statement_day":   req.statement_day,
         "due_day":         req.due_day,
+        "opened_on":       req.opened_on,
         "notes":           req.notes,
         "created":         existing.get("created", _now_iso()) if existing else _now_iso(),
         "updated":         _now_iso(),

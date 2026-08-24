@@ -28,3 +28,8 @@ export const getAlerts = () =>
 
 export const getUpcomingBills = (windowDays = 30) =>
   axios.get(`${API}/api/bills/upcoming`, { params: { window_days: windowDays } });
+
+// Credit-score factors (utilization, timeliness, history, new credit, mix).
+// Deliberately carries no score — see backend/credit_factors.py.
+export const getCreditFactors = () =>
+  axios.get(`${API}/api/accounts/credit-factors`);

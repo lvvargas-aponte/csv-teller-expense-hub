@@ -204,3 +204,27 @@ test('a depository account with a retirement subtype groups under Investments', 
   expect(cash).toHaveTextContent('$100.00');
   expect(cash).not.toHaveTextContent('$5,100.00');
 });
+
+test('the open date is editable and survives an edit to another field', async () => {
+  const user = userEvent.setup();
+  renderTab([creditAccount({ id: 'c1' })], {
+    details: { c1: { credit_limit: 3500, opened_on: '2016-04-02' } },
+  });
+
+  const row = await findRow(LONG_NAME);
+  await user.click(row);
+
+  const opened = screen.getByPlaceholderText('YYYY-MM-DD');
+  expect(opened).toHaveValue('2016-04-02');
+
+  // Length of history is the one factor a bank feed cannot infer, so an edit
+  // to any other field must not quietly drop it from the PUT.
+  const limitInput = screen.getByPlaceholderText('$ limit');
+  await user.clear(limitInput);
+  await user.type(limitInput, '5000');
+  await user.tab();
+
+  await waitFor(() => expect(axios.put).toHaveBeenCalled());
+  const [, payload] = axios.put.mock.calls[axios.put.mock.calls.length - 1];
+  expect(payload.opened_on).toBe('2016-04-02');
+});

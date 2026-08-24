@@ -33,6 +33,7 @@ export function buildCreditRow(account, details = {}) {
     minPayment: num(details.minimum_payment),
     statementDay: num(details.statement_day),
     dueDay: num(details.due_day),
+    openedOn: details.opened_on ?? null,
     utilPct: limit && limit > 0 ? (owed / limit) * 100 : null,
     dueInDays: daysUntilNextDue(details.due_day),
   };
