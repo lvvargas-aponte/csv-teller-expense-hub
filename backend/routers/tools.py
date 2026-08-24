@@ -27,13 +27,20 @@ async def payoff_plan(req: PayoffRequest):
             ordered = sorted(accounts_input, key=lambda a: a.balance)
 
         balances = [a.balance for a in ordered]
+        start_balances = [a.balance for a in ordered]
         interest_paid = [0.0] * len(ordered)
         payoff_months = [0] * len(ordered)
         month = 0
 
         while any(b > 0 for b in balances) and month < max_months:
             month += 1
-            # Apply interest and minimum payments
+
+            # Minimums from debts already cleared are still money the household
+            # is paying out — they cascade to the next debt in priority order.
+            pool = extra + sum(
+                a.min_payment for i, a in enumerate(ordered) if balances[i] <= 0
+            )
+
             for i, acct in enumerate(ordered):
                 if balances[i] <= 0:
                     continue
@@ -45,16 +52,16 @@ async def payoff_plan(req: PayoffRequest):
                 if balances[i] <= 0:
                     payoff_months[i] = payoff_months[i] or month
 
-            # Apply extra to priority account (first non-zero balance)
-            remaining_extra = extra
             for i in range(len(ordered)):
-                if balances[i] > 0 and remaining_extra > 0:
-                    applied = min(remaining_extra, balances[i])
-                    balances[i] -= applied
-                    remaining_extra -= applied
-                    if balances[i] <= 0:
-                        payoff_months[i] = payoff_months[i] or month
+                if pool <= 0:
                     break
+                if balances[i] <= 0:
+                    continue
+                applied = min(pool, balances[i])
+                balances[i] -= applied
+                pool -= applied
+                if balances[i] <= 0:
+                    payoff_months[i] = payoff_months[i] or month
 
         # Catch any that never reached 0 (hit cap)
         for i in range(len(ordered)):
@@ -70,11 +77,24 @@ async def payoff_plan(req: PayoffRequest):
                 (today.month - 1 + pm) % 12 + 1,
                 1,
             )
+            first_month_interest = start_balances[i] * (acct.apr / 100.0 / 12.0)
+            never_amortizes = (
+                balances[i] > 0
+                and pm >= max_months
+                and acct.min_payment <= first_month_interest
+            )
+            rolled_payment = (
+                extra
+                + acct.min_payment
+                + sum(a.min_payment for a in ordered[:i])
+            )
             results.append({
                 "name": acct.name,
                 "payoff_months": pm,
                 "total_interest": round(interest_paid[i], 2),
                 "payoff_date": payoff_date_obj.strftime("%Y-%m"),
+                "never_amortizes": never_amortizes,
+                "rolled_payment": round(rolled_payment, 2),
             })
         total_months = max(payoff_months) if payoff_months else 0
         return results, total_months

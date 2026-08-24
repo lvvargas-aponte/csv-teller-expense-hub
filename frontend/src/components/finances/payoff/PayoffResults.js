@@ -5,13 +5,26 @@ import { fmtMonths } from './helpers';
 export default function PayoffResults({ results, strategy, totalMonths, totalPaid }) {
   if (!results || !results.accounts || results.accounts.length === 0) return null;
 
+  const hasNeverAmortizing = results.accounts.some((a) => a.never_amortizes);
+
   return (
     <div className="ov-payoff-result">
       <div className="ov-payoff-grid">
         <div>
           <div className="ov-payoff-stat-label">Debt-free in</div>
-          <div className="ov-payoff-stat-value">{fmtMonths(totalMonths)}</div>
-          <div className="ov-payoff-stat-sub">{totalMonths} monthly payments</div>
+          {hasNeverAmortizing ? (
+            <>
+              <div className="ov-payoff-stat-value" style={{ color: 'var(--red)' }}>
+                Never at these payments
+              </div>
+              <div className="ov-payoff-stat-sub">a balance grows faster than you pay it</div>
+            </>
+          ) : (
+            <>
+              <div className="ov-payoff-stat-value">{fmtMonths(totalMonths)}</div>
+              <div className="ov-payoff-stat-sub">{totalMonths} monthly payments</div>
+            </>
+          )}
         </div>
         <div>
           <div className="ov-payoff-stat-label">Total interest</div>
@@ -36,18 +49,28 @@ export default function PayoffResults({ results, strategy, totalMonths, totalPai
           .map((a, i) => {
             const months = parseFloat(a.payoff_months) || 0;
             const pct = totalMonths > 0 ? Math.min(100, (months / totalMonths) * 100) : 0;
-            const color = i === 0 ? '#ef4444' : i === 1 ? '#f59e0b' : '#059669';
+            const color = a.never_amortizes
+              ? 'var(--red)'
+              : i === 0 ? '#ef4444' : i === 1 ? '#f59e0b' : '#059669';
             return (
               <div key={i} className="ov-payoff-debt-item">
                 <span className="ov-order-badge" style={{ background: color }}>{i + 1}</span>
                 <div className="ov-payoff-debt-name">{a.name || `Debt ${i + 1}`}</div>
-                <div className="ov-payoff-bar-wrap">
-                  <div
-                    className="ov-payoff-bar"
-                    style={{ width: `${pct}%`, background: color, opacity: 0.7 }}
-                  />
-                </div>
-                <div className="ov-payoff-debt-months">{fmtMonths(months)}</div>
+                {a.never_amortizes ? (
+                  <div className="ov-payoff-debt-months" style={{ color: 'var(--red)' }}>
+                    Minimum does not cover interest — this balance grows
+                  </div>
+                ) : (
+                  <>
+                    <div className="ov-payoff-bar-wrap">
+                      <div
+                        className="ov-payoff-bar"
+                        style={{ width: `${pct}%`, background: color, opacity: 0.7 }}
+                      />
+                    </div>
+                    <div className="ov-payoff-debt-months">{fmtMonths(months)}</div>
+                  </>
+                )}
               </div>
             );
           })}

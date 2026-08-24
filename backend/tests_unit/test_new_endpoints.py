@@ -122,6 +122,28 @@ class TestGetBalancesSummary:
         assert data["net_worth"] == pytest.approx(1200.0)
         assert len(data["accounts"]) == 2
 
+    def test_brokerage_counts_as_investment_not_cash(self, client):
+        """A SimpleFIN brokerage lands in the investment bucket, and its value
+        is counted exactly once — summing it into cash as well would inflate
+        net worth by the size of the portfolio."""
+        accounts = [
+            _make_simplefin_account("acc1", "Checking", balance="2000.00"),
+            _make_simplefin_account(
+                "acc3", "Individual Brokerage", balance="50000.00", institution="E*Trade",
+            ),
+        ]
+        with patch.object(state.simplefin, "list_accounts_by_url",
+                          _mock_list_accounts_by_url(accounts)):
+            with patch.object(state, "SIMPLEFIN_ACCESS_URLS", ["https://u:p@bridge.example/access"]):
+                response = client.get("/api/balances/summary?force=true")
+
+        data = response.json()
+        assert data["total_cash"] == pytest.approx(2000.0)
+        assert data["total_investments"] == pytest.approx(50000.0)
+        assert data["net_worth"] == pytest.approx(52000.0)
+        brokerage = next(a for a in data["accounts"] if a["id"] == "acc3")
+        assert brokerage["type"] == "investment"
+
     def test_failed_url_skipped(self, client):
         """First access URL errors; second returns a valid account. Both modelled as return value."""
         good_accounts = [
@@ -220,6 +242,34 @@ class TestPayoffPlan:
         response = self._post(client, body)
         assert response.status_code == 200
         assert response.json()["strategy"] == "snowball"
+
+    def test_freed_minimum_rolls_into_next_debt(self, client):
+        """Snowball: Small clears in 2 months at $250/mo; its minimum must then
+        join Big's $100, paying Big off in month 9 rather than month 24."""
+        body = {
+            "accounts": [
+                {"name": "Small", "balance": 500.0,  "apr": 0.0, "min_payment": 250.0},
+                {"name": "Big",   "balance": 2400.0, "apr": 0.0, "min_payment": 100.0},
+            ],
+            "strategy": "snowball",
+            "extra_monthly": 0.0,
+        }
+        data = self._post(client, body).json()
+        by_name = {a["name"]: a for a in data["accounts"]}
+        assert by_name["Small"]["payoff_months"] == 2
+        assert by_name["Big"]["payoff_months"] == 9
+        assert data["grand_total_months"] == 9
+
+    def test_minimum_below_interest_is_flagged(self, client):
+        body = {
+            "accounts": [{"name": "Trap", "balance": 10000.0,
+                          "apr": 29.99, "min_payment": 100.0}],
+            "strategy": "avalanche",
+            "extra_monthly": 0.0,
+        }
+        acct = self._post(client, body).json()["accounts"][0]
+        assert acct["never_amortizes"] is True
+        assert acct["payoff_months"] == state.PAYOFF_MAX_MONTHS
 
     def test_extra_monthly_reduces_interest(self, client):
         card = {"name": "Card", "balance": 2000.0, "apr": 20.0, "min_payment": 50.0}
