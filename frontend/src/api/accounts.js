@@ -14,3 +14,6 @@ export const disconnectAccount = (accountId) =>
 
 export const purgeAccount = (accountId) =>
   axios.delete(`${API}/api/accounts/${accountId}`, { params: { purge: true } });
+
+// Classification vocabulary (investment subtypes) — see utils/accountBucket.
+export const getAccountsMetadata = () => axios.get(`${API}/api/accounts/metadata`);

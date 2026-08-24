@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 
+import analytics
 import state
+from institution_normalizer import normalize as normalize_institution
 from models import AccountDetails, AccountDetailsIn
 
 logger = logging.getLogger(__name__)
@@ -26,7 +28,7 @@ async def _fetch_simplefin_accounts_normalized() -> List[Dict[str, Any]]:
     SimpleFIN reports errors per access URL, not per account, so there is no
     finer-grained placeholder to build.
     """
-    from routers.balances import is_simplefin_account_hidden
+    from balances_service import is_simplefin_account_hidden
     from simplefin import iter_normalized_accounts
 
     url_batches, url_errors = await state.simplefin.list_accounts_by_url()
@@ -36,7 +38,11 @@ async def _fetch_simplefin_accounts_normalized() -> List[Dict[str, Any]]:
             "name": acct["name"],
             "type": acct["type"],
             "subtype": acct["subtype"],
-            "institution": {"name": acct["institution"]},
+            # Normalized here for the same reason the balances summary
+            # normalizes: consumers match the two lists by institution name,
+            # and a raw "Chase Bank" against a canonical "Chase" reads as a
+            # missing — therefore broken — connection.
+            "institution": {"name": normalize_institution(acct["institution"])},
             "balance": {},
             "_source": "simplefin",
         }
@@ -58,12 +64,44 @@ async def _fetch_simplefin_accounts_normalized() -> List[Dict[str, Any]]:
     return out
 
 
+def _manual_accounts_normalized() -> List[Dict[str, Any]]:
+    """User-added accounts in the same shape as the SimpleFIN rows.
+
+    SimpleFIN shadows (``disconnected_from`` set) are excluded — a shadow
+    exists precisely to keep a hidden account out of this list.
+    """
+    return [
+        {
+            "id": acct["id"],
+            "name": acct.get("name", ""),
+            "type": acct.get("type", ""),
+            "subtype": acct.get("subtype", ""),
+            "institution": {"name": normalize_institution(acct.get("institution", ""))},
+            "balance": {},
+            "_source": "manual",
+        }
+        for acct in state._manual_accounts.values()
+        if not acct.get("disconnected_from")
+    ]
+
+
+@router.get("/accounts/metadata")
+async def get_accounts_metadata() -> Dict[str, Any]:
+    """Classification vocabulary the frontend needs to bucket accounts.
+
+    The subtype list exists in Python and again in JS; served from here it has
+    one owner, and the JS copy is only a fallback for an offline load.
+    """
+    return {"investment_subtypes": sorted(analytics._INVESTMENT_SUBTYPES)}
+
+
 @router.get("/accounts")
-async def get_accounts():
-    """Fetch bank accounts across all stored SimpleFIN access URLs."""
+async def get_accounts() -> List[Dict[str, Any]]:
+    """Fetch every account the user can manage — SimpleFIN-synced and manual."""
     accounts: List[Dict[str, Any]] = []
     if state.SIMPLEFIN_ACCESS_URLS:
         accounts.extend(await _fetch_simplefin_accounts_normalized())
+    accounts.extend(_manual_accounts_normalized())
     return accounts
 
 
@@ -97,7 +135,7 @@ def _promote_simplefin_account_to_manual_shadow(account_id: str) -> Optional[Dic
     state._manual_accounts[account_id] = shadow
     state._manual_accounts_store.save()
 
-    from routers.balances import write_simplefin_cache
+    from balances_service import write_simplefin_cache
     write_simplefin_cache([a for a in cached if a.get("id") != account_id])
 
     from db.accounts_repo import get_repo

@@ -1,4 +1,5 @@
 """Tests for the accounts router — list, delete, account details."""
+import analytics
 import state
 
 
@@ -9,6 +10,40 @@ class TestListAccounts:
         r = client.get("/api/accounts")
         assert r.status_code == 200
         assert r.json() == []
+
+    def test_includes_manual_accounts(self, client, monkeypatch):
+        """Manual accounts list alongside synced ones — otherwise the Linked
+        Accounts modal can't offer a way to delete them."""
+        monkeypatch.setattr(state, "SIMPLEFIN_ACCESS_URLS", [])
+        created = client.post(
+            "/api/balances/manual",
+            json={
+                "institution": "Discover", "name": "Discover Credit Card",
+                "type": "credit", "available": 405.73, "ledger": 405.73,
+            },
+        ).json()
+
+        rows = client.get("/api/accounts").json()
+        assert [r["id"] for r in rows] == [created["id"]]
+        assert rows[0]["_source"] == "manual"
+        assert rows[0]["institution"] == {"name": "Discover"}
+        assert rows[0]["name"] == "Discover Credit Card"
+        assert rows[0]["type"] == "credit"
+
+    def test_excludes_simplefin_shadows(self, client, monkeypatch):
+        """A shadow exists to keep a hidden SimpleFIN account out of this
+        list, so it must not resurface as a manual row."""
+        monkeypatch.setattr(state, "SIMPLEFIN_ACCESS_URLS", [])
+        state._manual_accounts["acc_hidden"] = {
+            "id": "acc_hidden",
+            "institution": "Chase", "name": "TOTAL CHECKING",
+            "type": "depository", "subtype": "",
+            "available": 0.0, "ledger": 0.0,
+            "disconnected_from": "simplefin",
+            "disconnected_at": "2026-01-01T00:00:00",
+        }
+
+        assert client.get("/api/accounts").json() == []
 
 
 class TestAccountDetails:
@@ -229,3 +264,39 @@ class TestSnapshotEnrichment:
         assert credit_debts[0]["apr"] == 21.99
         assert credit_debts[0]["minimum_payment"] == 35.0
         assert credit_debts[0]["due_day"] == 12
+
+
+class TestInstitutionNormalization:
+    """/api/accounts and /api/balances/summary are matched against each other
+    by institution name (that pairing is what tells the UI a connection is
+    healthy), so both endpoints must spell an institution the same way."""
+
+    def test_manual_account_institution_is_normalized(self, client, monkeypatch):
+        monkeypatch.setattr(state, "SIMPLEFIN_ACCESS_URLS", [])
+        client.post(
+            "/api/balances/manual",
+            json={
+                "institution": "Chase Bank", "name": "TOTAL CHECKING",
+                "type": "depository", "available": 100.0, "ledger": 100.0,
+            },
+        )
+
+        rows = client.get("/api/accounts").json()
+        summary = client.get("/api/balances/summary").json()
+
+        assert rows[0]["institution"] == {"name": "Chase"}
+        assert {a["institution"] for a in summary["accounts"]} == {"Chase"}
+
+
+class TestAccountsMetadata:
+    """The subtype list the frontend classifier reads, so the two copies of
+    the rule cannot drift apart silently."""
+
+    def test_metadata_exposes_the_investment_subtypes(self, client):
+        r = client.get("/api/accounts/metadata")
+
+        assert r.status_code == 200
+        subtypes = r.json()["investment_subtypes"]
+        assert set(subtypes) == set(analytics._INVESTMENT_SUBTYPES)
+        assert "roth ira" in subtypes
+        assert subtypes == sorted(subtypes)

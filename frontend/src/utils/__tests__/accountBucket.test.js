@@ -1,0 +1,63 @@
+import {
+  classifyAccountBucket,
+  INVESTMENT_SUBTYPES,
+  setInvestmentSubtypes,
+} from '../accountBucket';
+
+// Port of backend `analytics.classify_account_bucket`. The cases below mirror
+// its branches one for one so the two suites stay comparable by eye.
+
+afterEach(() => setInvestmentSubtypes(null));
+
+test('a depository account with a retirement subtype is an investment', () => {
+  expect(classifyAccountBucket({ type: 'depository', subtype: 'Roth IRA' }))
+    .toBe('investment');
+});
+
+test('type wins when it is explicitly investment', () => {
+  expect(classifyAccountBucket({ type: 'investment', subtype: '' }))
+    .toBe('investment');
+});
+
+test('a credit card is credit regardless of subtype', () => {
+  expect(classifyAccountBucket({ type: 'credit', subtype: 'loan' }))
+    .toBe('credit');
+});
+
+test('a plain depository account is cash', () => {
+  expect(classifyAccountBucket({ type: 'depository', subtype: 'checking' }))
+    .toBe('cash');
+});
+
+test('anything else is other', () => {
+  expect(classifyAccountBucket({ type: 'loan', subtype: '' })).toBe('other');
+  expect(classifyAccountBucket({})).toBe('other');
+  expect(classifyAccountBucket(null)).toBe('other');
+});
+
+test('subtype matching ignores case and surrounding whitespace', () => {
+  expect(classifyAccountBucket({ type: 'depository', subtype: '  401K  ' }))
+    .toBe('investment');
+});
+
+test('the bundled subtype list covers the backend set', () => {
+  ['401k', '401(k)', '403b', '403(b)', 'ira', 'roth_ira', 'roth ira',
+    'brokerage', 'hsa', 'investment', 'retirement', 'rollover_ira',
+    'sep_ira', 'simple_ira', '529',
+  ].forEach((s) => expect(INVESTMENT_SUBTYPES.has(s)).toBe(true));
+});
+
+test('a fetched server list replaces the bundled one', () => {
+  setInvestmentSubtypes(['crypto']);
+  expect(classifyAccountBucket({ type: 'depository', subtype: 'crypto' }))
+    .toBe('investment');
+  // The server is authoritative: a subtype it dropped stops counting.
+  expect(classifyAccountBucket({ type: 'depository', subtype: 'roth ira' }))
+    .toBe('cash');
+});
+
+test('an empty or failed fetch keeps the bundled list', () => {
+  setInvestmentSubtypes([]);
+  expect(classifyAccountBucket({ type: 'depository', subtype: 'roth ira' }))
+    .toBe('investment');
+});

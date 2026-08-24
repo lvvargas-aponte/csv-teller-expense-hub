@@ -10,6 +10,7 @@ import {
   updateAccountBalance,
 } from '../../api/balances';
 import { Z_BACKDROP_TOP } from '../../utils/zIndex';
+import { classifyAccountBucket } from '../../utils/accountBucket';
 
 // Choose the icon + tinted background color for an account row based on its
 // type/subtype. Hand-picked palette mirrors the design handoff.
@@ -25,17 +26,7 @@ function iconForAccount(acct, isInvestment) {
   return { icon: '🏦', bg: '#dbeafe' };
 }
 
-// Subtype labels SimpleFIN / users may attach to an investment account.
-// Kept in sync with backend ``analytics._INVESTMENT_SUBTYPES``; if those
-// expand, mirror the new entries here.
-const INVESTMENT_SUBTYPES = new Set([
-  '401k', '401(k)', '403b', '403(b)', 'ira', 'roth_ira', 'roth ira',
-  'brokerage', 'hsa', 'investment', 'retirement', 'rollover_ira',
-  'sep_ira', 'simple_ira', '529',
-]);
-const isInvestment = (a) =>
-  a.type === 'investment' ||
-  INVESTMENT_SUBTYPES.has((a.subtype || '').toLowerCase().trim());
+const isInvestment = (a) => classifyAccountBucket(a) === 'investment';
 
 export default function BalancesSection({ summary, loading, error, onRefresh, onMutate }) {
   const [showAddAcct, setShowAddAcct] = useState(false);
@@ -47,7 +38,7 @@ export default function BalancesSection({ summary, loading, error, onRefresh, on
   const [editingAcct, setEditingAcct] = useState(null);
 
   const depository = useMemo(
-    () => summary?.accounts?.filter((a) => a.type === 'depository' && !isInvestment(a)) ?? [],
+    () => summary?.accounts?.filter((a) => classifyAccountBucket(a) === 'cash') ?? [],
     [summary]
   );
   const investments = useMemo(
@@ -56,7 +47,8 @@ export default function BalancesSection({ summary, loading, error, onRefresh, on
   );
   const credit = useMemo(
     () => summary?.accounts?.filter(
-      (a) => a.type === 'credit' && Math.abs(parseFloat(a.ledger) || 0) >= 0.005,
+      (a) => classifyAccountBucket(a) === 'credit'
+             && Math.abs(parseFloat(a.ledger) || 0) >= 0.005,
     ) ?? [],
     [summary]
   );
