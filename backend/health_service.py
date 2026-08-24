@@ -6,11 +6,10 @@ derived from three separately-fetched payloads that could disagree with each
 other. It is household-level aggregation read by more than one caller, so it
 belongs beside :mod:`balances_service`.
 
-Version 1 is a straight port of that JavaScript: the same 30/30/40 weights,
-the same sub-score curves, the same renormalization over whichever signals
-have data. The one input that changed is the spending signal, which now reads
-the like-for-like month-to-date comparison instead of holding a partial month
-against a complete one.
+Version 2 scores the household on what an advisor assesses first: emergency
+runway, savings rate, credit utilization, debt-to-income and the 90-day
+net-worth trend. Version 1 (a port of the page component's JavaScript) weighted
+month-over-month spending noise at 40% and contained none of the first four.
 """
 import logging
 import statistics
@@ -24,7 +23,25 @@ import state
 
 logger = logging.getLogger(__name__)
 
-SCORE_VERSION = 1
+SCORE_VERSION = 2
+
+# Weights sum to 100; a signal with no data drops out and the rest are
+# renormalized over what remains. ``coverage_pct`` reports how much of the
+# model actually had data, and below this floor no score is returned at all —
+# a confident number built on one input is worse than an honest gap.
+WEIGHT_RUNWAY = 25
+WEIGHT_SAVINGS = 25
+WEIGHT_UTILIZATION = 20
+WEIGHT_DTI = 15
+WEIGHT_TREND = 15
+MIN_COVERAGE_PCT = 50.0
+
+# Sub-score endpoints. Each curve is linear between the two.
+SAVINGS_RATE_TARGET_PCT = 20.0     # 1.0 at or above
+UTILIZATION_FLOOR_PCT = 80.0       # 0.0 at or above
+DTI_COMFORTABLE_PCT = 15.0         # 1.0 at or below
+DTI_CEILING_PCT = 43.0             # 0.0 at or above — the lending limit
+TREND_BAND = 0.05                  # ±5% of net worth over 90 days
 
 # Months of expenses an emergency fund should cover when the household hasn't
 # stated a target of its own. Two earners with no dependents can rebuild faster
@@ -35,9 +52,6 @@ _DEFAULT_RUNWAY_MONTHS_WITH_DEPENDENTS = 6
 # Months of completed spending history the expense figure is drawn from.
 _EXPENSE_LOOKBACK_MONTHS = 3
 
-WEIGHT_NET_WORTH = 30
-WEIGHT_UTILIZATION = 30
-WEIGHT_SPENDING = 40
 
 
 def _clamp01(value: float) -> float:
@@ -65,99 +79,126 @@ def _signal(
     }
 
 
-def _net_worth_signal(summary, trend: Dict[str, Any]) -> Dict[str, Any]:
-    """30-day net-worth delta as a ratio of the current position."""
-    has_trend = bool(trend.get("available"))
-    if not has_trend and not summary.accounts:
+def _runway_signal(ratios: Dict[str, Any]) -> Dict[str, Any]:
+    """Months of expenses the cash on hand covers, against the household's target."""
+    fund = ratios.get("emergency_fund") or {}
+    covered = fund.get("months_covered")
+    target = fund.get("target_months") or _DEFAULT_RUNWAY_MONTHS
+    if covered is None:
         return _signal(
-            "net_worth_trend", "Net worth direction", WEIGHT_NET_WORTH, None,
-            "No accounts yet",
+            "emergency_runway", "Emergency runway", WEIGHT_RUNWAY, None,
+            "No complete month of spending to measure against",
         )
-
-    net_worth = trend.get("current_net_worth")
-    if net_worth is None:
-        net_worth = summary.net_worth
-
-    delta_30d = trend.get("delta_30d")
-    if delta_30d is None:
-        # A position but no history to judge it by — a deliberately flat
-        # signal rather than a guess in either direction.
-        sub = 0.6 if net_worth >= 0 else 0.4
-        return _signal(
-            "net_worth_trend", "Net worth direction", WEIGHT_NET_WORTH, sub,
-            f"{_money(net_worth)} net worth, no 30-day history",
-        )
-
-    base = abs(net_worth) or 1.0
-    sub = _clamp01(0.5 + (delta_30d / base) * 5)
-    sign = "+" if delta_30d >= 0 else "-"
+    sub = _clamp01(covered / target) if target else 0.0
     return _signal(
-        "net_worth_trend", "Net worth direction", WEIGHT_NET_WORTH, sub,
-        f"{sign}{_money(abs(delta_30d))} over 30 days",
+        "emergency_runway", "Emergency runway", WEIGHT_RUNWAY, sub,
+        f"{covered:.1f} of {target} months covered",
+    )
+
+
+def _savings_signal(ratios: Dict[str, Any]) -> Dict[str, Any]:
+    """Share of income kept — 20% is the target, spending it all scores zero."""
+    pct = ratios.get("savings_rate_pct")
+    if pct is None:
+        return _signal(
+            "savings_rate", "Savings rate", WEIGHT_SAVINGS, None,
+            "Needs your monthly income",
+        )
+    sub = _clamp01(pct / SAVINGS_RATE_TARGET_PCT)
+    return _signal(
+        "savings_rate", "Savings rate", WEIGHT_SAVINGS, sub,
+        f"{pct:.0f}% of income kept, target {SAVINGS_RATE_TARGET_PCT:.0f}%",
     )
 
 
 def _utilization_signal(credit: Dict[str, Any]) -> Dict[str, Any]:
-    """Overall balance ÷ limit across the household's cards."""
-    if not credit.get("accounts"):
+    """Revolving balance ÷ limit. 80% is where lenders stop reading it as noise."""
+    pct = credit.get("overall_utilization_pct")
+    if pct is None:
         return _signal(
             "credit_utilization", "Credit utilization", WEIGHT_UTILIZATION, None,
-            "No credit cards tracked",
+            "No card with a credit limit set",
         )
-    pct = credit.get("overall_utilization_pct") or 0.0
-    sub = max(0.0, 1 - pct / 100.0)
+    sub = _clamp01(1 - pct / UTILIZATION_FLOOR_PCT)
     return _signal(
         "credit_utilization", "Credit utilization", WEIGHT_UTILIZATION, sub,
         f"{pct:.0f}% of {_money(credit.get('total_limit') or 0.0)} in limits",
     )
 
 
-def _spending_signal(comparison: Dict[str, Any]) -> Dict[str, Any]:
-    """This month against the same stretch of the prior one — a drop scores high."""
-    prior = comparison.get("prior_month_same_period") or 0.0
-    current = comparison.get("current_month_to_date") or 0.0
-    if prior <= 0:
+def _dti_signal(ratios: Dict[str, Any]) -> Dict[str, Any]:
+    """Minimum payments ÷ income, on the band lenders themselves use."""
+    pct = ratios.get("dti_pct")
+    if pct is None:
         return _signal(
-            "spending_trend", "Spending trend", WEIGHT_SPENDING, None,
-            "Not enough spending history",
+            "debt_to_income", "Debt-to-income", WEIGHT_DTI, None,
+            "Needs your monthly income",
         )
-    change = (current - prior) / prior
-    sub = _clamp01(0.5 - change)
-    as_of_day = comparison.get("as_of_day")
+    span = DTI_CEILING_PCT - DTI_COMFORTABLE_PCT
+    sub = _clamp01((DTI_CEILING_PCT - pct) / span)
     return _signal(
-        "spending_trend", "Spending trend", WEIGHT_SPENDING, sub,
-        f"{_money(current)} vs {_money(prior)} through day {as_of_day}",
+        "debt_to_income", "Debt-to-income", WEIGHT_DTI, sub,
+        f"{pct:.0f}% of income committed, comfortable below {DTI_COMFORTABLE_PCT:.0f}%",
+    )
+
+
+def _trend_signal(trend: Dict[str, Any]) -> Dict[str, Any]:
+    """90-day net-worth movement as a share of the position.
+
+    The window is 90 days, not 30: a month of household balance-sheet movement
+    is mostly paycheck timing, which made the old score swing on nothing.
+    """
+    delta = trend.get("delta_90d") if trend.get("available") else None
+    if delta is None:
+        return _signal(
+            "net_worth_trend", "Net worth trend", WEIGHT_TREND, None,
+            "Needs 90 days of balance history",
+        )
+    net_worth = trend.get("current_net_worth") or 0.0
+    base = abs(net_worth) or 1.0
+    sub = _clamp01(0.5 + (delta / base) / TREND_BAND * 0.5)
+    sign = "+" if delta >= 0 else "-"
+    return _signal(
+        "net_worth_trend", "Net worth trend", WEIGHT_TREND, sub,
+        f"{sign}{_money(abs(delta))} over 90 days",
     )
 
 
 async def compute_health_score() -> Dict[str, Any]:
-    """A 0-100 estimate of the household's position, or ``None`` with no data.
+    """A 0-100 estimate of the household's position, or ``None`` with too little data.
 
-    Signals with no data are skipped and the remaining weights renormalized,
-    so the score is comparable across households that track different things.
+    Signals with no data are skipped and the remaining weights renormalized;
+    ``coverage_pct`` says how much of the model that left. Below
+    ``MIN_COVERAGE_PCT`` no score is returned — connecting a credit card should
+    not silently redefine what the number means.
     """
-    summary = await balances_service.build_summary()
-    trend = analytics.compute_balance_trend()
+    ratios = await compute_ratios()
     credit = await credit_health_service.build()
-    comparison = analytics.compute_month_to_date_comparison()
+    trend = analytics.compute_balance_trend()
 
     signals: List[Dict[str, Any]] = [
-        _net_worth_signal(summary, trend),
+        _runway_signal(ratios),
+        _savings_signal(ratios),
         _utilization_signal(credit),
-        _spending_signal(comparison),
+        _dti_signal(ratios),
+        _trend_signal(trend),
     ]
 
     active = [s for s in signals if s["available"]]
-    total_weight = sum(s["weight"] for s in active)
+    covered_weight = sum(s["weight"] for s in active)
+    total_weight = sum(s["weight"] for s in signals)
+    coverage_pct = round(covered_weight / total_weight * 100.0, 1) if total_weight else 0.0
+
     score = (
-        round(sum(s["sub_score"] * s["weight"] for s in active) / total_weight * 100)
-        if total_weight
+        round(sum(s["sub_score"] * s["weight"] for s in active) / covered_weight * 100)
+        if covered_weight and coverage_pct >= MIN_COVERAGE_PCT
         else None
     )
 
     return {
         "score": score,
         "version": SCORE_VERSION,
+        "coverage_pct": coverage_pct,
         "signals": signals,
         "missing_signals": [s["key"] for s in signals if not s["available"]],
     }

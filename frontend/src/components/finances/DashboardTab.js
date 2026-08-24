@@ -48,7 +48,7 @@ function monthName(monthKey) {
   return MONTH_NAMES[idx] || 'the prior month';
 }
 
-export default function DashboardTab({ healthScore, onOpenSettings }) {
+export default function DashboardTab({ healthScore, healthSignals, onOpenSettings }) {
   const [months, setMonths] = useState(6);
   const [dashboard, setDashboard] = useState(null);
   const [dashboardErr, setDashboardErr] = useState(null);
@@ -130,6 +130,14 @@ export default function DashboardTab({ healthScore, onOpenSettings }) {
     ? `Income minus expenses in ${kpiMonthName} so far. The month is still in progress, so no delta is shown.`
     : `Income minus expenses in ${kpiMonthName} — the most recent complete month. Positive means you saved; negative means you spent more than you earned.`;
 
+  // "based on 4 of 5 signals" — the score is renormalized over whatever had
+  // data, so how much of the model was covered belongs next to the number.
+  const signalCount = healthSignals?.length ?? 0;
+  const availableCount = healthSignals?.filter((s) => s.available).length ?? 0;
+  const coverageLine = signalCount
+    ? `Based on ${availableCount} of ${signalCount} signals.`
+    : null;
+
   const netWorth = summary?.net_worth ?? trend?.current_net_worth ?? 0;
   const netWorthDelta = trend?.delta_30d ?? null;
 
@@ -196,17 +204,36 @@ export default function DashboardTab({ healthScore, onOpenSettings }) {
                   <div className="eh-info-tooltip-title">Financial Health Score</div>
                   A 0–100 estimate of your overall financial position. Higher is better.
                   <div style={{ marginTop: 6, fontWeight: 600 }}>How it&apos;s calculated</div>
-                  Each signal contributes a 0–1 sub-score scaled by its weight, then summed and divided by the active weights:
+                  Each signal contributes a 0–1 sub-score scaled by its weight, then summed and divided by the weights that had data:
                   <ul>
-                    <li><strong>Net worth direction (30%)</strong> — 30-day Δ as a ratio of current net worth; positive growth scores higher.</li>
-                    <li><strong>Credit utilization (30%)</strong> — overall balance ÷ limit across your cards; 0% scores 1.0, 100% scores 0. Skipped if you have no cards.</li>
-                    <li><strong>Spending trend (40%)</strong> — this month vs. prior month; a drop scores above 0.5, a rise scores below.</li>
+                    <li><strong>Emergency runway (25%)</strong> — months of expenses your cash covers; your target scores 1.0, no cushion scores 0.</li>
+                    <li><strong>Savings rate (25%)</strong> — share of income you keep; 20% or better scores 1.0, saving nothing scores 0.</li>
+                    <li><strong>Credit utilization (20%)</strong> — balance ÷ limit across your cards; 0% scores 1.0, 80% or more scores 0.</li>
+                    <li><strong>Debt-to-income (15%)</strong> — minimum payments ÷ income; 15% or less scores 1.0, 43% (the lending ceiling) scores 0.</li>
+                    <li><strong>Net worth trend (15%)</strong> — 90-day change as a share of net worth; +5% scores 1.0, −5% scores 0.</li>
                   </ul>
-                  Signals with no data are skipped, and remaining weights are renormalized. Score is recomputed when you sync new data or change the date range.
+                  {healthSignals?.length > 0 && (
+                    <>
+                      <div style={{ marginTop: 6, fontWeight: 600 }}>Yours right now</div>
+                      <ul>
+                        {healthSignals.map((s) => (
+                          <li key={s.key}>
+                            <strong>{s.label}</strong>
+                            {s.available ? ` — ${s.detail}` : ` — skipped: ${s.detail}`}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  {coverageLine}
+                  {' '}Signals with no data are skipped; below half coverage no score is shown at all.
                 </span>
               </span>
             </div>
             <div className="eh-banner-score-label">Health Score</div>
+            {coverageLine && availableCount < signalCount && (
+              <div className="eh-banner-score-coverage">{coverageLine}</div>
+            )}
           </div>
         </section>
 

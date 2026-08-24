@@ -106,7 +106,11 @@ export default function FinancesPage() {
 
       <div className="eh-main">
         {activeId === 'dashboard' && (
-          <DashboardTab healthScore={healthScore} onOpenSettings={openSettings} />
+          <DashboardTab
+            healthScore={healthScore}
+            healthSignals={healthData?.signals}
+            onOpenSettings={openSettings}
+          />
         )}
 
         {activeId === 'overview' && (

@@ -35,7 +35,7 @@ const spendComparison = (over = {}) => ({
   ...over,
 });
 
-const renderTab = ({ rows, comparison = spendComparison() }) => {
+const renderTab = ({ rows, comparison = spendComparison(), signals }) => {
   getDashboard.mockResolvedValue({
     data: {
       months: [], spending_by_month: {}, monthly_totals: [],
@@ -46,7 +46,7 @@ const renderTab = ({ rows, comparison = spendComparison() }) => {
   });
   getIncomeVsExpenses.mockResolvedValue({ data: { months: [], rows } });
   getBalancesSummary.mockResolvedValue({ data: { net_worth: 0 } });
-  return render(<DashboardTab healthScore={70} />);
+  return render(<DashboardTab healthScore={70} healthSignals={signals} />);
 };
 
 const kpi = (label) => screen.getByRole('group', { name: label });
@@ -86,4 +86,28 @@ test('this month compares against the same stretch of the prior month', async ()
   await waitFor(() => expect(kpi('This Month')).toHaveTextContent('$120.00'));
   expect(kpi('This Month')).toHaveTextContent(/\$20\.00\s*vs prior/);
   expect(kpi('This Month')).toHaveTextContent(/first 10 days of July/i);
+});
+
+// The score is renormalized over whatever had data, so the banner has to say
+// how much of the model that was — otherwise a rising number is unreadable.
+const signalSet = (availableCount) => [
+  'emergency_runway', 'savings_rate', 'credit_utilization',
+  'debt_to_income', 'net_worth_trend',
+].map((key, i) => ({
+  key, label: key, weight: 20, detail: 'detail', available: i < availableCount,
+}));
+
+test('the banner says how many signals the score is based on', async () => {
+  renderTab({ rows: [], signals: signalSet(4) });
+
+  await waitFor(() => {
+    expect(screen.getByText('Based on 4 of 5 signals.')).toBeInTheDocument();
+  });
+});
+
+test('full coverage does not clutter the banner with a caveat', async () => {
+  renderTab({ rows: [], signals: signalSet(5) });
+
+  await waitFor(() => expect(kpi('This Month')).toHaveTextContent('$120.00'));
+  expect(screen.queryByText('Based on 5 of 5 signals.')).toBeNull();
 });
