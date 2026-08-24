@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import FinancesSidebar from './FinancesSidebar';
 import DashboardTab from './DashboardTab';
@@ -9,13 +9,16 @@ import PayoffPlanner from './PayoffPlanner';
 import SpendingInsights from './SpendingInsights';
 import BudgetsSection from './BudgetsSection';
 import GoalsSection from './GoalsSection';
-import ProfileSection from './ProfileSection';
 import AdvisorChat from './AdvisorChat';
 import KnowledgeSection from './KnowledgeSection';
 import SubscriptionsSection from './SubscriptionsSection';
+import SettingsPage from '../settings/SettingsPage';
+import useConnectionHealth from './accounts/useConnectionHealth';
+import { useCategories } from '../../hooks/useCategories';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
-import { getDashboard, getCreditHealth } from '../../api/dashboard';
+import { getDashboard } from '../../api/dashboard';
+import { getHealthScore } from '../../api/health';
 import { getBalancesSummary } from '../../api/balances';
 
 const ACTIVE_TAB_KEY = 'finances.activeTab';
@@ -41,7 +44,7 @@ export default function FinancesPage() {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState(null);
   const [dashboard, setDashboard] = useState(null);
-  const [creditHealth, setCreditHealth] = useState(null);
+  const [healthData, setHealthData] = useState(null);
 
   const loadBalances = useCallback((force = false) => {
     setSummaryLoading(true);
@@ -55,15 +58,10 @@ export default function FinancesPage() {
   useEffect(() => {
     loadBalances(false);
     getDashboard(6).then((r) => setDashboard(r.data)).catch(() => {});
-    getCreditHealth().then((r) => setCreditHealth(r.data)).catch(() => {});
+    getHealthScore().then((r) => setHealthData(r.data)).catch(() => {});
   }, [loadBalances]);
 
-  const healthScore = computeHealthScore({
-    netWorth: summary?.net_worth,
-    trend: dashboard?.balance_trend,
-    creditHealth,
-    monthlyTotals: dashboard?.monthly_totals,
-  });
+  const healthScore = healthData?.score ?? null;
 
   const creditAccounts = useMemo(
     () => summary?.accounts?.filter(
@@ -72,9 +70,30 @@ export default function FinancesPage() {
     [summary],
   );
 
-  const handleNavigate = useCallback((id) => {
-    setActiveId(id);
+  const health = useConnectionHealth(summary?.connections);
+  const { categories, counts: categoryCounts } = useCategories();
+
+  // Which settings pane to open — Accounts' connection buttons deep-link
+  // straight to "Connected institutions".
+  const [settingsPane, setSettingsPane] = useState('profile');
+  const openSettings = useCallback((paneId = 'profile') => {
+    setSettingsPane(paneId);
+    setActiveId('settings');
   }, [setActiveId]);
+
+  // The settings form saves page-wide, so leaving the tab mid-edit would
+  // silently drop every pane's changes. No router-level blocker exists on
+  // BrowserRouter, so the guard lives on the one nav that can leave.
+  const settingsDirtyRef = useRef(false);
+  const handleSettingsDirty = useCallback((d) => { settingsDirtyRef.current = d; }, []);
+  const handleNavigate = useCallback((id) => {
+    if (
+      activeId === 'settings' && id !== 'settings' && settingsDirtyRef.current
+      // eslint-disable-next-line no-alert
+      && !window.confirm('You have unsaved settings. Leave without saving?')
+    ) return;
+    setActiveId(id);
+  }, [activeId, setActiveId]);
 
   return (
     <div className="eh-app">
@@ -82,6 +101,7 @@ export default function FinancesPage() {
         activeId={activeId}
         onNavigate={handleNavigate}
         healthScore={healthScore}
+        healthSignals={healthData?.signals}
       />
 
       <div className="eh-main">
@@ -114,8 +134,8 @@ export default function FinancesPage() {
               summaryLoading={summaryLoading}
               summaryError={summaryError}
               onRefresh={() => loadBalances(true)}
+              onManageConnections={() => openSettings('connections')}
             />
-            <ProfileSection />
           </SimplePage>
         )}
 
@@ -151,6 +171,20 @@ export default function FinancesPage() {
         {activeId === 'advisor' && (
           <SimplePage title="Ask Fin"><AdvisorChat /></SimplePage>
         )}
+
+        {activeId === 'settings' && (
+          <SimplePage title="Profile & settings">
+            <SettingsPage
+              initialPane={settingsPane}
+              health={health}
+              summary={summary}
+              categories={categories}
+              categoryCounts={categoryCounts}
+              onRefreshBalances={() => loadBalances(true)}
+              onDirtyChange={handleSettingsDirty}
+            />
+          </SimplePage>
+        )}
       </div>
     </div>
   );
@@ -165,47 +199,4 @@ function SimplePage({ title, children }) {
       <div className="eh-content">{children}</div>
     </>
   );
-}
-
-// Shared health score calc — also exported via DashboardTab.
-function computeHealthScore({ netWorth, trend, creditHealth, monthlyTotals }) {
-  let score = 0;
-  let weight = 0;
-
-  // Net worth signal (30%)
-  const nw = trend?.current_net_worth ?? netWorth;
-  if (nw !== null && nw !== undefined) {
-    if (trend?.delta_30d !== null && trend?.delta_30d !== undefined) {
-      const base = Math.abs(nw) || 1;
-      const ratio = trend.delta_30d / base;
-      const sub = Math.max(0, Math.min(1, 0.5 + ratio * 5));
-      score += sub * 30; weight += 30;
-    } else {
-      // We have a position but no trend — neutral signal
-      const sub = nw >= 0 ? 0.6 : 0.4;
-      score += sub * 30; weight += 30;
-    }
-  }
-
-  // Credit utilization (30%) — only if user has credit cards
-  if (creditHealth?.accounts?.length > 0) {
-    const u = creditHealth.overall_utilization_pct ?? 0;
-    const sub = Math.max(0, 1 - u / 100);
-    score += sub * 30; weight += 30;
-  }
-
-  // Monthly totals as a savings/expense proxy when income data unavailable.
-  // If we have at least one month of spending data, score lower spending higher.
-  if (monthlyTotals && monthlyTotals.length >= 2) {
-    const last = monthlyTotals[monthlyTotals.length - 1].total || 0;
-    const prev = monthlyTotals[monthlyTotals.length - 2].total || 0;
-    if (prev > 0) {
-      const change = (last - prev) / prev;
-      const sub = Math.max(0, Math.min(1, 0.5 - change));
-      score += sub * 40; weight += 40;
-    }
-  }
-
-  if (weight === 0) return null;
-  return Math.round((score / weight) * 100);
 }

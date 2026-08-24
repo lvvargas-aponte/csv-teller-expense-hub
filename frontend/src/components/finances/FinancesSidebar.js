@@ -25,11 +25,12 @@ const NAV_SECTIONS = [
     items: [
       { id: 'knowledge', icon: '📚', label: 'Knowledge' },
       { id: 'advisor',   icon: '🤖', label: 'Ask Fin' },
+      { id: 'settings',  icon: '⚙️', label: 'Profile & settings' },
     ],
   },
 ];
 
-export default function FinancesSidebar({ activeId, onNavigate, healthScore }) {
+export default function FinancesSidebar({ activeId, onNavigate, healthScore, healthSignals }) {
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   return (
     <aside className={`eh-sidebar${collapsed ? ' eh-sidebar--collapsed' : ''}`}>
@@ -72,7 +73,26 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore }) {
         <div className="eh-health-card">
           <div className="eh-health-card-label">Financial Health</div>
           <div className="eh-health-card-score">
-            {(healthScore === null || healthScore === undefined) ? '—' : healthScore}
+            <span>{(healthScore === null || healthScore === undefined) ? '—' : healthScore}</span>
+            {healthSignals && healthSignals.length > 0 && (
+              <span className="eh-info-wrap" tabIndex={0} aria-label="About the health score">
+                <span className="eh-info-icon">i</span>
+                <span className="eh-info-tooltip" role="tooltip">
+                  <div className="eh-info-tooltip-title">Financial Health Score</div>
+                  A 0–100 estimate of your overall position. Each signal contributes a
+                  0–1 sub-score scaled by its weight; signals with no data are skipped
+                  and the remaining weights are renormalized.
+                  <ul>
+                    {healthSignals.map((s) => (
+                      <li key={s.key}>
+                        <strong>{s.label} ({s.weight}%)</strong>
+                        {s.available ? ` — ${s.detail}` : ` — skipped: ${s.detail}`}
+                      </li>
+                    ))}
+                  </ul>
+                </span>
+              </span>
+            )}
           </div>
           <div className="eh-health-card-sub">
             {(healthScore === null || healthScore === undefined)
