@@ -48,7 +48,7 @@ function monthName(monthKey) {
   return MONTH_NAMES[idx] || 'the prior month';
 }
 
-export default function DashboardTab({ healthScore, healthSignals, onOpenSettings }) {
+export default function DashboardTab({ healthScore, healthSignals, onOpenSettings, onNavigate }) {
   const [months, setMonths] = useState(6);
   const [dashboard, setDashboard] = useState(null);
   const [dashboardErr, setDashboardErr] = useState(null);
@@ -300,7 +300,7 @@ export default function DashboardTab({ healthScore, healthSignals, onOpenSetting
             </div>
             <BalancesCard summary={summary} loading={summaryLoading} error={summaryErr} />
             <PortfolioCard />
-            <CreditUtilizationCard />
+            <CreditUtilizationCard onNavigate={onNavigate} />
             <BudgetsCard />
             <div className="eh-card-full">
               <RecurringChargesCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />

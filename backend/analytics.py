@@ -10,6 +10,7 @@ import re
 import statistics
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional
 
 import state
@@ -345,6 +346,71 @@ def _balances_snapshot() -> Dict[str, Any]:
         "snaptrade_accounts": snaptrade_accounts,
         "manual_accounts": manual_accounts,
         "cache_fetched_at": cache.get("simplefin_fetched_at"),
+    }
+
+
+def _round_money(value: Decimal) -> float:
+    """Half-up to the cent — the rounding a statement uses."""
+    return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+async def compute_carry_cost() -> Dict[str, Any]:
+    """What the household's outstanding debt costs per month in interest.
+
+    Nowhere else does the app put a price on carrying a balance — APRs were
+    captured per account and read only inside the payoff planner. Simple
+    monthly interest, ``balance × apr / 12``: compounding belongs to the payoff
+    simulator, which models a schedule; this is the standing monthly cost.
+
+    Balances come from ``balances_service.build_summary`` so a manual card's
+    live figure is used, not its starting balance. Installment loans count —
+    utilization ignores them, but their interest is real money.
+    """
+    import balances_service
+
+    summary = await balances_service.build_summary()
+
+    by_account: List[Dict[str, Any]] = []
+    monthly_total = 0.0
+    missing_apr = 0
+
+    for acct in summary.accounts:
+        if classify_account_bucket(acct.type, acct.subtype) != "credit":
+            continue
+        balance = float(acct.ledger or 0.0)
+        if balance <= 0:
+            continue
+
+        raw_apr = (state.account_details.get(acct.id) or {}).get("apr")
+        try:
+            apr = float(raw_apr) if raw_apr is not None else None
+        except (TypeError, ValueError):
+            apr = None
+        if not apr or apr <= 0:
+            missing_apr += 1
+            continue
+
+        # Decimal, not float: 4200 at 24.99% is exactly 87.465/month, and
+        # binary rounding turns that into 87.46 — a cent short on every card.
+        monthly = _round_money(
+            Decimal(str(balance)) * Decimal(str(apr)) / Decimal(100) / Decimal(12)
+        )
+        monthly_total += monthly
+        by_account.append({
+            "account_id": acct.id,
+            "name": acct.name,
+            "balance": round(balance, 2),
+            "apr": apr,
+            "monthly_interest": monthly,
+        })
+
+    by_account.sort(key=lambda a: a["monthly_interest"], reverse=True)
+    monthly_total = round(monthly_total, 2)
+    return {
+        "monthly_interest": monthly_total,
+        "annual_interest": round(monthly_total * 12, 2),
+        "accounts_missing_apr": missing_apr,
+        "by_account": by_account,
     }
 
 

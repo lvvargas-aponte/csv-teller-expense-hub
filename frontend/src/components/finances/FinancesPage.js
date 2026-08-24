@@ -110,6 +110,7 @@ export default function FinancesPage() {
             healthScore={healthScore}
             healthSignals={healthData?.signals}
             onOpenSettings={openSettings}
+            onNavigate={handleNavigate}
           />
         )}
 

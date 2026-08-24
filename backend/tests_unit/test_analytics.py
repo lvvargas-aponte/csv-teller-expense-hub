@@ -1,6 +1,8 @@
 """Tests for analytics helpers — recurring detection and snapshot enrichment."""
 from datetime import date, timedelta
 
+import pytest
+
 import state
 import analytics
 from analytics import (
@@ -214,3 +216,89 @@ class TestMonthToDateComparison:
 
         assert out["prior_month_same_period"] == 50.0
         assert out["current_month_is_partial"] is False
+
+
+# ---------------------------------------------------------------------------
+# Carry cost — what the outstanding debt costs per month
+# ---------------------------------------------------------------------------
+
+def _seed_debt(account_id, name, balance, apr=None, subtype=""):
+    state._manual_accounts[account_id] = {
+        "id": account_id, "institution": "Bank", "name": name,
+        "type": "credit", "subtype": subtype,
+        "available": 0.0, "ledger": balance, "manual": True,
+    }
+    if apr is not None:
+        state.account_details[account_id] = {"apr": apr}
+
+
+class TestCarryCost:
+    @pytest.mark.asyncio
+    async def test_monthly_interest_is_balance_times_apr_over_twelve(self):
+        _seed_debt("c1", "Sapphire", 4200.0, apr=24.99)
+
+        out = await analytics.compute_carry_cost()
+
+        assert out["by_account"][0]["monthly_interest"] == 87.47
+        assert out["by_account"][0]["name"] == "Sapphire"
+        assert out["by_account"][0]["balance"] == 4200.0
+        assert out["monthly_interest"] == 87.47
+        assert out["annual_interest"] == 1049.64
+        assert out["accounts_missing_apr"] == 0
+
+    @pytest.mark.asyncio
+    async def test_a_card_with_no_apr_costs_nothing_and_is_counted(self):
+        _seed_debt("c1", "Sapphire", 4200.0, apr=24.99)
+        _seed_debt("c2", "Store Card", 900.0)
+        _seed_debt("c3", "Airline Card", 300.0)
+
+        out = await analytics.compute_carry_cost()
+
+        assert out["monthly_interest"] == 87.47
+        assert out["accounts_missing_apr"] == 2
+        assert [a["account_id"] for a in out["by_account"]] == ["c1"]
+
+    @pytest.mark.asyncio
+    async def test_installment_debt_carries_a_cost_too(self):
+        """Utilization ignores a car loan; its interest is still real money."""
+        _seed_debt("auto", "Auto Loan", 18000.0, apr=6.0, subtype="loan")
+
+        out = await analytics.compute_carry_cost()
+
+        assert out["monthly_interest"] == 90.0
+
+    @pytest.mark.asyncio
+    async def test_a_cleared_card_is_neither_charged_nor_counted_as_missing(self):
+        _seed_debt("c1", "Paid Off", 0.0)
+
+        out = await analytics.compute_carry_cost()
+
+        assert out["monthly_interest"] == 0.0
+        assert out["accounts_missing_apr"] == 0
+        assert out["by_account"] == []
+
+    @pytest.mark.asyncio
+    async def test_cash_accounts_are_not_debt(self):
+        state._manual_accounts["s1"] = {
+            "id": "s1", "institution": "Bank", "name": "Savings",
+            "type": "depository", "subtype": "savings",
+            "available": 5000.0, "ledger": 5000.0, "manual": True,
+        }
+        state.account_details["s1"] = {"apr": 4.0}
+
+        out = await analytics.compute_carry_cost()
+
+        assert out["by_account"] == []
+        assert out["monthly_interest"] == 0.0
+
+
+class TestCarryCostEndpoint:
+    def test_credit_health_carries_the_cost(self, client):
+        _seed_debt("c1", "Sapphire", 4200.0, apr=24.99)
+
+        body = client.get("/api/accounts/credit-health").json()
+
+        assert body["carry_cost"]["monthly_interest"] == 87.47
+        assert body["carry_cost"]["accounts_missing_apr"] == 0
+        # The utilization composition is untouched.
+        assert body["accounts"][0]["account_id"] == "c1"

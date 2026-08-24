@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import DashboardCard from './DashboardCard';
 import { getCreditHealth } from '../../../api/dashboard';
 import Num from '../Num';
+import { fmt$ } from '../../../utils/formatting';
 
 const STATUS_COLOR = {
   good: '#059669',
@@ -10,7 +11,7 @@ const STATUS_COLOR = {
   unknown: 'var(--text-muted)',
 };
 
-export default function CreditUtilizationCard({ onHide, index, kicker }) {
+export default function CreditUtilizationCard({ onHide, index, kicker, onNavigate }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -20,6 +21,7 @@ export default function CreditUtilizationCard({ onHide, index, kicker }) {
       .catch(() => setError('Could not load credit utilization.'));
   }, []);
 
+  const carry = data?.carry_cost;
   const loading = data === null && !error;
   const accounts = data?.accounts || [];
   const empty = !loading && !error && accounts.length === 0;
@@ -35,6 +37,31 @@ export default function CreditUtilizationCard({ onHide, index, kicker }) {
       emptyText="No credit cards found. Add credit limits on the Accounts tab to see utilization."
       onHide={onHide}
     >
+      {carry?.monthly_interest > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>
+            Your debt costs about ${Math.round(carry.monthly_interest).toLocaleString()}/month
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            {fmt$(carry.annual_interest)} a year in interest at current balances
+          </div>
+        </div>
+      )}
+      {carry?.accounts_missing_apr > 0 && (
+        <button
+          type="button"
+          onClick={() => onNavigate?.('accounts')}
+          style={{
+            display: 'block', marginBottom: 10, padding: 0,
+            background: 'none', border: 'none', font: 'inherit',
+            fontSize: 11, color: 'var(--accent)',
+            textDecoration: 'underline', cursor: 'pointer', textAlign: 'left',
+          }}
+        >
+          {carry.accounts_missing_apr} card{carry.accounts_missing_apr === 1 ? '' : 's'}
+          {' '}have no APR set — add one to see their cost
+        </button>
+      )}
       {(data?.overall_utilization_pct !== null && data?.overall_utilization_pct !== undefined) && (
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Overall</div>
