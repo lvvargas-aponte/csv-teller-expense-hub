@@ -127,16 +127,40 @@ export default function BudgetsSection() {
   );
 }
 
+// Pace states carry a word as well as a colour — the row used to encode
+// budget health in bar colour alone, which says nothing to a colour-blind
+// reader and nothing at all to someone scanning the list.
+const PACE_CHIP = {
+  over_budget: { label: 'Over budget', color: '#b91c1c', bg: '#fee2e2' },
+  over_pace:   { label: 'Over pace',   color: '#92400e', bg: '#fef3c7' },
+};
+
 function BudgetRow({ budget, onDelete }) {
   const pct = Math.min(budget.percent_used, 100);
   const overflow = Math.max(budget.percent_used - 100, 0);
   const barColor = budget.over_budget ? '#f87171' : (budget.percent_used > 80 ? '#fbbf24' : '#10b981');
+  const chip = PACE_CHIP[budget.pace_status];
+  const progress = budget.month_progress_pct;
+  const projected = budget.projected_month_end;
 
   return (
     <div className="balance-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div className="balance-row-name">{budget.category}</div>
+          <div className="balance-row-name">
+            {budget.category}
+            {chip && (
+              <span
+                style={{
+                  marginLeft: 8, padding: '1px 6px', borderRadius: 99,
+                  fontSize: 11, fontWeight: 600,
+                  color: chip.color, background: chip.bg,
+                }}
+              >
+                {chip.label}
+              </span>
+            )}
+          </div>
           {budget.notes && <div className="balance-row-inst">{budget.notes}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -156,13 +180,39 @@ function BudgetRow({ budget, onDelete }) {
                   style={{ padding: '1px 6px' }}>✕</button>
         </div>
       </div>
-      <div style={{ background: 'var(--bg-secondary)', borderRadius: 4, height: 6, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: barColor, transition: 'width .3s' }} />
-        {overflow > 0 && (
-          <div style={{ width: `${Math.min(overflow, 100)}%`, height: '100%',
-                        background: '#dc2626', marginTop: -6, opacity: 0.7 }} />
+      <div style={{
+        position: 'relative', background: 'var(--bg-secondary)',
+        borderRadius: 4, height: 6,
+      }}>
+        <div style={{
+          borderRadius: 4, height: '100%', overflow: 'hidden',
+        }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: barColor, transition: 'width .3s' }} />
+          {overflow > 0 && (
+            <div style={{ width: `${Math.min(overflow, 100)}%`, height: '100%',
+                          background: '#dc2626', marginTop: -6, opacity: 0.7 }} />
+          )}
+        </div>
+        {/* Elapsed month: spend to the left of this mark is ahead of time. */}
+        {(progress !== null && progress !== undefined) && (
+          <div
+            role="img"
+            aria-label={`${Math.round(progress)}% of the month elapsed`}
+            title={`${Math.round(progress)}% of the month elapsed`}
+            style={{
+              position: 'absolute', top: -2, bottom: -2,
+              left: `${Math.min(progress, 100)}%`,
+              width: 2, background: 'var(--text-muted)', opacity: 0.8,
+            }}
+          />
         )}
       </div>
+      {(projected !== null && projected !== undefined) && (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          Pacing to {fmt$(projected)} by month end
+          {budget.projected_overage ? ` — ${fmt$(budget.projected_overage)} over` : ''}
+        </div>
+      )}
     </div>
   );
 }

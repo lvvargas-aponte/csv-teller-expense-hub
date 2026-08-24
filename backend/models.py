@@ -252,6 +252,12 @@ class BudgetStatus(BaseModel):
     current_month_spent: float
     percent_used: float
     over_budget: bool
+    # Pace: month-to-date spend read against elapsed time, so a budget can be
+    # flagged while the month can still be changed.
+    month_progress_pct: float = 0.0
+    projected_month_end: Optional[float] = None
+    pace_status: str = "on_track"   # on_track | over_pace | over_budget | under
+    projected_overage: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------

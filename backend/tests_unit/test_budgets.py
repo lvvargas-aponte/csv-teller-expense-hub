@@ -1,6 +1,10 @@
 """Tests for the budgets router and budget-status computation."""
 from datetime import date
 
+import pytest
+
+import analytics
+from routers import alerts as alerts_router
 import state
 
 
@@ -86,3 +90,135 @@ class TestDeleteBudget:
     def test_404_for_unknown(self, client):
         r = client.delete("/api/budgets/Nope")
         assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Pacing — spend against the elapsed month, not against a full-month cap
+# ---------------------------------------------------------------------------
+
+def _set_budget(category: str, monthly_limit: float) -> None:
+    state.budgets[category] = {
+        "category": category, "monthly_limit": monthly_limit, "notes": "",
+    }
+
+
+def _seed_txn(tid: str, day: str, amount: float, category: str) -> None:
+    state.stored_transactions[tid] = {
+        "id": tid, "date": day, "description": "MERCHANT", "amount": amount,
+        "category": category, "transaction_type": "debit",
+        "direction": "outflow", "source": "simplefin",
+    }
+
+
+class TestBudgetPacing:
+    def test_budget_over_pace_before_it_is_over_budget(self):
+        """$300 of a $500 cap by the 10th projects to $930 — the warning has to
+        arrive while the month can still be changed."""
+        _set_budget("Dining", 500.0)
+        _seed_txn("a", "2026-08-05", 300.0, "Dining")
+
+        status = analytics.compute_budget_statuses(today=date(2026, 8, 10))[0]
+
+        assert status["percent_used"] == 60.0
+        assert status["month_progress_pct"] == pytest.approx(32.3, abs=0.1)
+        assert status["projected_month_end"] == pytest.approx(930.0, abs=1.0)
+        assert status["pace_status"] == "over_pace"
+        assert status["projected_overage"] == pytest.approx(430.0, abs=1.0)
+        assert status["over_budget"] is False
+
+    def test_spending_in_line_with_the_month_is_on_track(self):
+        _set_budget("Dining", 500.0)
+        _seed_txn("a", "2026-08-05", 160.0, "Dining")
+
+        status = analytics.compute_budget_statuses(today=date(2026, 8, 10))[0]
+
+        assert status["pace_status"] == "on_track"
+        assert status["projected_overage"] is None
+
+    def test_a_quiet_month_reads_as_under(self):
+        _set_budget("Dining", 500.0)
+        _seed_txn("a", "2026-08-05", 50.0, "Dining")
+
+        status = analytics.compute_budget_statuses(today=date(2026, 8, 10))[0]
+
+        assert status["projected_month_end"] == pytest.approx(155.0, abs=1.0)
+        assert status["pace_status"] == "under"
+
+    def test_already_past_the_cap_reads_as_over_budget(self):
+        _set_budget("Dining", 500.0)
+        _seed_txn("a", "2026-08-05", 600.0, "Dining")
+
+        status = analytics.compute_budget_statuses(today=date(2026, 8, 10))[0]
+
+        assert status["over_budget"] is True
+        assert status["pace_status"] == "over_budget"
+
+    def test_the_last_day_projects_to_what_was_actually_spent(self):
+        _set_budget("Dining", 500.0)
+        _seed_txn("a", "2026-08-05", 300.0, "Dining")
+
+        status = analytics.compute_budget_statuses(today=date(2026, 8, 31))[0]
+
+        assert status["month_progress_pct"] == 100.0
+        assert status["projected_month_end"] == 300.0
+        assert status["pace_status"] == "under"
+
+    def test_defaults_to_today_for_existing_callers(self):
+        _set_budget("Dining", 500.0)
+
+        status = analytics.compute_budget_statuses()[0]
+
+        assert status["month_progress_pct"] > 0
+        assert status["pace_status"] in {"under", "on_track", "over_pace", "over_budget"}
+
+
+class TestPaceAlert:
+    """The feed's job here is to say the projection out loud; the pace
+    arithmetic itself is pinned above. Statuses are stubbed so the assertion
+    doesn't depend on which day of the month the suite runs."""
+
+    def _stub_status(self, monkeypatch, **over):
+        status = {
+            "category": "Dining", "monthly_limit": 500.0, "notes": "",
+            "current_month_spent": 300.0, "percent_used": 60.0,
+            "over_budget": False, "month_progress_pct": 32.3,
+            "projected_month_end": 930.0, "pace_status": "over_pace",
+            "projected_overage": 430.0,
+        }
+        status.update(over)
+        monkeypatch.setattr(alerts_router, "compute_budget_statuses", lambda: [status])
+
+    def test_over_pace_raises_a_warning_with_the_projection(self, client, monkeypatch):
+        self._stub_status(monkeypatch)
+
+        feed = client.get("/api/alerts").json()["alerts"]
+        budget_alerts = [a for a in feed if a["category"] == "budget"]
+
+        assert len(budget_alerts) == 1
+        assert budget_alerts[0]["severity"] == "warn"
+        assert budget_alerts[0]["message"] == (
+            "Dining is pacing to $930 against a $500 cap"
+        )
+
+    def test_no_pace_alert_when_on_track(self, client, monkeypatch):
+        self._stub_status(
+            monkeypatch, pace_status="on_track",
+            projected_month_end=480.0, projected_overage=None,
+        )
+
+        feed = client.get("/api/alerts").json()["alerts"]
+
+        assert [a for a in feed if a["category"] == "budget"] == []
+
+    def test_an_over_budget_category_still_reports_as_an_error(self, client, monkeypatch):
+        self._stub_status(
+            monkeypatch, over_budget=True, pace_status="over_budget",
+            current_month_spent=600.0, percent_used=120.0,
+        )
+
+        feed = client.get("/api/alerts").json()["alerts"]
+        budget_alerts = [a for a in feed if a["category"] == "budget"]
+
+        assert len(budget_alerts) == 1
+        assert budget_alerts[0]["severity"] == "error"
+        assert "over budget" in budget_alerts[0]["message"]

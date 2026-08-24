@@ -23,6 +23,20 @@ def _budget_alerts() -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for status in compute_budget_statuses():
         if not status.get("over_budget"):
+            # Pacing over the cap fires while the month can still be changed;
+            # 90%-of-cap is usually too late to act on.
+            if status.get("pace_status") == "over_pace":
+                out.append({
+                    "severity": "warn",
+                    "category": "budget",
+                    "message": (
+                        f"{status['category']} is pacing to "
+                        f"${status['projected_month_end']:.0f} against a "
+                        f"${status['monthly_limit']:.0f} cap"
+                    ),
+                    "link": "/finances/plan",
+                })
+                continue
             # Also warn at 90%+ of cap.
             if status.get("percent_used", 0.0) >= 90.0:
                 out.append({

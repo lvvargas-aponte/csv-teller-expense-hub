@@ -382,15 +382,51 @@ def _current_month_key() -> str:
     return date.today().strftime("%Y-%m")
 
 
-def compute_budget_statuses() -> List[Dict[str, Any]]:
-    """For each configured budget, attach current-month spending + percent used.
+# Pace bands, as a share of the cap the month is projected to land on.
+_PACE_OVER_MARGIN = 1.05    # above this, the month is heading over
+_PACE_UNDER_MARGIN = 0.80   # below this, the cap has room the user could use
 
-    Read by both ``GET /budgets`` (UI list) and ``build_financial_snapshot``
-    (advisor context).  Categories are matched case-insensitively against the
-    aggregated spending so users don't have to mirror the exact casing the bank
-    sends.
+
+def _classify_budget_pace(
+    limit: float, spent: float, projected: Optional[float]
+) -> str:
+    """Where a budget is heading, not just where it has been.
+
+    ``over_budget`` is a fact about today; the other three are readings of the
+    projection, which is the only one of the four that can still be acted on.
     """
-    spending = group_debit_spending().get(_current_month_key(), {})
+    if limit <= 0:
+        return "on_track"
+    if spent > limit:
+        return "over_budget"
+    if projected is None:
+        return "on_track"
+    if projected > limit * _PACE_OVER_MARGIN:
+        return "over_pace"
+    if projected < limit * _PACE_UNDER_MARGIN:
+        return "under"
+    return "on_track"
+
+
+def compute_budget_statuses(today: Optional[date] = None) -> List[Dict[str, Any]]:
+    """For each configured budget, attach current-month spending and its pace.
+
+    Read by ``GET /budgets`` (UI list), the alert feed and
+    ``build_financial_snapshot`` (advisor context). Categories are matched
+    case-insensitively against the aggregated spending so users don't have to
+    mirror the exact casing the bank sends.
+
+    Month-to-date spend against a full-month cap makes every budget look
+    healthy on the 5th, so each status also carries how much of the month has
+    elapsed and where the current run-rate lands it. ``today`` is a parameter
+    so tests don't have to patch a clock.
+    """
+    today = today or date.today()
+    month_key = f"{today.year:04d}-{today.month:02d}"
+    days_in_month = _last_day_of_month(today)
+    month_progress = today.day / days_in_month
+
+    spending = group_debit_spending().get(month_key, {})
     spending_lc = {k.lower(): v for k, v in spending.items()}
 
     out: List[Dict[str, Any]] = []
@@ -399,6 +435,15 @@ def compute_budget_statuses() -> List[Dict[str, Any]]:
         limit = float(raw.get("monthly_limit", 0.0))
         spent = float(spending_lc.get(category.lower(), 0.0))
         pct = round(spent / limit * 100.0, 1) if limit > 0 else 0.0
+
+        projected = round(spent / month_progress, 2) if month_progress > 0 else None
+        pace = _classify_budget_pace(limit, spent, projected)
+        overage = (
+            round(projected - limit, 2)
+            if projected is not None and limit > 0 and projected > limit
+            else None
+        )
+
         out.append({
             "category": category,
             "monthly_limit": round(limit, 2),
@@ -406,6 +451,10 @@ def compute_budget_statuses() -> List[Dict[str, Any]]:
             "current_month_spent": round(spent, 2),
             "percent_used": pct,
             "over_budget": limit > 0 and spent > limit,
+            "month_progress_pct": round(month_progress * 100.0, 1),
+            "projected_month_end": projected,
+            "pace_status": pace,
+            "projected_overage": overage,
         })
     out.sort(key=lambda b: b["category"].lower())
     return out
