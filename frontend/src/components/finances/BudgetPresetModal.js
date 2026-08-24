@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Backdrop from '../ui/Backdrop';
 import Spin from '../ui/Spin';
 import { fmt$ } from '../../utils/formatting';
 import { upsertBudget } from '../../api/budgets';
+import { getRatios } from '../../api/health';
 
 const RULES = [
   { id: '503020', label: '50/30/20', needs: 50, wants: 30, savings: 20,
@@ -57,6 +58,22 @@ export default function BudgetPresetModal({ categories, existingBudgets, onClose
   const [assignments, setAssignments] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [incomeSource, setIncomeSource] = useState(null);
+
+  // The app already knows this figure — asking the user to retype it is how
+  // the wizard ended up with a third income number nobody reconciled.
+  useEffect(() => {
+    let cancelled = false;
+    getRatios()
+      .then((r) => {
+        const detected = r.data?.income;
+        if (cancelled || !detected?.monthly) return;
+        setIncome((typed) => (typed === '' ? String(detected.monthly) : typed));
+        setIncomeSource(detected.source);
+      })
+      .catch(() => { /* the field just stays empty */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const rule = useMemo(() => RULES.find((r) => r.id === ruleId) || RULES[0], [ruleId]);
   // Tolerate "$", ",", and stray whitespace so the Next button enables for inputs like "5,000".
@@ -178,6 +195,16 @@ export default function BudgetPresetModal({ categories, existingBudgets, onClose
                 {!incomeReady && (
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
                     Enter your monthly take-home income to enable Next.
+                  </div>
+                )}
+                {incomeReady && incomeSource === 'profile' && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                    From your financial profile — edit it here for this plan only.
+                  </div>
+                )}
+                {incomeReady && incomeSource === 'detected' && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                    Detected from your deposits — edit if it looks wrong.
                   </div>
                 )}
               </div>

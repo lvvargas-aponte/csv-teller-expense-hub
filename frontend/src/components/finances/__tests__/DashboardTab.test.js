@@ -9,6 +9,7 @@ jest.mock('../../../api/dashboard');
 jest.mock('../../../api/balances');
 
 // The cards each fetch for themselves; this test is about the KPI row only.
+jest.mock('../cards/StandingCard', () => () => <div />);
 jest.mock('../cards/WeeklyDigestCard', () => () => <div />);
 jest.mock('../cards/NetWorthCard', () => () => <div />);
 jest.mock('../cards/CashFlowCard', () => () => <div />);

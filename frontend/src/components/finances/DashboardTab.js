@@ -18,6 +18,7 @@ import CreditUtilizationCard from './cards/CreditUtilizationCard';
 import AlertsCard from './cards/AlertsCard';
 import IncomeVsExpensesCard from './cards/IncomeVsExpensesCard';
 import WeeklyDigestCard from './cards/WeeklyDigestCard';
+import StandingCard from './cards/StandingCard';
 import { BlurContext } from './Num';
 
 const RANGE_OPTIONS = [
@@ -47,7 +48,7 @@ function monthName(monthKey) {
   return MONTH_NAMES[idx] || 'the prior month';
 }
 
-export default function DashboardTab({ healthScore }) {
+export default function DashboardTab({ healthScore, onOpenSettings }) {
   const [months, setMonths] = useState(6);
   const [dashboard, setDashboard] = useState(null);
   const [dashboardErr, setDashboardErr] = useState(null);
@@ -255,6 +256,10 @@ export default function DashboardTab({ healthScore }) {
             number; some span both columns for editorial rhythm. */}
         <BlurContext.Provider value={blurSensitive}>
           <section className={`eh-cards-grid${blurSensitive ? ' eh-blur-numbers' : ''}`}>
+            {/* Where you stand — the answer the KPI row above only hints at. */}
+            <div className="eh-card-full">
+              <StandingCard onOpenSettings={onOpenSettings} />
+            </div>
             <div className="eh-card-full">
               <WeeklyDigestCard />
             </div>
