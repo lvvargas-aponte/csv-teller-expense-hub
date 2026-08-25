@@ -5,6 +5,7 @@ cache (never triggers a live SimpleFIN fetch) so chat turns stay fast.
 """
 from __future__ import annotations
 
+import calendar
 import logging
 import re
 import statistics
@@ -1499,13 +1500,95 @@ def category_spending_summary(
     }
 
 
+# Complete months of history the discretionary baseline is drawn from — the
+# same window health_service uses for its expense figure.
+_DISCRETIONARY_LOOKBACK_MONTHS = 3
+
+
+def _next_due_date(today: date, due_day: int) -> date:
+    """Return the next calendar date matching ``due_day`` on or after ``today``.
+
+    Caps day at the last day of the month for shorter months (Feb 30 → Feb 28/29),
+    so a bill that always lands on the 30th is not projected early.
+    """
+    due_day = max(1, min(31, int(due_day)))
+    year, month = today.year, today.month
+    last = calendar.monthrange(year, month)[1]
+    candidate = date(year, month, min(due_day, last))
+    if candidate < today:
+        if month == 12:
+            year, month = year + 1, 1
+        else:
+            month += 1
+        last = calendar.monthrange(year, month)[1]
+        candidate = date(year, month, min(due_day, last))
+    return candidate
+
+
+def _discretionary_baseline(today: date) -> Dict[str, Any]:
+    """Typical monthly spend that no recurring merchant explains.
+
+    Median across the last complete months — a mean lets one holiday month set
+    the baseline, and the in-progress month is excluded for the same reason the
+    dashboard stopped comparing against it. Recurring merchants are removed by
+    the detector's own ``_normalize_merchant`` key so no expense is counted as
+    both a bill and discretionary spend.
+
+    ``confidence`` follows history depth: three complete months "high", two
+    "low", fewer "none" — in which case ``monthly`` is None and the caller is
+    expected to say the projection is incomplete.
+    """
+    recurring_keys = {
+        r.get("merchant_key") for r in detect_recurring_charges() if r.get("merchant_key")
+    }
+    totals: Dict[str, float] = {}
+    for txn in state.stored_transactions.values():
+        if not _is_expense(txn):
+            continue
+        try:
+            amount = float(txn.get("amount", 0))
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+        month = _parse_month_key(txn.get("date", "") or "")
+        if not month:
+            continue
+        # A month holding nothing but bills is a real zero, not a missing month.
+        totals.setdefault(month, 0.0)
+        if _normalize_merchant(txn.get("description", "") or "") in recurring_keys:
+            continue
+        totals[month] += amount
+
+    current_month = f"{today.year:04d}-{today.month:02d}"
+    complete = sorted(m for m in totals if m < current_month)
+    recent = complete[-_DISCRETIONARY_LOOKBACK_MONTHS:]
+    months = len(recent)
+    if months >= _DISCRETIONARY_LOOKBACK_MONTHS:
+        confidence = "high"
+    elif months == 2:
+        confidence = "low"
+    else:
+        confidence = "none"
+    monthly = (
+        round(statistics.median(totals[m] for m in recent), 2)
+        if confidence != "none" else None
+    )
+    return {
+        "method": "median_of_complete_months",
+        "months": months,
+        "monthly": monthly,
+        "confidence": confidence,
+    }
+
+
 def project_cashflow(horizon_days: int = 30) -> Dict[str, Any]:
     """Project net cashflow over the next ``horizon_days`` days.
 
     Composes existing analytics — recurring charges, recurring inbound
-    transfers, and income estimate — into a forward-looking view. Used by
-    the Fin agent harness as the ``project_cashflow`` tool so the advisor
-    can answer "what's my next 30 days look like" precisely.
+    transfers, the income estimate and a discretionary baseline — into a
+    forward-looking view. Used by the Fin agent harness as the
+    ``project_cashflow`` tool and by ``GET /api/cashflow/projection``.
 
     Shape::
 
@@ -1514,12 +1597,23 @@ def project_cashflow(horizon_days: int = 30) -> Dict[str, Any]:
           "expected_income": 7250.0,
           "expected_recurring_outflow": 3420.5,
           "expected_inbound_transfers": 850.0,
-          "net": 4679.5,
+          "expected_discretionary_outflow": 1820.0,
+          "discretionary_basis": {"method": "median_of_complete_months",
+                                  "months": 3, "monthly": 1820.0,
+                                  "confidence": "high"},
+          "projection_incomplete": False,
+          "net": 2859.5,
           "upcoming_bills": [
             {"merchant": "...", "amount": 84.99, "estimated_date": "2026-06-04"},
             ...
           ],
         }
+
+    ``net`` is income + inbound − recurring − discretionary. Leaving
+    discretionary spend out made it optimistic in one direction every time.
+    Under two complete months of history the discretionary figure is omitted
+    and ``projection_incomplete`` says so, rather than passing a
+    recurring-only net off as the whole picture.
 
     ``upcoming_bills`` projects each recurring charge's next due date from
     its ``typical_day`` (median day-of-month from history), filtered to the
@@ -1548,27 +1642,24 @@ def project_cashflow(horizon_days: int = 30) -> Dict[str, Any]:
         amount = float(r.get("estimated_monthly_cost") or 0.0)
         if not typical_day or amount <= 0:
             continue
-        # Project the next due date in or after today using typical_day.
-        year, month = today.year, today.month
+        # Project each occurrence of typical_day inside the horizon.
+        cursor = today
         for _ in range(int(horizon_days / 28) + 2):
-            try:
-                candidate = date(year, month, min(int(typical_day), 28))
-            except ValueError:
-                break
-            if candidate >= today and candidate <= horizon_end:
-                upcoming.append({
-                    "merchant": r.get("sample_description") or r.get("merchant_key"),
-                    "category": r.get("category"),
-                    "amount": amount,
-                    "estimated_date": candidate.isoformat(),
-                })
-                total_outflow += amount
-            month += 1
-            if month > 12:
-                month = 1
-                year += 1
+            candidate = _next_due_date(cursor, int(typical_day))
             if candidate > horizon_end:
                 break
+            upcoming.append({
+                "merchant": r.get("sample_description") or r.get("merchant_key"),
+                "category": r.get("category"),
+                "amount": amount,
+                "estimated_date": candidate.isoformat(),
+            })
+            total_outflow += amount
+            cursor = candidate + timedelta(days=1)
+
+    basis = _discretionary_baseline(today)
+    monthly_discretionary = basis["monthly"] or 0.0
+    expected_discretionary = round(monthly_discretionary * (horizon_days / 30.0), 2)
 
     upcoming.sort(key=lambda x: x["estimated_date"])
     return {
@@ -1576,7 +1667,12 @@ def project_cashflow(horizon_days: int = 30) -> Dict[str, Any]:
         "expected_income": expected_income,
         "expected_recurring_outflow": round(total_outflow, 2),
         "expected_inbound_transfers": expected_inbound,
-        "net": round(expected_income + expected_inbound - total_outflow, 2),
+        "expected_discretionary_outflow": expected_discretionary,
+        "discretionary_basis": basis,
+        "projection_incomplete": basis["confidence"] == "none",
+        "net": round(
+            expected_income + expected_inbound - total_outflow - expected_discretionary, 2
+        ),
         "upcoming_bills": upcoming[:30],
     }
 

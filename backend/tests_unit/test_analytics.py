@@ -1,4 +1,5 @@
 """Tests for analytics helpers — recurring detection and snapshot enrichment."""
+import calendar
 from datetime import date, timedelta
 
 import pytest
@@ -344,3 +345,135 @@ class TestCostBasisOverrides:
         row = analytics.summarize_holdings(self._holdings(None))["holdings"][0]
         assert row["cost_basis"] is None
         assert row["cost_basis_source"] is None
+
+
+def _month_start(months_back: int) -> date:
+    d = date.today().replace(day=1)
+    for _ in range(months_back):
+        d = (d - timedelta(days=1)).replace(day=1)
+    return d
+
+
+def _seed_income(monthly: float) -> None:
+    for i in range(1, 5):
+        tid = f"pay_{i}"
+        state.stored_transactions[tid] = {
+            "id": tid, "date": (date.today() - timedelta(days=30 * i)).isoformat(),
+            "description": "ACME PAYROLL DIRECT DEP", "amount": monthly,
+            "category": "Income", "transaction_type": "credit",
+            "direction": "inflow", "source": "simplefin",
+        }
+
+
+def _bill_date(months_back: int, day: int) -> date:
+    start = _month_start(months_back)
+    return start.replace(day=min(day, calendar.monthrange(start.year, start.month)[1]))
+
+
+def _seed_recurring_charge(name: str, amount: float, day: int, months: int = 3) -> None:
+    for m in range(1, months + 1):
+        tid = f"rec_{name}_{m}"
+        state.stored_transactions[tid] = {
+            "id": tid, "date": _bill_date(m, day).isoformat(),
+            "description": f"{name} PROPERTY MGMT", "amount": amount,
+            "category": name, "transaction_type": "debit",
+            "direction": "outflow", "source": "simplefin",
+        }
+
+
+_DISCRETIONARY_MERCHANTS = [
+    ["CORNER DINER", "FUEL DEPOT", "GREEN GROCER"],
+    ["RAMEN HOUSE", "HARDWARE BARN", "PET SUPPLY"],
+    ["TAQUERIA SOL", "BOOK NOOK", "CINEMA WEST"],
+    ["NOODLE BAR", "PAINT SHOP", "FLOWER CART"],
+]
+
+
+def _seed_one_off_spending(months: int, monthly: float) -> None:
+    """One-off, non-recurring spend spread over ``months`` complete months.
+
+    Each merchant appears exactly once so the recurring detector never claims
+    any of it — this is the discretionary pool.
+    """
+    for m in range(1, months + 1):
+        start = _month_start(m)
+        for j, merchant in enumerate(_DISCRETIONARY_MERCHANTS[m - 1]):
+            tid = f"disc_{m}_{j}"
+            state.stored_transactions[tid] = {
+                "id": tid, "date": (start + timedelta(days=5 + j * 5)).isoformat(),
+                "description": merchant, "amount": round(monthly / 3.0, 2),
+                "category": "Groceries", "transaction_type": "debit",
+                "direction": "outflow", "source": "simplefin",
+            }
+
+
+class TestCashflowProjectionDiscretionary:
+    def test_projection_subtracts_discretionary_spend(self, client):
+        _seed_income(5000.0)
+        _seed_recurring_charge("Rent", 1500.0, day=1)
+        _seed_one_off_spending(months=3, monthly=1200.0)
+
+        out = analytics.project_cashflow(horizon_days=30)
+
+        assert out["expected_income"] == pytest.approx(5000.0, abs=1)
+        assert out["expected_recurring_outflow"] == pytest.approx(1500.0, abs=1)
+        assert out["expected_discretionary_outflow"] == pytest.approx(1200.0, abs=1)
+        assert out["net"] == pytest.approx(2300.0, abs=1)   # not 3500
+        assert out["discretionary_basis"]["confidence"] == "high"
+        assert out["discretionary_basis"]["months"] == 3
+        assert out["discretionary_basis"]["method"] == "median_of_complete_months"
+
+    def test_recurring_spend_is_never_counted_twice(self, client):
+        _seed_recurring_charge("Rent", 1500.0, day=1)
+
+        out = analytics.project_cashflow(horizon_days=30)
+
+        assert out["expected_discretionary_outflow"] == 0.0
+        assert out["expected_recurring_outflow"] == pytest.approx(1500.0, abs=1)
+
+    def test_median_ignores_one_holiday_month(self, client):
+        _seed_one_off_spending(months=3, monthly=1200.0)
+        # Blow out the oldest complete month; the median should not move.
+        state.stored_transactions["blowout"] = {
+            "id": "blowout", "date": (_month_start(3) + timedelta(days=20)).isoformat(),
+            "description": "GIFT EMPORIUM", "amount": 4000.0,
+            "category": "Shopping", "transaction_type": "debit",
+            "direction": "outflow", "source": "simplefin",
+        }
+
+        out = analytics.project_cashflow(horizon_days=30)
+
+        assert out["expected_discretionary_outflow"] == pytest.approx(1200.0, abs=1)
+
+    def test_two_months_of_history_is_low_confidence(self, client):
+        _seed_one_off_spending(months=2, monthly=900.0)
+
+        basis = analytics.project_cashflow(horizon_days=30)["discretionary_basis"]
+
+        assert basis["confidence"] == "low"
+        assert basis["months"] == 2
+
+    def test_one_month_omits_the_figure_and_flags_the_projection(self, client):
+        _seed_one_off_spending(months=1, monthly=900.0)
+
+        out = analytics.project_cashflow(horizon_days=30)
+
+        assert out["discretionary_basis"]["confidence"] == "none"
+        assert out["discretionary_basis"]["monthly"] is None
+        assert out["projection_incomplete"] is True
+
+    def test_horizon_scales_the_discretionary_figure(self, client):
+        _seed_one_off_spending(months=3, monthly=1200.0)
+
+        out = analytics.project_cashflow(horizon_days=60)
+
+        assert out["expected_discretionary_outflow"] == pytest.approx(2400.0, abs=1)
+
+    def test_bill_on_the_thirtieth_is_projected_on_the_thirtieth(self, client):
+        _seed_recurring_charge("Storage", 60.0, day=30, months=3)
+
+        bills = analytics.project_cashflow(horizon_days=60)["upcoming_bills"]
+
+        assert bills
+        assert all(b["estimated_date"][-2:] in ("28", "29", "30") for b in bills)
+        assert any(b["estimated_date"].endswith("30") for b in bills)

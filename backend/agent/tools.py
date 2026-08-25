@@ -497,7 +497,15 @@ def default_tool_registry(
             description=(
                 "Project net cashflow over the next horizon_days (1-180). "
                 "Returns expected income, recurring outflow, expected inbound "
-                "transfers, net, and a list of upcoming projected bills."
+                "transfers, typical discretionary spending, net, and a list of "
+                "upcoming projected bills. net already subtracts both the bills "
+                "and the discretionary baseline (median of the last three "
+                "complete months of non-recurring spend), so it is what the "
+                "household would actually have left. "
+                "discretionary_basis.confidence is high/low/none; when it is "
+                "none the discretionary figure is omitted and "
+                "projection_incomplete is true — say so rather than quoting the "
+                "net as the whole picture."
             ),
             args_model=ProjectCashflowArgs,
             handler=_project_cashflow,

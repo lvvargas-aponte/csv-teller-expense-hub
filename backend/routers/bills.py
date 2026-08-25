@@ -3,14 +3,13 @@ that has a ``due_day`` configured in ``account_details``, and merges in
 transaction-derived recurring charges (utilities, subscriptions, etc.) so
 non-credit bills also appear on the Bills page.
 """
-import calendar
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List
 
 from fastapi import APIRouter
 
 import state
-from analytics import _ALWAYS_RECURRING_CATEGORIES
+from analytics import _ALWAYS_RECURRING_CATEGORIES, _next_due_date
 
 router = APIRouter()
 
@@ -20,26 +19,6 @@ router = APIRouter()
 # are obligations the detector doesn't need to special-case but a household
 # certainly plans around.
 _BILL_CATEGORIES = _ALWAYS_RECURRING_CATEGORIES | {"loan", "loans", "childcare"}
-
-
-def _next_due_date(today: date, due_day: int) -> date:
-    """Return the next calendar date matching ``due_day`` on or after ``today``.
-
-    Caps day at the last day of the month for shorter months (Feb 30 → Feb 28/29).
-    """
-    due_day = max(1, min(31, int(due_day)))
-    year, month = today.year, today.month
-    last = calendar.monthrange(year, month)[1]
-    candidate = date(year, month, min(due_day, last))
-    if candidate < today:
-        # Roll into next month.
-        if month == 12:
-            year, month = year + 1, 1
-        else:
-            month += 1
-        last = calendar.monthrange(year, month)[1]
-        candidate = date(year, month, min(due_day, last))
-    return candidate
 
 
 def _account_lookup(account_id: str) -> Dict[str, Any]:
