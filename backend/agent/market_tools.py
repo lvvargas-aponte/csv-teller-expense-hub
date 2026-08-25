@@ -112,6 +112,30 @@ def _fundamentals(symbol: str) -> Dict[str, Any]:
     }
 
 
+def _price_changes(symbols: List[str], period: str) -> Dict[str, Optional[float]]:
+    out: Dict[str, Optional[float]] = {}
+    for symbol in symbols:
+        try:
+            history = _history(symbol, period)
+        except Exception:
+            out[symbol] = None
+            continue
+        out[symbol] = history.get("pct_change") if history.get("available") else None
+    return out
+
+
+async def get_price_changes(
+    symbols: List[str], period: str
+) -> Dict[str, Optional[float]]:
+    """Trailing percent change per symbol over ``period``, None where unknown.
+
+    The one price-history entry point outside the agent tools — same
+    ``_history`` call underneath, same thread offload, so nothing else in the
+    codebase needs to import yfinance.
+    """
+    return await asyncio.to_thread(_price_changes, symbols, period)
+
+
 async def _get_stock_quote(args: GetStockQuoteArgs) -> Dict[str, Any]:
     quotes = await asyncio.to_thread(_quotes, args.symbols)
     return {"count": len(quotes), "quotes": quotes}

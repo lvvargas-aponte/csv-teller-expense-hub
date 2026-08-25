@@ -136,3 +136,13 @@ PORTFOLIO_TARGET_ALLOCATION_BY_RISK: dict = {
     "balanced": {"equity": 60.0, "bond": 30.0, "cash": 10.0},
     "aggressive": {"equity": 85.0, "bond": 10.0, "cash": 5.0},
 }
+
+# Trailing windows for the "how your current mix would have performed" card,
+# and the index it is shown against.
+PORTFOLIO_BACKTEST_PERIODS: tuple = ("1mo", "1y", "5y")
+PORTFOLIO_BENCHMARK_SYMBOL: str = "SPY"
+
+# Share of the portfolio that must be priceable before a backtest figure is
+# shown at all. Below this the number describes a different portfolio than
+# the user's, so the card names the unpriceable symbols instead.
+PORTFOLIO_BACKTEST_MIN_COVERAGE_PCT: float = 80.0

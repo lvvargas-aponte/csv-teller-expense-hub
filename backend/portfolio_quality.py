@@ -184,3 +184,150 @@ def assess(summary: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "allocation": allocation,
         "cash_drag_pct": allocation["by_class"].get("cash", 0.0),
     }
+
+
+# ---------------------------------------------------------------------------
+# Trailing mix backtest
+# ---------------------------------------------------------------------------
+
+BACKTEST_DISCLAIMER = (
+    "Based on today's holdings priced backwards — not your actual return."
+)
+
+# One entry per (day, periods, holdings mix). Keyed by day because the figures
+# only move once a day and a page refresh should not re-hit Yahoo.
+_BACKTEST_CACHE: Dict[Any, Dict[str, Any]] = {}
+
+
+def clear_backtest_cache() -> None:
+    _BACKTEST_CACHE.clear()
+
+
+def _mix_fingerprint(summary: Dict[str, Any]) -> tuple:
+    return tuple(sorted(
+        (h.get("symbol"), h.get("asset_type"), float(h.get("market_value") or 0.0))
+        for h in summary["holdings"]
+    ))
+
+
+def _unavailable_backtest(reason: str, as_of, unpriceable: List[str]) -> Dict[str, Any]:
+    return {
+        "available": False,
+        "reason": reason,
+        "as_of": as_of.isoformat(),
+        "periods": {},
+        "unpriceable_symbols": unpriceable,
+        "benchmark": config.PORTFOLIO_BENCHMARK_SYMBOL,
+        "disclaimer": BACKTEST_DISCLAIMER,
+    }
+
+
+async def mix_backtest(
+    periods: Optional[tuple] = None,
+    summary: Optional[Dict[str, Any]] = None,
+    today=None,
+) -> Dict[str, Any]:
+    """What today's holdings would have returned over trailing windows.
+
+    Not a return. A true time-weighted return needs every buy, sell and
+    dividend, and the app has none of that — only current quantities. This
+    prices the *current* mix backwards and says so in ``disclaimer``.
+
+    Cash is carried at a 0% return rather than dropped, so the drag it puts on
+    the mix is visible instead of being quietly excluded. Below
+    ``PORTFOLIO_BACKTEST_MIN_COVERAGE_PCT`` of the portfolio priced, the
+    period reports no number and names what it could not price. Offline, the
+    whole thing reports ``available: false`` with a reason — never an
+    exception, never a blank card.
+    """
+    from datetime import date
+
+    from agent import market_tools
+
+    today = today or date.today()
+    periods = tuple(periods or config.PORTFOLIO_BACKTEST_PERIODS)
+    summary = summary if summary is not None else _load_summary()
+
+    if not summary["holdings"] or not summary["total_value"]:
+        return _unavailable_backtest("No priced positions to price backwards.", today, [])
+
+    cache_key = (today, periods, _mix_fingerprint(summary))
+    cached = _BACKTEST_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    benchmark = config.PORTFOLIO_BENCHMARK_SYMBOL
+    total_value = summary["total_value"]
+    # Cash has no ticker and needs none: its trailing return is 0%.
+    cash_value = sum(
+        float(h.get("market_value") or 0.0)
+        for h in summary["holdings"] if h.get("asset_type") == "cash"
+    )
+    priced_candidates = [
+        h for h in summary["holdings"] if h.get("asset_type") != "cash"
+    ]
+    symbols = sorted({h["symbol"] for h in priced_candidates})
+
+    out_periods: Dict[str, Any] = {}
+    unpriceable: set = set()
+    for period in periods:
+        try:
+            changes = await market_tools.get_price_changes(symbols + [benchmark], period)
+        except Exception as e:
+            logger.info("Backtest unavailable for %s: %s", period, e)
+            _BACKTEST_CACHE.pop(cache_key, None)
+            return _unavailable_backtest(
+                "Market data is unreachable right now.", today, sorted(unpriceable)
+            )
+
+        covered_value = cash_value
+        weighted = 0.0
+        for h in priced_candidates:
+            change = changes.get(h["symbol"])
+            value = float(h.get("market_value") or 0.0)
+            if change is None:
+                unpriceable.add(h["symbol"])
+                continue
+            covered_value += value
+            weighted += value * float(change)
+
+        coverage_pct = round(covered_value / total_value * 100, 1) if total_value else 0.0
+        benchmark_change = changes.get(benchmark)
+        entry: Dict[str, Any] = {
+            "period": period,
+            "coverage_pct": coverage_pct,
+            "benchmark": benchmark,
+            "benchmark_return_pct": (
+                round(float(benchmark_change), 2) if benchmark_change is not None else None
+            ),
+        }
+        if coverage_pct < config.PORTFOLIO_BACKTEST_MIN_COVERAGE_PCT or not covered_value:
+            entry.update({
+                "available": False,
+                "mix_return_pct": None,
+                "reason": (
+                    f"Only {coverage_pct}% of the portfolio could be priced over "
+                    f"{period}, so a return figure would describe a different mix."
+                ),
+            })
+        else:
+            entry.update({
+                "available": True,
+                "mix_return_pct": round(weighted / covered_value, 2),
+                "reason": None,
+            })
+        out_periods[period] = entry
+
+    result = {
+        "available": any(p["available"] for p in out_periods.values()),
+        "reason": None,
+        "as_of": today.isoformat(),
+        "periods": out_periods,
+        "unpriceable_symbols": sorted(unpriceable),
+        "benchmark": benchmark,
+        "disclaimer": BACKTEST_DISCLAIMER,
+    }
+    if not result["available"]:
+        result["reason"] = "Not enough of the portfolio could be priced."
+    _BACKTEST_CACHE[cache_key] = result
+    return result

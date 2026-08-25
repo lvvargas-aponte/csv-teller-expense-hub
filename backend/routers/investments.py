@@ -182,3 +182,15 @@ async def get_quality() -> Dict[str, Any]:
     import portfolio_quality
 
     return portfolio_quality.assess()
+
+
+@router.get("/investments/backtest")
+async def get_mix_backtest() -> Dict[str, Any]:
+    """How today's holdings would have performed over trailing windows.
+
+    Its own route rather than part of ``/quality`` because this one reaches
+    the network: the quality card must still render with the machine offline.
+    """
+    import portfolio_quality
+
+    return await portfolio_quality.mix_backtest()

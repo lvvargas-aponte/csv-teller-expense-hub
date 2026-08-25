@@ -125,3 +125,123 @@ class TestQualityEndpoint:
 
         assert body["available"] is True
         assert body["allocation"]["largest_drift"]["drift_pts"] == pytest.approx(30.0)
+
+
+# ---------------------------------------------------------------------------
+# Trailing mix backtest — today's holdings priced backwards, never "your return"
+# ---------------------------------------------------------------------------
+
+class _FakeMarket:
+    """Stands in for the yfinance-backed price-history helper. No network."""
+
+    def __init__(self, changes, error=None):
+        self.changes = changes
+        self.error = error
+        self.calls = []
+
+    async def get_price_changes(self, symbols, period):
+        self.calls.append((tuple(symbols), period))
+        if self.error:
+            raise self.error
+        return {s: self.changes.get(period, {}).get(s) for s in symbols}
+
+
+@pytest.fixture
+def market(monkeypatch):
+    from agent import market_tools
+
+    def _install(changes, error=None):
+        fake = _FakeMarket(changes, error)
+        monkeypatch.setattr(market_tools, "get_price_changes", fake.get_price_changes)
+        portfolio_quality.clear_backtest_cache()
+        return fake
+
+    return _install
+
+
+class TestMixBacktest:
+    @pytest.mark.asyncio
+    async def test_two_holdings_produce_a_weighted_return(self, market):
+        _seed([_holding("VTI", "etf", 60000.0), _holding("NVDA", "stock", 40000.0)])
+        market({"1y": {"VTI": 10.0, "NVDA": 20.0, "SPY": 11.8}})
+
+        out = await portfolio_quality.mix_backtest(periods=("1y",))
+
+        assert out["available"] is True
+        assert out["periods"]["1y"]["mix_return_pct"] == pytest.approx(14.0)
+        assert out["periods"]["1y"]["benchmark_return_pct"] == pytest.approx(11.8)
+        assert out["periods"]["1y"]["benchmark"] == "SPY"
+        assert out["periods"]["1y"]["coverage_pct"] == 100.0
+        assert out["unpriceable_symbols"] == []
+
+    @pytest.mark.asyncio
+    async def test_it_never_calls_itself_your_return(self, market):
+        _seed([_holding("VTI", "etf", 100000.0)])
+        market({"1y": {"VTI": 10.0, "SPY": 8.0}})
+
+        out = await portfolio_quality.mix_backtest(periods=("1y",))
+
+        assert "not your actual return" in out["disclaimer"]
+
+    @pytest.mark.asyncio
+    async def test_an_unpriceable_symbol_is_excluded_and_named(self, market):
+        _seed([_holding("VTI", "etf", 90000.0),
+               _holding("PRIVATEFUND", "other", 10000.0)])
+        market({"1y": {"VTI": 10.0, "PRIVATEFUND": None, "SPY": 8.0}})
+
+        out = await portfolio_quality.mix_backtest(periods=("1y",))
+
+        assert out["periods"]["1y"]["mix_return_pct"] == pytest.approx(10.0)
+        assert out["periods"]["1y"]["coverage_pct"] == pytest.approx(90.0)
+        assert out["unpriceable_symbols"] == ["PRIVATEFUND"]
+
+    @pytest.mark.asyncio
+    async def test_below_the_coverage_floor_no_number_is_reported(self, market):
+        _seed([_holding("VTI", "etf", 70000.0),
+               _holding("PRIVATEFUND", "other", 30000.0)])
+        market({"1y": {"VTI": 10.0, "PRIVATEFUND": None, "SPY": 8.0}})
+
+        period = (await portfolio_quality.mix_backtest(periods=("1y",)))["periods"]["1y"]
+
+        assert period["available"] is False
+        assert period["mix_return_pct"] is None
+        assert period["coverage_pct"] == pytest.approx(70.0)
+        assert "70" in period["reason"] or "coverage" in period["reason"].lower()
+
+    @pytest.mark.asyncio
+    async def test_cash_counts_as_a_zero_return_slice(self, market):
+        _seed([_holding("VTI", "etf", 50000.0), _holding("CASH", "cash", 50000.0)])
+        market({"1y": {"VTI": 10.0, "SPY": 8.0}})
+
+        period = (await portfolio_quality.mix_backtest(periods=("1y",)))["periods"]["1y"]
+
+        assert period["mix_return_pct"] == pytest.approx(5.0)
+        assert period["coverage_pct"] == 100.0
+
+    @pytest.mark.asyncio
+    async def test_offline_degrades_to_unavailable_without_raising(self, market):
+        _seed([_holding("VTI", "etf", 100000.0)])
+        market({}, error=OSError("no route to host"))
+
+        out = await portfolio_quality.mix_backtest(periods=("1y",))
+
+        assert out["available"] is False
+        assert out["reason"]
+        assert out["periods"] == {}
+
+    @pytest.mark.asyncio
+    async def test_an_empty_portfolio_is_unavailable(self, market):
+        _seed([])
+        market({"1y": {}})
+        out = await portfolio_quality.mix_backtest(periods=("1y",))
+        assert out["available"] is False
+
+    @pytest.mark.asyncio
+    async def test_the_result_is_cached_for_the_day(self, market):
+        _seed([_holding("VTI", "etf", 100000.0)])
+        fake = market({"1y": {"VTI": 10.0, "SPY": 8.0}})
+
+        await portfolio_quality.mix_backtest(periods=("1y",))
+        await portfolio_quality.mix_backtest(periods=("1y",))
+
+        assert len(fake.calls) == 1
