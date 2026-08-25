@@ -74,3 +74,22 @@ test('legacy aliases point at new primitives, not raw hex', () => {
     expect(LIGHT[alias]).toMatch(/^var\(--[\w-]+\)$/);
   }
 });
+
+const APP_CSS = fs.readFileSync(path.join(__dirname, '..', '..', 'index.css'), 'utf8');
+
+describe('brand and semantic colours stay separate', () => {
+  test.each([
+    '.eh-kpi-value--pos',
+    '.tx-amt-val--credit',
+    '.ov-bal-primary--pos',
+    '.acct-row-balance.is-positive',
+  ])('%s uses the good token, not the brand', (selector) => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rules = APP_CSS.match(new RegExp(`${escaped}\\s*\\{[^}]*\\}`, 'g'));
+    expect(rules).not.toBeNull();
+    for (const rule of rules) {
+      expect(rule).toContain('var(--good-text)');
+      expect(rule).not.toContain('var(--accent)');
+    }
+  });
+});
