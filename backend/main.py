@@ -11,11 +11,14 @@ import state
 from config import SPREADSHEET_ID, CREDENTIALS_FILE, SIMPLEFIN_ACCESS_URLS
 
 from routers import (
-    accounts, advisor, alerts, balances, bills, budgets, credit_health, dashboard,
-    digest, documents, goals, health, identity, insights, investments, layout, profile,
-    seeds,
-    sheets, snaptrade, subscriptions, sync, tools, user_facts,
+    accounts, advisor, alerts, balances, bills, budgets,
+    credit_health, dashboard, digest, documents, goals, health, identity, insights,
+    investments, layout, profile, seeds, sheets, snaptrade,
+    subscriptions, sync, tools, user_facts,
 )
+# Aliased: these routers share a name with a top-level service module.
+from routers import category_rules as category_rules_router
+from routers import retirement as retirement_router
 from routers import simplefin as simplefin_router
 from routers import transactions
 
@@ -98,6 +101,7 @@ app.include_router(advisor.router,      prefix="/api")
 app.include_router(budgets.router,      prefix="/api")
 app.include_router(goals.router,        prefix="/api")
 app.include_router(profile.router,      prefix="/api")
+app.include_router(category_rules_router.router, prefix="/api")
 app.include_router(layout.router,       prefix="/api")
 app.include_router(alerts.router,       prefix="/api")
 app.include_router(bills.router,        prefix="/api")
@@ -112,6 +116,7 @@ app.include_router(subscriptions.router, prefix="/api")
 app.include_router(digest.router,       prefix="/api")
 app.include_router(identity.router,      prefix="/api")
 app.include_router(sync.router,          prefix="/api")
+app.include_router(retirement_router.router, prefix="/api")
 
 
 # Static help site — built from /docs by mkdocs into /docs/site.

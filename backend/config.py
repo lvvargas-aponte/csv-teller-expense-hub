@@ -90,3 +90,34 @@ ADVISOR_FETCH_MAX_BYTES: int = int(os.getenv("ADVISOR_FETCH_MAX_BYTES", str(2 * 
 # system prompt each turn. Higher = Fin remembers more without needing
 # `recall_about_user`; lower = leaner prompt and faster turns.
 ADVISOR_MEMORY_INJECT_LIMIT: int = int(os.getenv("ADVISOR_MEMORY_INJECT_LIMIT", "30"))
+
+# --- Retirement projection assumptions -------------------------------------
+# All four are long-run planning defaults, not forecasts, and every one of
+# them is shown on the projection card and overridable per household. They
+# live here so changing the house view is a single edit.
+
+# Nominal expected annual return by stated risk tolerance, before inflation.
+# Broadly: a bond-heavy mix, a 60/40 mix, and an equity-heavy mix.
+RETIREMENT_RETURN_PCT_BY_RISK: dict = {
+    "conservative": 4.0,
+    "balanced": 6.0,
+    "aggressive": 7.5,
+}
+
+# Long-run annual inflation. Subtracted from the nominal return so the
+# projection is stated in today's dollars — a nominal figure is a large
+# number that reads as wealth and is not.
+RETIREMENT_INFLATION_PCT: float = 2.5
+
+# Annual share of the pot a retiree can draw and expect it to last. The
+# target pot is the desired annual spend divided by this.
+RETIREMENT_WITHDRAWAL_RATE_PCT: float = 4.0
+
+# The optimistic and pessimistic scenarios are the base real return moved by
+# this many percentage points in each direction.
+RETIREMENT_SCENARIO_SPREAD_PCT: float = 2.0
+
+# When the household hasn't stated a retirement spending level, assume this
+# share of what it spends today. Always reported as an estimate, never
+# silently substituted.
+RETIREMENT_SPEND_SHARE_OF_TODAY: float = 0.80

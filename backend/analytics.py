@@ -1253,10 +1253,8 @@ def detect_recurring_income(
 
         monthly_estimate = avg * (_DAYS_PER_MONTH / cadence_days)
 
-        destinations = {i["destination"] for i in items if i["destination"]}
         out.append({
             "merchant_key": key,
-            "account_id": destinations.pop() if len(destinations) == 1 else None,
             "sample_description": items[-1]["description"],
             "average_amount": round(avg, 2),
             "occurrences": len(items),

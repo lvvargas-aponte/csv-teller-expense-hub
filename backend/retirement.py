@@ -16,7 +16,11 @@ or the other, never their sum.
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any, Dict, List, Optional
+
+import config
+import health_service
 
 logger = logging.getLogger(__name__)
 
@@ -138,4 +142,193 @@ async def estimate_contributions() -> Dict[str, Any]:
         "by_account": rows,
         "confidence": confidence,
         "caveat": VELOCITY_CAVEAT if uses_velocity else None,
+    }
+
+
+def _load_profile() -> Optional[Dict[str, Any]]:
+    """The raw household profile row, or None when nothing has been answered.
+
+    Deliberately not ``analytics._load_user_profile``: that one curates the
+    row for prompt context and drops fields this module needs.
+    """
+    try:
+        from db import profile_repo
+
+        return profile_repo.load()
+    except Exception as e:
+        logger.debug(f"[retirement] user_profile read skipped: {e}")
+        return None
+
+
+def _future_value(balance: float, annual_contribution: float, rate: float, years: int) -> float:
+    """Compound ``balance`` and an annual contribution for ``years`` at ``rate``.
+
+    An ordinary annuity — the year's contribution lands at year end. Written
+    out rather than pulled from a library so the arithmetic on screen and the
+    arithmetic here are the same three terms.
+    """
+    growth = (1.0 + rate) ** years
+    if rate == 0:
+        return round(balance + annual_contribution * years, 2)
+    return round(balance * growth + annual_contribution * (growth - 1.0) / rate, 2)
+
+
+def _required_annual_contribution(
+    balance: float, target: float, rate: float, years: int
+) -> Optional[float]:
+    """Invert ``_future_value`` for the contribution that reaches ``target``."""
+    if years <= 0:
+        return None
+    growth = (1.0 + rate) ** years
+    if rate == 0:
+        return max((target - balance) / years, 0.0)
+    factor = (growth - 1.0) / rate
+    if factor <= 0:
+        return None
+    return max((target - balance * growth) / factor, 0.0)
+
+
+def _resolve_return(profile: Dict[str, Any]) -> tuple:
+    """``(nominal_pct, source)`` — the user's own figure, or their risk band."""
+    stated = profile.get("expected_return_pct")
+    if stated is not None:
+        return float(stated), "profile"
+    risk = (profile.get("risk_tolerance") or "").strip().lower()
+    if risk in config.RETIREMENT_RETURN_PCT_BY_RISK:
+        return config.RETIREMENT_RETURN_PCT_BY_RISK[risk], "risk_tolerance"
+    return None, "none"
+
+
+def _resolve_target_spend(profile: Dict[str, Any], today) -> tuple:
+    """``(annual_spend, source)`` in today's dollars.
+
+    The fallback is a stated share of what the household spends now, and it
+    labels itself as an estimate — the card says which of the two it is.
+    """
+    stated = profile.get("annual_retirement_spend")
+    if stated is not None:
+        return float(stated), "profile"
+    monthly = health_service._median_monthly_expenses(today)
+    if monthly:
+        return (
+            round(monthly * 12 * config.RETIREMENT_SPEND_SHARE_OF_TODAY, 2),
+            "estimated_from_expenses",
+        )
+    return None, "none"
+
+
+def _unavailable(missing: List[str], assumptions: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "available": False,
+        "missing": missing,
+        "years_to_retirement": None,
+        "current_balance": None,
+        "monthly_contribution": None,
+        "contribution_confidence": None,
+        "contribution_caveat": None,
+        "target_pot": None,
+        "target_annual_spend": None,
+        "scenarios": None,
+        "base_shortfall": None,
+        "low_shortfall": None,
+        "required_monthly_for_target": None,
+        "assumptions": assumptions,
+    }
+
+
+async def project(today=None) -> Dict[str, Any]:
+    """Project the retirement pot in today's dollars, as a three-point band.
+
+    Real returns, not nominal: inflation is subtracted from the return and the
+    target is never inflated, so every figure is comparable to what a dollar
+    buys now. Three scenarios rather than one, because the inputs do not
+    support a single number. No simulation — deterministic compounding with
+    the assumptions visible is the honest shape for inputs this soft.
+
+    ``available`` is False and ``missing`` names the fields whenever an input
+    the user has to supply is absent. Nothing is silently defaulted.
+    """
+    today = today or date.today()
+    profile = _load_profile() or {}
+
+    missing: List[str] = []
+    birth_year = profile.get("birth_year")
+    if birth_year is None:
+        missing.append("birth_year")
+    target_age = profile.get("target_retirement_age")
+    if target_age is None:
+        missing.append("target_retirement_age")
+
+    nominal_pct, return_source = _resolve_return(profile)
+    if nominal_pct is None:
+        missing.append("risk_tolerance")
+
+    target_spend, spend_source = _resolve_target_spend(profile, today)
+    if target_spend is None:
+        missing.append("annual_retirement_spend")
+
+    inflation_pct = config.RETIREMENT_INFLATION_PCT
+    withdrawal_pct = config.RETIREMENT_WITHDRAWAL_RATE_PCT
+    assumptions = {
+        "nominal_return_pct": nominal_pct,
+        "inflation_pct": inflation_pct,
+        "real_return_pct": (
+            round(nominal_pct - inflation_pct, 4) if nominal_pct is not None else None
+        ),
+        "withdrawal_rate_pct": withdrawal_pct,
+        "scenario_spread_pct": config.RETIREMENT_SCENARIO_SPREAD_PCT,
+        "source": return_source,
+        "target_spend_source": spend_source,
+    }
+
+    if missing:
+        return _unavailable(missing, assumptions)
+
+    retirement_year = int(birth_year) + int(target_age)
+    years = max(retirement_year - today.year, 0)
+
+    accounts = await _load_investment_accounts()
+    current_balance = round(
+        sum(float(a.available or 0.0) or float(a.ledger or 0.0) for a in accounts), 2
+    )
+
+    contributions = await estimate_contributions()
+    monthly = float(contributions["monthly_total"])
+    annual = monthly * 12
+
+    real_pct = assumptions["real_return_pct"]
+    spread = config.RETIREMENT_SCENARIO_SPREAD_PCT
+    scenarios = {
+        "low": _future_value(current_balance, annual, (real_pct - spread) / 100.0, years),
+        "base": _future_value(current_balance, annual, real_pct / 100.0, years),
+        "high": _future_value(current_balance, annual, (real_pct + spread) / 100.0, years),
+    }
+
+    target_pot = round(target_spend / (withdrawal_pct / 100.0), 2)
+    required_annual = _required_annual_contribution(
+        current_balance, target_pot, real_pct / 100.0, years
+    )
+
+    def shortfall(value: float) -> Optional[float]:
+        gap = round(target_pot - value, 2)
+        return gap if gap > 0 else None
+
+    return {
+        "available": True,
+        "missing": [],
+        "years_to_retirement": years,
+        "current_balance": current_balance,
+        "monthly_contribution": round(monthly, 2),
+        "contribution_confidence": contributions["confidence"],
+        "contribution_caveat": contributions["caveat"],
+        "contribution_by_account": contributions["by_account"],
+        "target_pot": target_pot,
+        "target_annual_spend": round(target_spend, 2),
+        "scenarios": scenarios,
+        "base_shortfall": shortfall(scenarios["base"]),
+        "low_shortfall": shortfall(scenarios["low"]),
+        "required_monthly_for_target": (
+            round(required_annual / 12, 2) if required_annual is not None else None
+        ),
+        "assumptions": assumptions,
     }

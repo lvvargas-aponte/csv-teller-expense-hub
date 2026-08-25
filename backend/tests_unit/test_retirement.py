@@ -1,5 +1,5 @@
 """Retirement contribution detection and the projection built on it."""
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -105,3 +105,195 @@ class TestEstimateContributions:
         assert len(rows) == 1
         assert rows[0]["method"] == "recurring_transfer"
         assert out["monthly_total"] == pytest.approx(500.0, rel=0.05)
+
+
+def _fake_contributions(monthly):
+    async def _f():
+        return {
+            "monthly_total": monthly, "by_account": [],
+            "confidence": "high" if monthly else "none", "caveat": None,
+        }
+    return _f
+
+
+def _set_profile(monkeypatch, **fields):
+    monkeypatch.setattr(retirement, "_load_profile", lambda: fields or None)
+
+
+def _seed_real_asset(account_id, value):
+    state._manual_accounts[account_id] = {
+        "id": account_id, "institution": "-", "name": "House",
+        "type": "asset", "subtype": "residence",
+        "available": value, "ledger": value, "manual": True,
+    }
+
+
+class TestProjection:
+    @pytest.mark.asyncio
+    async def test_projection_compounds_in_real_terms(self, monkeypatch):
+        # $100k now, $1,000/mo, 24 years, 6% nominal - 2.5% inflation = 3.5% real
+        # FV = 100000*(1.035^24) + 1000*12*[(1.035^24 - 1)/0.035]  ~= 665,000
+        _set_profile(
+            monkeypatch, birth_year=1990, target_retirement_age=60,
+            annual_retirement_spend=60000.0, risk_tolerance="balanced",
+        )
+        _seed_investment("k401", "Employer 401(k)", 100000.0, subtype="401k")
+        monkeypatch.setattr(
+            retirement, "estimate_contributions", _fake_contributions(1000.0)
+        )
+
+        out = await retirement.project(today=date(2026, 1, 1))
+
+        assert out["available"] is True
+        assert out["years_to_retirement"] == 24
+        assert out["current_balance"] == 100000.0
+        assert out["scenarios"]["base"] == pytest.approx(665_000, rel=0.01)
+        assert out["target_pot"] == 1_500_000.0
+        assert out["assumptions"]["real_return_pct"] == 3.5
+        assert out["assumptions"]["nominal_return_pct"] == 6.0
+        assert out["assumptions"]["inflation_pct"] == 2.5
+        assert out["assumptions"]["withdrawal_rate_pct"] == 4.0
+        assert out["assumptions"]["source"] == "risk_tolerance"
+        assert out["missing"] == []
+
+    @pytest.mark.asyncio
+    async def test_three_scenarios_bracket_the_base_case(self, monkeypatch):
+        _set_profile(
+            monkeypatch, birth_year=1990, target_retirement_age=60,
+            annual_retirement_spend=60000.0, risk_tolerance="balanced",
+        )
+        _seed_investment("k401", "Employer 401(k)", 100000.0, subtype="401k")
+        monkeypatch.setattr(
+            retirement, "estimate_contributions", _fake_contributions(1000.0)
+        )
+
+        out = await retirement.project(today=date(2026, 1, 1))
+
+        assert out["scenarios"]["low"] < out["scenarios"]["base"]
+        assert out["scenarios"]["base"] < out["scenarios"]["high"]
+        assert out["base_shortfall"] == pytest.approx(
+            1_500_000 - out["scenarios"]["base"], abs=1
+        )
+        assert out["low_shortfall"] > out["base_shortfall"]
+
+    @pytest.mark.asyncio
+    async def test_required_monthly_closes_the_base_case_gap(self, monkeypatch):
+        _set_profile(
+            monkeypatch, birth_year=1990, target_retirement_age=60,
+            annual_retirement_spend=60000.0, risk_tolerance="balanced",
+        )
+        _seed_investment("k401", "Employer 401(k)", 100000.0, subtype="401k")
+        monkeypatch.setattr(
+            retirement, "estimate_contributions", _fake_contributions(1000.0)
+        )
+
+        out = await retirement.project(today=date(2026, 1, 1))
+        required = out["required_monthly_for_target"]
+
+        monkeypatch.setattr(
+            retirement, "estimate_contributions", _fake_contributions(required)
+        )
+        rerun = await retirement.project(today=date(2026, 1, 1))
+        assert rerun["scenarios"]["base"] == pytest.approx(1_500_000, rel=0.001)
+
+    @pytest.mark.asyncio
+    async def test_expected_return_override_wins_over_risk_tolerance(self, monkeypatch):
+        _set_profile(
+            monkeypatch, birth_year=1990, target_retirement_age=60,
+            annual_retirement_spend=60000.0, risk_tolerance="balanced",
+            expected_return_pct=8.0,
+        )
+        _seed_investment("k401", "Employer 401(k)", 100000.0, subtype="401k")
+        monkeypatch.setattr(
+            retirement, "estimate_contributions", _fake_contributions(1000.0)
+        )
+
+        out = await retirement.project(today=date(2026, 1, 1))
+
+        assert out["assumptions"]["nominal_return_pct"] == 8.0
+        assert out["assumptions"]["real_return_pct"] == 5.5
+        assert out["assumptions"]["source"] == "profile"
+
+    @pytest.mark.asyncio
+    async def test_real_assets_are_not_part_of_the_starting_balance(self, monkeypatch):
+        _set_profile(
+            monkeypatch, birth_year=1990, target_retirement_age=60,
+            annual_retirement_spend=60000.0, risk_tolerance="balanced",
+        )
+        _seed_investment("k401", "Employer 401(k)", 100000.0, subtype="401k")
+        _seed_real_asset("house", 450000.0)
+        monkeypatch.setattr(
+            retirement, "estimate_contributions", _fake_contributions(0.0)
+        )
+
+        out = await retirement.project(today=date(2026, 1, 1))
+
+        assert out["current_balance"] == 100000.0
+
+    @pytest.mark.asyncio
+    async def test_projection_unavailable_without_birth_year(self, monkeypatch):
+        _set_profile(monkeypatch)
+
+        out = await retirement.project()
+
+        assert out["available"] is False
+        assert "birth_year" in out["missing"]
+
+    @pytest.mark.asyncio
+    async def test_missing_risk_tolerance_names_itself(self, monkeypatch):
+        _set_profile(
+            monkeypatch, birth_year=1990, target_retirement_age=60,
+            annual_retirement_spend=60000.0,
+        )
+
+        out = await retirement.project(today=date(2026, 1, 1))
+
+        assert out["available"] is False
+        assert "risk_tolerance" in out["missing"]
+
+    @pytest.mark.asyncio
+    async def test_target_spend_falls_back_to_a_share_of_current_expenses(
+        self, monkeypatch
+    ):
+        _set_profile(
+            monkeypatch, birth_year=1990, target_retirement_age=60,
+            risk_tolerance="balanced",
+        )
+        monkeypatch.setattr(
+            retirement.health_service, "_median_monthly_expenses", lambda today: 5000.0
+        )
+        monkeypatch.setattr(
+            retirement, "estimate_contributions", _fake_contributions(0.0)
+        )
+
+        out = await retirement.project(today=date(2026, 1, 1))
+
+        assert out["available"] is True
+        assert out["target_annual_spend"] == 48000.0
+        assert out["assumptions"]["target_spend_source"] == "estimated_from_expenses"
+
+    @pytest.mark.asyncio
+    async def test_no_spend_and_no_expense_history_is_reported_missing(
+        self, monkeypatch
+    ):
+        _set_profile(
+            monkeypatch, birth_year=1990, target_retirement_age=60,
+            risk_tolerance="balanced",
+        )
+        monkeypatch.setattr(
+            retirement.health_service, "_median_monthly_expenses", lambda today: None
+        )
+
+        out = await retirement.project(today=date(2026, 1, 1))
+
+        assert out["available"] is False
+        assert "annual_retirement_spend" in out["missing"]
+
+
+class TestProjectionRoute:
+    def test_route_reports_what_is_missing(self, client):
+        r = client.get("/api/retirement/projection")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["available"] is False
+        assert "birth_year" in body["missing"]
