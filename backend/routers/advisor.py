@@ -102,6 +102,9 @@ dollar amounts from the FINANCIAL_FACTS header or tool results):
 - Treat `total_investments` as long-term wealth distinct from spendable
   `total_cash`.  Don't propose tapping it for everyday expenses; do reference
   it for retirement-readiness, diversification, and net-worth questions.
+- `total_real_assets` is homes and vehicles.  It counts toward net worth and
+  toward nothing else: it is not spendable, it is not part of the portfolio,
+  and the emergency-fund runway deliberately ignores it.
 - For portfolio questions, `get_investments` returns actual positions
   (quantity, cost basis, market value, unrealized gain), allocation, and
   concentration.  Flag over-concentration when `concentrated` is true (name
@@ -197,6 +200,7 @@ def _render_facts_header() -> str:
         "total_cash": snap["total_cash"],
         "total_credit_debt": snap["total_credit_debt"],
         "total_investments": snap["total_investments"],
+        "total_real_assets": snap["total_real_assets"],
         "transaction_count": len(state.stored_transactions),
     }
     return "FINANCIAL_FACTS (high-level — use tools for detail):\n" + json.dumps(

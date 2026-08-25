@@ -134,6 +134,12 @@ def _manual_account_linkage_meta(account_id: str) -> Tuple[int, Optional[str]]:
     return count, latest
 
 
+def _valuation_date(account_id: str) -> Optional[str]:
+    """ISO date the user last set a real asset's value, or None."""
+    raw = (state.account_details.get(account_id) or {}).get("valuation_updated_on")
+    return str(raw) if raw else None
+
+
 def _append_manual_accounts(
     accounts_out: List[AccountBalance],
     total_cash: float,
@@ -149,8 +155,9 @@ def _append_manual_accounts(
     the *starting* balance; the live balance returned here is starting
     plus the signed delta of linked transactions. Depository accounts
     decrease with net debits; credit accounts increase what's owed with
-    net debits. Investment manuals (no clear sign convention) keep the
-    starting value as-is.
+    net debits. Investment and real-asset manuals (no clear sign convention,
+    and a car payment is not a change in the car's worth) keep the starting
+    value as-is.
     """
     from analytics import classify_account_bucket
 
@@ -172,13 +179,18 @@ def _append_manual_accounts(
             starting = starting_ledger
             total_credit_debt += ledger
         else:
-            # Investments / other: leave starting balance untouched.
+            # Investments / real assets: leave the stored value untouched. The
+            # value is revalued only by an explicit user edit, never by the
+            # transactions that happen to be linked to it.
             available = starting_available
             ledger = starting_ledger
             starting = starting_available or starting_ledger
             delta = 0.0
 
-        linked_count, linked_last = _manual_account_linkage_meta(acct["id"])
+        if bucket == "real_asset":
+            linked_count, linked_last = 0, None
+        else:
+            linked_count, linked_last = _manual_account_linkage_meta(acct["id"])
         accounts_out.append(to_account_balance(
             acct,
             "manual",
@@ -192,6 +204,7 @@ def _append_manual_accounts(
             txn_delta=delta,
             linked_txn_count=linked_count,
             linked_last_date=linked_last,
+            valuation_updated_on=_valuation_date(acct["id"]) if bucket == "real_asset" else None,
         ))
     return accounts_out, total_cash, total_credit_debt
 
@@ -250,10 +263,29 @@ def _compute_investments(accounts: List[AccountBalance]) -> float:
     return round(total, 2)
 
 
-# Buckets whose balance is spendable money. ``other`` is here because the only
-# bucket deliberately kept out of cash is ``investment`` — it is summed
-# separately by ``_compute_investments``, and counting it twice would inflate
-# net worth. Anything unclassified is still the household's money.
+def _compute_real_assets(accounts: List[AccountBalance]) -> float:
+    """Sum the value of every home / vehicle / other real asset.
+
+    Kept separate from both cash and investments: a house is not spendable,
+    and it is not a tradeable holding either — folding it into either would
+    corrupt the emergency-fund runway or the portfolio allocation.
+    """
+    from analytics import classify_account_bucket
+
+    total = 0.0
+    for a in accounts:
+        if classify_account_bucket(a.type, a.subtype) != "real_asset":
+            continue
+        total += float(a.available or 0.0) or float(a.ledger or 0.0)
+    return round(total, 2)
+
+
+# Buckets whose balance is spendable money. ``other`` is here because
+# unclassified rows are still the household's money. ``investment`` and
+# ``real_asset`` are deliberately excluded — each is summed separately
+# (``_compute_investments`` / ``_compute_real_assets``) and counting one here
+# too would both double it in net worth and, worse for real assets, present a
+# house as emergency cash.
 _CASH_BUCKETS = ("cash", "other")
 
 
@@ -329,11 +361,15 @@ def _summary(
     from_cache: bool,
 ) -> BalancesSummary:
     total_investments = _compute_investments(accounts)
+    total_real_assets = _compute_real_assets(accounts)
     return BalancesSummary(
-        net_worth=round(total_cash + total_investments - total_credit_debt, 2),
+        net_worth=round(
+            total_cash + total_investments + total_real_assets - total_credit_debt, 2
+        ),
         total_cash=round(total_cash, 2),
         total_credit_debt=round(total_credit_debt, 2),
         total_investments=total_investments,
+        total_real_assets=total_real_assets,
         accounts=accounts,
         connections=connection_health.build(accounts),
         from_cache=from_cache,

@@ -152,6 +152,9 @@ class AccountDetails(Base):
     # Length of credit history is the one score factor a bank feed cannot
     # infer — SimpleFIN reports balances, not an open date.
     opened_on: Mapped[Optional[date]] = mapped_column(Date)
+    # Real assets (a home, a vehicle) have no feed: the value is whatever the
+    # user last typed, so the app records when they typed it.
+    valuation_updated_on: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 
@@ -245,6 +248,10 @@ class UserProfile(Base):
     time_horizon_years: Mapped[Optional[int]] = mapped_column(Integer)
     dependents: Mapped[Optional[int]] = mapped_column(Integer)
     debt_strategy: Mapped[Optional[str]] = mapped_column(String(20))
+    # Nullable on purpose: "not answered" has to stay distinct from a
+    # deliberate 0, which is a meaningful answer for both of these.
+    monthly_income: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    emergency_fund_months: Mapped[Optional[int]] = mapped_column(Integer)
     notes: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
@@ -252,6 +259,17 @@ class UserProfile(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class CategoryRule(Base):
+    __tablename__ = "category_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    # First match wins, so ordering is data the user authored — not a
+    # display preference the client may re-sort.
+    position: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
 
 class TransactionEmbedding(Base):

@@ -1,7 +1,7 @@
 """Pydantic request/response models for all route handlers."""
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Account(BaseModel):
@@ -20,6 +20,12 @@ class TransactionUpdate(BaseModel):
     person_1_owes: Optional[float] = None
     person_2_owes: Optional[float] = None
     notes: Optional[str] = None
+    # The imported record's own figures. None is a no-op, so every existing
+    # caller keeps its behaviour; they are settable only so a row a sync
+    # refuses to publish — an unreadable date, an unreadable amount — can be
+    # repaired without leaving the page that reported the problem.
+    date: Optional[str] = None
+    amount: Optional[float] = None
     reviewed: Optional[bool] = None  # server defaults to True on any user edit
     category: Optional[str] = None   # None=no-op, ""=clear, "X"=set to X
     transaction_type: Optional[Literal["debit", "credit"]] = None  # None=no-op
@@ -77,6 +83,11 @@ class AccountBalance(BaseModel):
     subtype: str
     available: float
     ledger: float
+    # Which integration produced this row. Stamped by the append helper that
+    # builds it, never read from the cached dict — consumers must not have to
+    # infer provenance (inferring it from absence is what made healthy
+    # SnapTrade brokerages render as broken SimpleFIN connections).
+    source: Literal["simplefin", "manual", "snaptrade"] = "simplefin"
     manual: bool = False   # True for user-added accounts not sourced from SimpleFIN
     # For manual accounts: the user-edited balance is treated as a starting
     # point and the live ``available``/``ledger`` above is computed as
@@ -93,6 +104,10 @@ class AccountBalance(BaseModel):
     # a native manual account. None for both fresh manuals and live rows.
     disconnected_from: Optional[str] = None
     disconnected_at: Optional[str] = None
+    # Real assets only: the ISO date the user last set this account's value.
+    # Nothing estimates a house or a car — the app only reports how stale the
+    # number the user typed has become.
+    valuation_updated_on: Optional[str] = None
 
 
 class AccountDetailsIn(BaseModel):
@@ -103,6 +118,7 @@ class AccountDetailsIn(BaseModel):
     statement_day: Optional[int] = None   # 1-31 (day of month the statement cuts)
     due_day: Optional[int] = None         # 1-31 (day of month the payment is due)
     opened_on: Optional[str] = None       # YYYY-MM-DD, user-entered
+    valuation_updated_on: Optional[str] = None  # YYYY-MM-DD, real assets only
     notes: str = ""
 
 
@@ -115,7 +131,7 @@ class AccountDetails(AccountDetailsIn):
 class ManualAccountIn(BaseModel):
     institution: str
     name: str
-    type: str              # "depository" | "credit" | "investment"
+    type: str              # "depository" | "credit" | "investment" | "asset"
     subtype: str = ""
     available: float = 0.0
     ledger: float = 0.0
@@ -128,6 +144,8 @@ class UserProfileIn(BaseModel):
     time_horizon_years: Optional[int] = None
     dependents: Optional[int] = None
     debt_strategy: Optional[Literal["avalanche", "snowball", "minimum"]] = None
+    monthly_income: Optional[float] = None
+    emergency_fund_months: Optional[int] = None
     notes: Optional[str] = None
 
 
@@ -136,8 +154,25 @@ class UserProfileOut(BaseModel):
     time_horizon_years: Optional[int] = None
     dependents: Optional[int] = None
     debt_strategy: Optional[str] = None
+    monthly_income: Optional[float] = None
+    emergency_fund_months: Optional[int] = None
     notes: str = ""
     updated_at: Optional[str] = None
+
+
+class CategoryRuleIn(BaseModel):
+    match: str
+    category: str
+
+
+class CategoryRule(CategoryRuleIn):
+    id: int
+    position: int
+
+
+class CategoryRulesReplace(BaseModel):
+    """Whole-list replace — list order *is* the evaluation order."""
+    rules: List[CategoryRuleIn]
 
 
 class ManualAccountUpdate(BaseModel):
@@ -146,12 +181,28 @@ class ManualAccountUpdate(BaseModel):
     ledger: Optional[float] = None
 
 
+class ConnectionHealth(BaseModel):
+    """One institution's connection state as of the last sync.
+
+    Derived from cached sync results rather than a live provider call, so
+    rendering the Accounts page costs no aggregator round-trip.
+    """
+    institution: str
+    status: Literal["connected", "disconnected", "manual"]
+    last_error: Optional[str] = None
+
+
 class BalancesSummary(BaseModel):
     net_worth: float
     total_cash: float
     total_credit_debt: float
     total_investments: float = 0.0
+    # Homes, vehicles and the like. Deliberately its own line rather than
+    # folded into cash or investments: it raises net worth without improving
+    # resilience, and the runway ratio ignores it.
+    total_real_assets: float = 0.0
     accounts: List[AccountBalance]
+    connections: List[ConnectionHealth] = Field(default_factory=list)
     from_cache: bool = False
     cache_fetched_at: Optional[str] = None
 

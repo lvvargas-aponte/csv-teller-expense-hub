@@ -16,10 +16,10 @@ import config
 import state
 from analytics import (
     _balances_snapshot,
-    _classify_account_bucket,
     _debts_from_accounts,
     _investments_snapshot,
     category_spending_summary,
+    classify_account_bucket,
     compute_budget_statuses,
     compute_goal_statuses,
     project_cashflow,
@@ -141,6 +141,7 @@ async def _get_balance(args: GetBalanceArgs) -> Dict[str, Any]:
         "total_cash": snap["total_cash"],
         "total_credit_debt": snap["total_credit_debt"],
         "total_investments": snap["total_investments"],
+        "total_real_assets": snap["total_real_assets"],
     }
 
 
@@ -153,7 +154,7 @@ async def _list_accounts(args: ListAccountsArgs) -> Dict[str, Any]:
         ("manual", snap["manual_accounts"]),
     ):
         for acct in accounts:
-            bucket = _classify_account_bucket(
+            bucket = classify_account_bucket(
                 acct.get("type", ""), acct.get("subtype", "")
             )
             if args.account_type != "all" and bucket != args.account_type:

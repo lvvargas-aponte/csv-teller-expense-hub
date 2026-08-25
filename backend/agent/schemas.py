@@ -29,7 +29,7 @@ class GetBalanceArgs(BaseModel):
 
 
 class ListAccountsArgs(BaseModel):
-    account_type: Literal["cash", "credit", "investment", "all"] = Field(
+    account_type: Literal["cash", "credit", "investment", "real_asset", "all"] = Field(
         "all", description="Filter to one bucket, or 'all' for every account."
     )
 

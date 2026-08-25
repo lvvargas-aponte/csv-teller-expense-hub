@@ -1,7 +1,7 @@
 """Action tools — Fin-triggered data refreshes.
 
 Thin wrappers over the same coroutines the REST endpoints use
-(``routers.simplefin`` / ``routers.balances`` / ``routers.snaptrade``), so
+(``routers.simplefin`` / ``balances_service`` / ``routers.snaptrade``), so
 there is exactly one sync implementation. These are Fin's only
 state-mutating tools; all three are idempotent syncs. Config problems
 (no SimpleFIN connection, SnapTrade not connected) come back as structured
@@ -46,10 +46,10 @@ async def _sync_transactions(args: SyncTransactionsArgs) -> Dict[str, Any]:
 
 
 async def _refresh_balances(args: RefreshBalancesArgs) -> Dict[str, Any]:
-    from routers.balances import get_balances_summary
+    from balances_service import build_summary
 
     try:
-        summary = await get_balances_summary(force=True)
+        summary = await build_summary(force=True)
     except HTTPException as e:
         return {"refreshed": False, "note": str(e.detail)}
     return {
@@ -58,6 +58,7 @@ async def _refresh_balances(args: RefreshBalancesArgs) -> Dict[str, Any]:
         "total_cash": summary.total_cash,
         "total_credit_debt": summary.total_credit_debt,
         "total_investments": summary.total_investments,
+        "total_real_assets": summary.total_real_assets,
         "account_count": len(summary.accounts),
     }
 

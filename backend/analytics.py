@@ -193,15 +193,23 @@ _INVESTMENT_SUBTYPES = frozenset({
 
 
 def classify_account_bucket(acct_type: str, subtype: str) -> str:
-    """Return ``'cash'`` / ``'credit'`` / ``'investment'`` / ``'other'``.
+    """Return ``'cash'`` / ``'credit'`` / ``'investment'`` / ``'real_asset'`` /
+    ``'other'``.
 
     Investment matching is intentionally permissive — both ``type='investment'``
     and any recognized retirement/brokerage ``subtype`` qualify so the user
     can flag a 401(k) as a manual depository account with the right subtype
     and have it accounted for correctly.
+
+    ``real_asset`` is checked before the permissive investment arm: a home or
+    vehicle is neither spendable cash nor a tradeable holding, and letting it
+    fall through to either would inflate the emergency-fund runway or the
+    portfolio allocation by the price of a house.
     """
     t = (acct_type or "").lower()
     s = (subtype or "").lower().strip()
+    if t == "asset":
+        return "real_asset"
     if t == "investment" or s in _INVESTMENT_SUBTYPES:
         return "investment"
     if t == "depository":
@@ -322,9 +330,15 @@ def _balances_snapshot() -> Dict[str, Any]:
     total_cash = 0.0
     total_credit = 0.0
     total_investments = 0.0
+    total_real_assets = 0.0
     for acct in list(linked_accounts) + list(snaptrade_accounts) + manual_accounts:
         bucket = classify_account_bucket(acct.get("type", ""), acct.get("subtype", ""))
-        if bucket == "cash":
+        if bucket == "real_asset":
+            # A home or vehicle: part of net worth, never part of cash.
+            total_real_assets += float(acct.get("available", 0.0) or 0.0) or float(
+                acct.get("ledger", 0.0) or 0.0
+            )
+        elif bucket == "cash":
             total_cash += float(acct.get("available", 0.0) or 0.0)
         elif bucket == "credit":
             total_credit += float(acct.get("ledger", 0.0) or 0.0)
@@ -338,10 +352,13 @@ def _balances_snapshot() -> Dict[str, Any]:
             total_investments += value
 
     return {
-        "net_worth": round(total_cash + total_investments - total_credit, 2),
+        "net_worth": round(
+            total_cash + total_investments + total_real_assets - total_credit, 2
+        ),
         "total_cash": round(total_cash, 2),
         "total_credit_debt": round(total_credit, 2),
         "total_investments": round(total_investments, 2),
+        "total_real_assets": round(total_real_assets, 2),
         "linked_accounts": linked_accounts,
         "snaptrade_accounts": snaptrade_accounts,
         "manual_accounts": manual_accounts,
@@ -943,7 +960,10 @@ def _net_worth_at(
         bucket = classify_account_bucket(
             snap.get("type") or "", snap.get("subtype") or ""
         )
-        if bucket == "cash":
+        if bucket in ("cash", "real_asset"):
+            # A real asset only ever changes value when the user revalues it,
+            # and every edit writes a snapshot — so it belongs in the
+            # timeseries on the same terms as cash, just never as cash.
             total += float(snap.get("available") or 0.0)
         elif bucket == "credit":
             # ``ledger`` on a credit card is the balance owed — counts as debt.
@@ -1511,35 +1531,25 @@ def _load_user_profile() -> Optional[Dict[str, Any]]:
     ``updated_at`` already stringified.
     """
     try:
-        from sqlalchemy import text as _text
-        from db.base import sync_engine as _engine
-    except Exception:
-        return None
-    try:
-        with _engine.connect() as conn:
-            row = conn.execute(
-                _text(
-                    "SELECT risk_tolerance, time_horizon_years, dependents, "
-                    "       debt_strategy, notes, updated_at "
-                    "FROM user_profile WHERE id = 'household'"
-                )
-            ).fetchone()
+        from db import profile_repo
+
+        row = profile_repo.load()
     except Exception as e:
         logger.debug(f"[analytics] user_profile read skipped: {e}")
         return None
     if not row:
         return None
-    out: Dict[str, Any] = {}
-    if row[0]:
-        out["risk_tolerance"] = row[0]
-    if row[1] is not None:
-        out["time_horizon_years"] = int(row[1])
-    if row[2] is not None:
-        out["dependents"] = int(row[2])
-    if row[3]:
-        out["debt_strategy"] = row[3]
-    if row[4]:
-        out["notes"] = row[4]
+    # Unset fields are omitted rather than sent as nulls: the snapshot is
+    # prompt context, and "dependents: null" reads as a fact about the
+    # household that nobody stated.
+    # Numeric fields keep a stored 0 — "dependents: 0" is an answer; text
+    # fields drop the empty string, which is how "unset" is stored for notes.
+    text_fields = ("risk_tolerance", "debt_strategy", "notes")
+    numeric_fields = (
+        "time_horizon_years", "dependents", "monthly_income", "emergency_fund_months",
+    )
+    out: Dict[str, Any] = {k: row[k] for k in text_fields if row.get(k)}
+    out.update({k: row[k] for k in numeric_fields if row.get(k) is not None})
     return out or None
 
 
@@ -1613,6 +1623,7 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
             "total_cash": balances["total_cash"],
             "total_credit_debt": balances["total_credit_debt"],
             "total_investments": balances["total_investments"],
+            "total_real_assets": balances["total_real_assets"],
             "cache_fetched_at": balances["cache_fetched_at"],
         },
         "balance_trend": balance_trend,

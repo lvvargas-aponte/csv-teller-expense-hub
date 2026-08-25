@@ -128,7 +128,10 @@ class TestGetBalance:
         _seed_cash(1500.0)
         _seed_credit(420.0)
         out = _run(_get_balance(GetBalanceArgs(account_type="all")))
-        assert set(out) == {"net_worth", "total_cash", "total_credit_debt", "total_investments"}
+        assert set(out) == {
+            "net_worth", "total_cash", "total_credit_debt",
+            "total_investments", "total_real_assets",
+        }
         assert out["total_cash"] == 1500.0
         assert out["total_credit_debt"] == 420.0
         assert out["net_worth"] == round(1500.0 - 420.0, 2)
