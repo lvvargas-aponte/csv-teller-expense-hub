@@ -10,38 +10,31 @@ yet so the frontend always has stable keys to render against.
 from typing import Optional
 
 from fastapi import APIRouter
-from sqlalchemy import text
 
-from db.base import sync_engine
+from db import profile_repo
 from models import UserProfileIn, UserProfileOut
 
 router = APIRouter()
 
-_PROFILE_ID = "household"
-
-
-def _row_to_profile(row) -> UserProfileOut:
-    return UserProfileOut(
-        risk_tolerance=row[0],
-        time_horizon_years=row[1],
-        dependents=row[2],
-        debt_strategy=row[3],
-        notes=row[4] or "",
-        updated_at=row[5].isoformat() if row[5] else None,
-    )
-
 
 def _load_profile() -> Optional[UserProfileOut]:
-    with sync_engine.connect() as conn:
-        row = conn.execute(
-            text(
-                "SELECT risk_tolerance, time_horizon_years, dependents, "
-                "       debt_strategy, notes, updated_at "
-                "FROM user_profile WHERE id = :id"
-            ),
-            {"id": _PROFILE_ID},
-        ).fetchone()
-    return _row_to_profile(row) if row else None
+    row = profile_repo.load()
+    if not row:
+        return None
+    return UserProfileOut(
+        risk_tolerance=row["risk_tolerance"],
+        time_horizon_years=row["time_horizon_years"],
+        dependents=row["dependents"],
+        debt_strategy=row["debt_strategy"],
+        monthly_income=row["monthly_income"],
+        emergency_fund_months=row["emergency_fund_months"],
+        birth_year=row["birth_year"],
+        target_retirement_age=row["target_retirement_age"],
+        annual_retirement_spend=row["annual_retirement_spend"],
+        expected_return_pct=row["expected_return_pct"],
+        notes=row["notes"] or "",
+        updated_at=row["updated_at"],
+    )
 
 
 @router.get("/profile", response_model=UserProfileOut)
@@ -52,34 +45,20 @@ async def get_profile() -> UserProfileOut:
 
 @router.put("/profile", response_model=UserProfileOut)
 async def upsert_profile(req: UserProfileIn) -> UserProfileOut:
-    """Merge non-null fields from ``req`` into the stored profile.
+    """Merge the fields present in ``req`` into the stored profile.
 
-    Partial updates: omitted fields keep their existing values. Set a
-    field to ``""`` (notes) or pass an explicit value to overwrite. To
-    *clear* a field, pass an empty string for notes; the typed enums and
-    integers don't currently support clearing — re-PUT with the desired
-    value or DELETE if we ever add it.
+    Presence, not nullness, decides what changes: a key the client omits
+    keeps its stored value, and a key sent as ``null`` clears the column.
+    That distinction is what lets the settings page's "Not set" option
+    actually unset a field — under the older exclude-none rule, choosing
+    it silently left the previous answer in place.
     """
-    payload = req.model_dump(exclude_none=True)
-    if not payload:
-        # Nothing to update; return current (or empty) profile.
-        return _load_profile() or UserProfileOut()
+    payload = req.model_dump(exclude_unset=True)
+    # notes is NOT NULL; "cleared" means the empty string, not NULL.
+    if "notes" in payload and payload["notes"] is None:
+        payload["notes"] = ""
 
-    # Build the SET clause dynamically so unspecified columns retain
-    # their existing values via COALESCE on the conflict-update path.
-    cols = list(payload.keys())
-    insert_cols = ["id"] + cols
-    insert_placeholders = [":id"] + [f":{c}" for c in cols]
-    update_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols)
-    sql = (
-        f"INSERT INTO user_profile ({', '.join(insert_cols)}) "
-        f"VALUES ({', '.join(insert_placeholders)}) "
-        f"ON CONFLICT (id) DO UPDATE SET {update_clause}, updated_at = NOW()"
-    )
-
-    params = {"id": _PROFILE_ID, **payload}
-    with sync_engine.begin() as conn:
-        conn.execute(text(sql), params)
+    profile_repo.upsert(payload)
 
     # Return the fresh row so the client doesn't have to GET right after.
     return _load_profile() or UserProfileOut()

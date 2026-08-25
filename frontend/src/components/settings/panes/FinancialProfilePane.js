@@ -113,6 +113,55 @@ export default function FinancialProfilePane({ profile, onChange }) {
         </div>
       </SettingsCard>
 
+      <SettingsCard title="Retirement" hint="optional">
+        <div className="set-grid2">
+          <Field
+            label="Birth year"
+            hint="Used to work out how many years the projection has to run."
+          >
+            <input
+              className="form-input set-input--num" type="number"
+              min="1900" max="2030" step="1" placeholder="1990"
+              value={profile.birth_year}
+              onChange={set('birth_year')}
+            />
+          </Field>
+          <Field
+            label="Target retirement age"
+            hint="The age you'd like to stop needing a paycheck."
+          >
+            <input
+              className="form-input set-input--num" type="number"
+              min="30" max="100" step="1" placeholder="65"
+              value={profile.target_retirement_age}
+              onChange={set('target_retirement_age')}
+            />
+          </Field>
+          <Field
+            label="Annual spend in retirement"
+            hint="What a year costs you then, in today's money. Left blank, we assume 80% of what you spend now."
+          >
+            <input
+              className="form-input set-input--num" type="number"
+              min="0" step="100" placeholder="$60,000"
+              value={profile.annual_retirement_spend}
+              onChange={set('annual_retirement_spend')}
+            />
+          </Field>
+          <Field
+            label="Expected return (%)"
+            hint="Nominal, before inflation. Left blank, we use your risk tolerance."
+          >
+            <input
+              className="form-input set-input--num" type="number"
+              min="0" max="20" step="0.1" placeholder="6.0"
+              value={profile.expected_return_pct}
+              onChange={set('expected_return_pct')}
+            />
+          </Field>
+        </div>
+      </SettingsCard>
+
       <SettingsCard title="Context" hint="optional">
         <Field
           label="Notes for the advisor"

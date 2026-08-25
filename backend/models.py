@@ -152,6 +152,10 @@ class UserProfileIn(BaseModel):
     debt_strategy: Optional[Literal["avalanche", "snowball", "minimum"]] = None
     monthly_income: Optional[float] = None
     emergency_fund_months: Optional[int] = None
+    birth_year: Optional[int] = None
+    target_retirement_age: Optional[int] = None
+    annual_retirement_spend: Optional[float] = None
+    expected_return_pct: Optional[float] = None
     notes: Optional[str] = None
 
 
@@ -162,6 +166,10 @@ class UserProfileOut(BaseModel):
     debt_strategy: Optional[str] = None
     monthly_income: Optional[float] = None
     emergency_fund_months: Optional[int] = None
+    birth_year: Optional[int] = None
+    target_retirement_age: Optional[int] = None
+    annual_retirement_spend: Optional[float] = None
+    expected_return_pct: Optional[float] = None
     notes: str = ""
     updated_at: Optional[str] = None
 

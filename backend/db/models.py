@@ -255,6 +255,10 @@ class UserProfile(Base):
     # deliberate 0, which is a meaningful answer for both of these.
     monthly_income: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     emergency_fund_months: Mapped[Optional[int]] = mapped_column(Integer)
+    birth_year: Mapped[Optional[int]] = mapped_column(Integer)
+    target_retirement_age: Mapped[Optional[int]] = mapped_column(Integer)
+    annual_retirement_spend: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    expected_return_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 3))
     notes: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
