@@ -14,6 +14,7 @@ from analytics import (
     compute_budget_statuses,
     compute_goal_statuses,
     detect_recurring_charges,
+    project_cashflow,
 )
 
 router = APIRouter()
@@ -127,6 +128,28 @@ def _recurring_anomaly_alerts() -> List[Dict[str, Any]]:
     return out
 
 
+def _cashflow_alerts() -> List[Dict[str, Any]]:
+    """Warn once when the 30-day projection lands below zero.
+
+    Phrased exactly as the outlook card phrases it — this is an estimate built
+    from typical months, and hedging it in one place and not the other would
+    read as two different claims.
+    """
+    projection = project_cashflow(horizon_days=30)
+    net = projection.get("net") or 0.0
+    if net >= 0:
+        return []
+    return [{
+        "severity": "warn",
+        "category": "cashflow",
+        "message": (
+            f"Spending is projected to exceed income by about ${abs(net):,.0f} "
+            f"over the next {projection['horizon_days']} days"
+        ),
+        "tab": "dashboard",
+    }]
+
+
 async def collect_alerts() -> Dict[str, Any]:
     """Compose every alert source, sorted by severity. Shared with the
     weekly digest builder so both surfaces show the same feed."""
@@ -135,6 +158,7 @@ async def collect_alerts() -> Dict[str, Any]:
     alerts.extend(_goal_alerts())
     alerts.extend(await _credit_utilization_alerts())
     alerts.extend(_recurring_anomaly_alerts())
+    alerts.extend(_cashflow_alerts())
 
     severity_rank = {"error": 0, "warn": 1, "info": 2}
     alerts.sort(key=lambda a: severity_rank.get(a["severity"], 99))

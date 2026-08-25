@@ -40,5 +40,6 @@ test('Overview is retired — the dashboard is the landing view', () => {
   renderSidebar();
 
   expect(screen.queryByRole('button', { name: 'Overview' })).toBeNull();
-  expect(resolveStoredTab('overview')).toEqual({ tab: 'dashboard', view: 'due' });
+  // No view: 'due' — that is a Commitments view and means nothing here.
+  expect(resolveStoredTab('overview')).toEqual({ tab: 'dashboard' });
 });

@@ -35,7 +35,7 @@ export default function FinancesPage() {
     [],
   );
   const [activeId, setActiveIdState] = useState(restored.tab);
-  const [commitmentView, setCommitmentView] = useState(restored.view);
+  const [commitmentView, setCommitmentView] = useState(restored.view || 'due');
   const setActiveId = useCallback((id) => {
     setActiveIdState(id);
     try { localStorage.setItem(ACTIVE_TAB_KEY, id); } catch { /* quota / private mode */ }

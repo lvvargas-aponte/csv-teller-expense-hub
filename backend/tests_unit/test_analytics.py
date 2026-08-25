@@ -477,3 +477,55 @@ class TestCashflowProjectionDiscretionary:
         assert bills
         assert all(b["estimated_date"][-2:] in ("28", "29", "30") for b in bills)
         assert any(b["estimated_date"].endswith("30") for b in bills)
+
+
+class TestCashflowProjectionEndpoint:
+    def test_endpoint_serves_the_waterfall(self, client):
+        _seed_income(5000.0)
+        _seed_recurring_charge("Rent", 1500.0, day=1)
+        _seed_one_off_spending(months=3, monthly=1200.0)
+
+        body = client.get("/api/cashflow/projection").json()
+
+        assert body["horizon_days"] == 30
+        assert body["expected_income"] == pytest.approx(5000.0, abs=1)
+        assert body["expected_recurring_outflow"] == pytest.approx(1500.0, abs=1)
+        assert body["expected_discretionary_outflow"] == pytest.approx(1200.0, abs=1)
+        assert body["net"] == pytest.approx(2300.0, abs=1)
+        assert body["discretionary_basis"]["confidence"] == "high"
+        assert body["projection_incomplete"] is False
+
+    def test_horizon_days_is_honoured(self, client):
+        _seed_one_off_spending(months=3, monthly=1200.0)
+
+        body = client.get("/api/cashflow/projection?horizon_days=60").json()
+
+        assert body["horizon_days"] == 60
+        assert body["expected_discretionary_outflow"] == pytest.approx(2400.0, abs=1)
+
+    def test_horizon_days_outside_the_range_is_rejected(self, client):
+        assert client.get("/api/cashflow/projection?horizon_days=0").status_code == 422
+        assert client.get("/api/cashflow/projection?horizon_days=500").status_code == 422
+
+
+class TestNegativeProjectionAlert:
+    def test_negative_net_raises_a_hedged_alert(self, client):
+        _seed_income(2000.0)
+        _seed_recurring_charge("Rent", 1500.0, day=1)
+        _seed_one_off_spending(months=3, monthly=840.0)
+
+        feed = client.get("/api/alerts").json()["alerts"]
+        alert = next(a for a in feed if a["category"] == "cashflow")
+
+        assert "projected to exceed income by about $340" in alert["message"]
+        assert "next 30 days" in alert["message"]
+        assert alert["tab"] == "dashboard"
+
+    def test_a_positive_projection_says_nothing(self, client):
+        _seed_income(5000.0)
+        _seed_recurring_charge("Rent", 1500.0, day=1)
+        _seed_one_off_spending(months=3, monthly=1200.0)
+
+        feed = client.get("/api/alerts").json()["alerts"]
+
+        assert [a for a in feed if a["category"] == "cashflow"] == []

@@ -10,6 +10,7 @@ import { fmt$, fmtSigned } from '../../utils/formatting';
 import NetWorthCard from './cards/NetWorthCard';
 import { liquidLabel } from '../../utils/netWorth';
 import CashFlowCard from './cards/CashFlowCard';
+import CashFlowOutlookCard from './cards/CashFlowOutlookCard';
 import SpendingByCategoryCard from './cards/SpendingByCategoryCard';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import BalancesCard from './cards/BalancesCard';
@@ -304,6 +305,7 @@ export default function DashboardTab({
               <NetWorthCard dashboard={dashboard} summary={summary} afterTax={afterTax} loading={dashboardLoading} error={dashboardErr} />
             </div>
             <CashFlowCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
+            <CashFlowOutlookCard />
             <SpendingByCategoryCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
             <div className="eh-card-full">
               <IncomeVsExpensesCard months={months} />

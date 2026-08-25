@@ -37,7 +37,7 @@ const RETIRED_TAB_IDS = {
   subscriptions: { tab: 'commitments', view: 'recurring' },
   // Overview held net worth, the payoff planner and spending insights — three
   // unrelated things whose identity against Dashboard was never predictable.
-  overview:      { tab: 'dashboard', view: 'due' },
+  overview:      { tab: 'dashboard' },
 };
 
 export function resolveStoredTab(stored) {

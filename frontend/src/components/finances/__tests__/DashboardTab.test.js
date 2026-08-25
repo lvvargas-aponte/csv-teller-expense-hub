@@ -16,6 +16,7 @@ jest.mock('../cards/StandingCard', () => () => <div />);
 jest.mock('../cards/WeeklyDigestCard', () => () => <div />);
 jest.mock('../cards/NetWorthCard', () => () => <div />);
 jest.mock('../cards/CashFlowCard', () => () => <div />);
+jest.mock('../cards/CashFlowOutlookCard', () => () => <div />);
 jest.mock('../cards/SpendingByCategoryCard', () => () => <div />);
 jest.mock('../cards/IncomeVsExpensesCard', () => () => <div />);
 jest.mock('../cards/BalancesCard', () => () => <div />);
