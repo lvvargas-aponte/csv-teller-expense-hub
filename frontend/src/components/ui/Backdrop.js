@@ -7,6 +7,7 @@ export default function Backdrop({ onClose, children, zIndex = Z_BACKDROP_DEFAUL
     <div
       ref={ref}
       className="backdrop"
+      role="presentation"
       style={{ zIndex }}
       onMouseDown={(e) => { if (e.target === ref.current) onClose(); }}
     >

@@ -79,6 +79,7 @@ export default function Select({ value, onChange, options, placeholder, classNam
   return (
     <div
       ref={containerRef}
+      role="presentation"
       className={`custom-select ${open ? 'custom-select--open' : ''}`}
       onKeyDown={handleKeyDown}
     >

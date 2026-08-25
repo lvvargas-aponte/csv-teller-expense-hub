@@ -22,6 +22,7 @@ export default function RemoveInstitutionDialog({
       className="purge-backdrop"
       style={{ zIndex: Z_BACKDROP_PANEL + 1 }}
       onClick={(e) => { if (e.target === e.currentTarget && !busy) onCancel(); }}
+      onKeyDown={(e) => { if (e.key === 'Escape' && !busy) onCancel(); }}
     >
       <div className="modal modal--sm">
         <div className="modal-header">

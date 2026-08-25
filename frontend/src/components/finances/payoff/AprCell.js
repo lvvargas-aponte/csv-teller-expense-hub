@@ -63,18 +63,16 @@ export function AprCell({ value, onChange }) {
 export function AprLegend() {
   const [show, setShow] = useState(false);
   return (
-    <div
-      className="ov-apr-info-wrap"
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
+    <div className="ov-apr-info-wrap">
       <button
         type="button"
         className="ov-apr-info-btn"
         aria-label="APR color guide"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
         onFocus={() => setShow(true)}
         onBlur={() => setShow(false)}
-      >ⓘ</button>
+      ><span aria-hidden="true">ⓘ</span></button>
       {show && (
         <div className="ov-apr-tooltip" role="tooltip">
           <div className="ov-apr-tooltip-title">APR color guide</div>

@@ -155,6 +155,7 @@ export default function CategoryCombobox({
                 key={c}
                 role="option"
                 aria-selected={isSelected}
+                tabIndex={-1}
                 className={`cat-combo-option${isSelected ? ' cat-combo-option--selected' : ''}`}
                 onMouseDown={(e) => { e.preventDefault(); handleSelect(c); }}
               >
@@ -175,6 +176,8 @@ export default function CategoryCombobox({
           {showCreateOption && (
             <div
               role="option"
+              aria-selected={false}
+              tabIndex={-1}
               className="cat-combo-option cat-combo-option--create"
               onMouseDown={(e) => { e.preventDefault(); handleSelect(draftTrim); }}
             >

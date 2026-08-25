@@ -224,23 +224,24 @@ export default function AdvisorChat() {
             </div>
           )}
           {conversations.map((c) => (
-            <button
-              key={c.conversation_id}
-              type="button"
-              onClick={() => openConversation(c.conversation_id)}
-              className={'advisor-conv-item' + (activeId === c.conversation_id ? ' advisor-conv-item--active' : '')}
-            >
-              <div className="advisor-conv-preview">{c.preview || '(empty)'}</div>
-              <div className="advisor-conv-meta">{c.message_count} msgs</div>
-              <span
-                role="button"
-                aria-label="Delete conversation"
+            <div key={c.conversation_id} className="advisor-conv-row">
+              <button
+                type="button"
+                onClick={() => openConversation(c.conversation_id)}
+                className={'advisor-conv-item' + (activeId === c.conversation_id ? ' advisor-conv-item--active' : '')}
+              >
+                <div className="advisor-conv-preview">{c.preview || '(empty)'}</div>
+                <div className="advisor-conv-meta">{c.message_count} msgs</div>
+              </button>
+              <button
+                type="button"
+                aria-label={`Delete conversation: ${c.preview || 'empty conversation'}`}
                 onClick={(e) => handleDelete(c.conversation_id, e)}
                 className="advisor-conv-delete"
               >
-                ✕
-              </span>
-            </button>
+                <span aria-hidden="true">✕</span>
+              </button>
+            </div>
           ))}
         </div>
       </aside>

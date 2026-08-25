@@ -19,6 +19,9 @@ export default function PurgeConfirmDialog({ target, busy, onCancel, onConfirm }
       onClick={(e) => {
         if (e.target === e.currentTarget && !busy) onCancel();
       }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && !busy) onCancel();
+      }}
     >
       <div className="modal modal--sm">
         <div className="modal-header">

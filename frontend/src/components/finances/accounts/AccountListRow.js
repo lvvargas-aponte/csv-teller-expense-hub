@@ -58,7 +58,7 @@ export default function AccountListRow({
       </div>
 
       {open && (
-        <div className="acct-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="acct-drawer" role="presentation" onClick={(e) => e.stopPropagation()}>
           <DrawerField label="Credit limit">
             <InlineField
               value={row.limit}
