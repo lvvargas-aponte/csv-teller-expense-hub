@@ -1150,20 +1150,41 @@ def _is_income_candidate(txn: Dict[str, Any]) -> bool:
     return True
 
 
-def _is_inbound_transfer_candidate(txn: Dict[str, Any]) -> bool:
+def _transfer_destination(txn: Dict[str, Any]) -> Optional[str]:
+    """Which account the money ended up in — the tag if there is one.
+
+    ``transfer_to_account_id`` is set by the user on the *source* row, so an
+    outflow from checking into a Roth lands in the Roth. Untagged rows land
+    wherever they were posted.
+    """
+    return txn.get("transfer_to_account_id") or txn.get("account_id") or None
+
+
+def _is_inbound_transfer_candidate(
+    txn: Dict[str, Any], include_tagged_transfers: bool = False
+) -> bool:
     """Return True if ``txn`` looks like a P2P / reimbursement credit.
 
     Same baseline filters as ``_is_income_candidate`` (inflow, positive,
     depository) but *requires* the description to match
     ``_INBOUND_TRANSFER_RE`` and does *not* exclude P2P keywords.
+
+    ``include_tagged_transfers`` widens the net to outflows the user tagged
+    with a destination account. Those are inbound from the destination's point
+    of view, and the tag is a stronger signal than any description regex, so
+    they skip the keyword test. Off by default: the split-expense reader wants
+    only money arriving in a spendable account.
     """
-    if txn_direction(txn) != "inflow":
-        return False
+    direction = txn_direction(txn)
     try:
         amount = float(txn.get("amount") or 0)
     except (TypeError, ValueError):
         return False
     if amount <= 0:
+        return False
+    if include_tagged_transfers and txn.get("transfer_to_account_id"):
+        return True
+    if direction != "inflow":
         return False
     acct_type = (txn.get("account_type") or "").lower()
     if "credit" in acct_type:
@@ -1232,8 +1253,10 @@ def detect_recurring_income(
 
         monthly_estimate = avg * (_DAYS_PER_MONTH / cadence_days)
 
+        destinations = {i["destination"] for i in items if i["destination"]}
         out.append({
             "merchant_key": key,
+            "account_id": destinations.pop() if len(destinations) == 1 else None,
             "sample_description": items[-1]["description"],
             "average_amount": round(avg, 2),
             "occurrences": len(items),
@@ -1250,6 +1273,7 @@ def detect_recurring_income(
 def detect_recurring_inbound_transfers(
     min_occurrences: int = 2,
     max_spread: float = 0.5,
+    include_tagged_transfers: bool = False,
 ) -> List[Dict[str, Any]]:
     """Find recurring P2P / reimbursement credits (rent splits, Venmo, Zelle).
 
@@ -1262,11 +1286,13 @@ def detect_recurring_inbound_transfers(
     Returns one entry per detected stream with ``monthly_estimate`` and
     ``total_received`` so the advisor can reconcile against
     ``shared_split_recent.per_person`` to flag who is over- or
-    under-paying their share.
+    under-paying their share. ``account_id`` names the destination account
+    when every row in the stream agrees on one, and is ``None`` otherwise —
+    a stream that lands in two places can't be attributed to either.
     """
     groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for txn in state.stored_transactions.values():
-        if not _is_inbound_transfer_candidate(txn):
+        if not _is_inbound_transfer_candidate(txn, include_tagged_transfers):
             continue
         date_str = txn.get("date", "")
         if not date_str:
@@ -1279,6 +1305,7 @@ def detect_recurring_inbound_transfers(
             "amount": float(txn.get("amount") or 0),
             "date": date_str,
             "month": _parse_month_key(date_str),
+            "destination": _transfer_destination(txn),
         })
 
     out: List[Dict[str, Any]] = []
@@ -1302,8 +1329,10 @@ def detect_recurring_inbound_transfers(
         else:
             cadence_days = 30
 
+        destinations = {i["destination"] for i in items if i["destination"]}
         out.append({
             "merchant_key": key,
+            "account_id": destinations.pop() if len(destinations) == 1 else None,
             "sample_description": items[-1]["description"],
             "average_amount": round(avg, 2),
             "occurrences": len(items),
