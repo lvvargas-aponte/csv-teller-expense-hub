@@ -68,6 +68,11 @@ export function buildAssetRow(account) {
     subtypeLabel: ASSET_SUBTYPE_LABELS[subtype] || (account.subtype || 'Other'),
     value: num(account.available) ?? num(account.ledger) ?? 0,
     valuationUpdatedOn: account.valuation_updated_on ?? null,
+    // Both come from the summary, which joins the asset to its loan. null is
+    // "unknown" — an unlinked asset, or a link whose loan is gone.
+    securedByAccountId: account.secured_by_account_id ?? null,
+    securedDebt: num(account.secured_debt),
+    equity: num(account.equity),
   };
 }
 

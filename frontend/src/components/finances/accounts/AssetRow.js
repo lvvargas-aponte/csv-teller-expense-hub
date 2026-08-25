@@ -34,12 +34,16 @@ export function valuationNote(isoDate, now = new Date()) {
 
 // Row for a home / vehicle / other real asset. Unlike cash and investments
 // the value has no feed behind it, so the row is where the user retypes it:
-// committing a new value also stamps the valuation date.
-export default function AssetRow({ row, onValueChange }) {
+// committing a new value also stamps the valuation date. Equity is shown
+// beside the value when a loan is linked; it is read from the summary and
+// changes no total.
+export default function AssetRow({ row, creditAccounts = [], onValueChange, onSecuredByChange }) {
   const note = valuationNote(row.valuationUpdatedOn);
   const meta = [];
   if (row.subtypeLabel) meta.push({ text: row.subtypeLabel });
   meta.push(note);
+  const linked = row.securedByAccountId || '';
+  const linkIsStale = !!linked && row.equity === null;
 
   return (
     <div className="acct-row acct-row--static">
@@ -49,6 +53,24 @@ export default function AssetRow({ row, onValueChange }) {
       <div className="acct-row-body">
         <div className="acct-row-title">{row.name}</div>
         <MetaLine items={meta} />
+        <div className="acct-row-secured">
+          <select
+            className="ifield"
+            aria-label={`Secured by, for ${row.name}`}
+            value={linked}
+            onChange={(e) => onSecuredByChange?.(e.target.value || null)}
+          >
+            <option value="">Secured by — nothing</option>
+            {creditAccounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+          {linkIsStale && (
+            <span className="acct-meta-warn">
+              That loan is no longer here — equity unknown
+            </span>
+          )}
+        </div>
       </div>
       <div className="acct-row-amount">
         <InlineField
@@ -60,6 +82,9 @@ export default function AssetRow({ row, onValueChange }) {
           ariaLabel={`Value of ${row.name}`}
           placeholder={fmt$(0)}
         />
+        {row.equity !== null && row.equity !== undefined && (
+          <div className="acct-row-subamount">{fmt$(row.equity)} equity</div>
+        )}
       </div>
       <div />
     </div>

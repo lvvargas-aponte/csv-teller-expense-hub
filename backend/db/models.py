@@ -155,6 +155,9 @@ class AccountDetails(Base):
     # Real assets (a home, a vehicle) have no feed: the value is whatever the
     # user last typed, so the app records when they typed it.
     valuation_updated_on: Mapped[Optional[date]] = mapped_column(Date)
+    # Set on the ASSET row, pointing at the credit account it is secured
+    # against. Deliberately not a foreign key — see migration 0024.
+    secured_by_account_id: Mapped[Optional[str]] = mapped_column(Text)
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 

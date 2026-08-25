@@ -96,6 +96,8 @@ export default function AccountsTab({
         ...a,
         valuation_updated_on:
           detailsMap[a.id]?.valuation_updated_on ?? a.valuation_updated_on ?? null,
+        secured_by_account_id:
+          detailsMap[a.id]?.secured_by_account_id ?? a.secured_by_account_id ?? null,
       })),
     [accounts, detailsMap, bucketOf],
   );
@@ -128,6 +130,7 @@ export default function AccountsTab({
       due_day:         toInt(next.due_day),
       opened_on:       next.opened_on || null,
       valuation_updated_on: next.valuation_updated_on || null,
+      secured_by_account_id: next.secured_by_account_id || null,
       notes:           next.notes ?? '',
     };
     try {
@@ -289,7 +292,9 @@ export default function AccountsTab({
           <AssetRow
             key={row.id}
             row={row}
+            creditAccounts={creditRows}
             onValueChange={(v) => handleAssetRevalue(row.id, v)}
+            onSecuredByChange={(v) => handleFieldUpdate(row.id, 'secured_by_account_id', v)}
           />
         ))}
         <button type="button" className="acct-add-row" onClick={() => setAddingKind('asset')}>

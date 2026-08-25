@@ -297,3 +297,25 @@ test('updating an asset value stamps the valuation date', async () => {
     }),
   ));
 });
+
+test('an asset row shows its equity and lets a loan be linked to it', async () => {
+  const user = userEvent.setup();
+  renderTab([
+    assetAccount({ secured_debt: 310000, equity: 140000 }),
+    creditAccount({ id: 'm1', name: 'Mortgage', subtype: 'loan', ledger: 310000 }),
+  ]);
+
+  const assets = await sectionNamed('Property & vehicles');
+  expect(within(assets).getByText(/\$140,000/)).toBeInTheDocument();
+
+  const picker = within(assets).getByLabelText(/secured by/i);
+  // Only credit accounts are offerable as the loan behind an asset.
+  expect(within(picker).getByRole('option', { name: /Mortgage/ })).toBeInTheDocument();
+  expect(within(picker).queryByRole('option', { name: /Maple Street/ })).not.toBeInTheDocument();
+
+  await user.selectOptions(picker, 'm1');
+  await waitFor(() => expect(axios.put).toHaveBeenCalledWith(
+    expect.stringContaining('/api/accounts/a1/details'),
+    expect.objectContaining({ secured_by_account_id: 'm1' }),
+  ));
+});

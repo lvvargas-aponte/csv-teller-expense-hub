@@ -63,3 +63,65 @@ async def test_transactions_do_not_revalue_a_real_asset():
     assert row.txn_delta == 0.0
     assert row.linked_txn_count == 0
     assert summary.total_real_assets == 22000.0
+
+
+def _set_details(account_id, **fields):
+    state.account_details[account_id] = {
+        "account_id": account_id,
+        "created": "2026-08-01T00:00:00",
+        "updated": "2026-08-01T00:00:00",
+        **fields,
+    }
+
+
+@pytest.mark.asyncio
+async def test_asset_reports_equity_net_of_its_loan():
+    loan = _add_manual_account(name="Mortgage", type="credit", subtype="loan", ledger=310000.0)
+    home = _add_manual_account(name="House", type="asset", subtype="home", available=450000.0)
+    _set_details(home, secured_by_account_id=loan)
+
+    summary = await build_summary()
+    row = _find(summary.accounts, home)
+
+    assert row.secured_debt == 310000.0
+    assert row.equity == 140000.0
+    # The loan is still counted once, in total_credit_debt — not twice.
+    assert summary.total_credit_debt == 310000.0
+    assert summary.total_real_assets == 450000.0
+    assert summary.net_worth == 140000.0
+
+
+@pytest.mark.asyncio
+async def test_an_unlinked_asset_reports_no_equity():
+    """No link means no claim about equity — not "equity equals value"."""
+    home = _add_manual_account(name="House", type="asset", subtype="home", available=450000.0)
+
+    row = _find((await build_summary()).accounts, home)
+
+    assert row.secured_debt is None
+    assert row.equity is None
+
+
+@pytest.mark.asyncio
+async def test_a_stale_link_reports_null_equity_not_full_value():
+    """The loan was disconnected or deleted. Showing the whole house as equity
+    is the dangerous failure; saying "unknown" is the honest one."""
+    home = _add_manual_account(name="House", type="asset", subtype="home", available=450000.0)
+    _set_details(home, secured_by_account_id="manual_gone_forever")
+
+    row = _find((await build_summary()).accounts, home)
+
+    assert row.secured_debt is None
+    assert row.equity is None
+
+
+@pytest.mark.asyncio
+async def test_equity_is_presentational_and_never_lands_on_a_non_asset_row():
+    loan = _add_manual_account(name="Mortgage", type="credit", subtype="loan", ledger=310000.0)
+    home = _add_manual_account(name="House", type="asset", subtype="home", available=450000.0)
+    _set_details(home, secured_by_account_id=loan)
+
+    loan_row = _find((await build_summary()).accounts, loan)
+
+    assert loan_row.secured_debt is None
+    assert loan_row.equity is None

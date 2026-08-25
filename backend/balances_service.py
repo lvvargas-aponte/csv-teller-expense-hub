@@ -353,6 +353,33 @@ async def persist_simplefin_balances(
     return accounts_out, total_cash, total_credit_debt
 
 
+def _attach_equity(accounts: List[AccountBalance]) -> None:
+    """Fill ``secured_debt`` / ``equity`` on real-asset rows, in place.
+
+    Runs after every source has been merged: the loan may come from SimpleFIN
+    while the asset is manual, so the join can only happen once both lists
+    exist.
+
+    Strictly presentational — it changes no total. The linked loan is counted
+    exactly once, in ``total_credit_debt``; adding it here as well would
+    double it. A link pointing at an account that is gone (disconnected,
+    deleted) leaves both fields ``None``: showing the full value of a house as
+    equity because its mortgage vanished is the dangerous failure here.
+    """
+    from analytics import classify_account_bucket
+
+    by_id = {a.id: a for a in accounts}
+    for acct in accounts:
+        if classify_account_bucket(acct.type, acct.subtype) != "real_asset":
+            continue
+        loan_id = (state.account_details.get(acct.id) or {}).get("secured_by_account_id")
+        loan = by_id.get(loan_id) if loan_id else None
+        if loan is None:
+            continue
+        acct.secured_debt = round(float(loan.ledger or 0.0), 2)
+        acct.equity = round(float(acct.available or 0.0) - acct.secured_debt, 2)
+
+
 def _summary(
     accounts: List[AccountBalance],
     total_cash: float,
@@ -362,6 +389,7 @@ def _summary(
 ) -> BalancesSummary:
     total_investments = _compute_investments(accounts)
     total_real_assets = _compute_real_assets(accounts)
+    _attach_equity(accounts)
     return BalancesSummary(
         net_worth=round(
             total_cash + total_investments + total_real_assets - total_credit_debt, 2

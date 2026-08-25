@@ -108,6 +108,11 @@ class AccountBalance(BaseModel):
     # Nothing estimates a house or a car — the app only reports how stale the
     # number the user typed has become.
     valuation_updated_on: Optional[str] = None
+    # Real assets with a linked loan only. Presentational: neither figure
+    # changes any total on the summary — the loan is counted once, in
+    # total_credit_debt. None means "unknown", never "no debt".
+    secured_debt: Optional[float] = None
+    equity: Optional[float] = None
 
 
 class AccountDetailsIn(BaseModel):
@@ -119,6 +124,7 @@ class AccountDetailsIn(BaseModel):
     due_day: Optional[int] = None         # 1-31 (day of month the payment is due)
     opened_on: Optional[str] = None       # YYYY-MM-DD, user-entered
     valuation_updated_on: Optional[str] = None  # YYYY-MM-DD, real assets only
+    secured_by_account_id: Optional[str] = None  # real assets: the loan behind it
     notes: str = ""
 
 
