@@ -61,16 +61,20 @@ describe.each([['light', LIGHT], ['dark', DARK]])('%s theme', (name, t) => {
       expect(t[`--chart-${i}`]).toMatch(/^#[0-9a-f]{6}$/i);
     }
   });
+});
 
-  test.each(['--brand-grad-from', '--brand-grad-to'])(
-    // Defined only in :root — held at the same value in both themes on
-    // purpose (white-text fills must not shift to the lighter dark-theme
-    // blues), so both runs assert against LIGHT rather than the per-theme t.
-    'white text on %s clears AA',
-    (token) => {
-      expect(contrast('#ffffff', LIGHT[token])).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+test.each(['--brand-grad-from', '--brand-grad-to'])(
+  'white text on %s clears AA',
+  (token) => {
+    expect(contrast('#ffffff', LIGHT[token])).toBeGreaterThanOrEqual(4.5);
+  },
+);
+
+// The whole point of these two tokens: they must NOT follow the theme.
+// A dark-mode override would put white text back on #60a5fa (2.54:1).
+test('white-text gradient stops are never redefined per theme', () => {
+  expect(DARK['--brand-grad-from']).toBeUndefined();
+  expect(DARK['--brand-grad-to']).toBeUndefined();
 });
 
 test('light theme defines the spacing and type scales once', () => {
