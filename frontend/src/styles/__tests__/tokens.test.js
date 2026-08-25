@@ -93,3 +93,20 @@ describe('brand and semantic colours stay separate', () => {
     }
   });
 });
+
+describe('the brand gradient lives in one token', () => {
+  test('no rule hand-rolls a blue-violet gradient', () => {
+    const handRolled = APP_CSS.match(/linear-gradient\([^)]*#(2563eb|7c3aed|60a5fa|a78bfa)/gi);
+    expect(handRolled).toBeNull();
+  });
+
+  test('the banner uses the gradient token', () => {
+    const rule = APP_CSS.match(/\.eh-banner\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule[0]).toContain('var(--brand-gradient)');
+  });
+
+  test('no emerald gradient survives', () => {
+    expect(APP_CSS).not.toMatch(/linear-gradient\([^)]*#(059669|065f46)/i);
+  });
+});
