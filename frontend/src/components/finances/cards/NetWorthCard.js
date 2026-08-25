@@ -5,13 +5,20 @@ import {
 import DashboardCard from './DashboardCard';
 import { fmt$, fmtSigned } from '../../../utils/formatting';
 import Num from '../Num';
+import { liquidLabel, netWorthComposition } from '../../../utils/netWorth';
 
 const AXIS = { fontSize: 11, fill: 'var(--text-secondary, #94a3b8)' };
 
-export default function NetWorthCard({ dashboard, loading, error, onHide, index, kicker }) {
+export default function NetWorthCard({
+  dashboard, summary, loading, error, onHide, index, kicker,
+}) {
   const trend = dashboard?.balance_trend;
   const series = dashboard?.net_worth_timeseries || [];
   const empty = !loading && !error && series.length === 0 && !trend?.available;
+  const parts = netWorthComposition(summary);
+  // Illiquid value inflates net worth without improving resilience, so the two
+  // figures sit side by side rather than one standing in for the other.
+  const liquid = liquidLabel(summary, trend?.current_net_worth ?? null);
 
   return (
     <DashboardCard
@@ -32,6 +39,24 @@ export default function NetWorthCard({ dashboard, loading, error, onHide, index,
               <Num value={trend.current_net_worth} signed />
             </div>
           </div>
+          {liquid !== null && (
+            <div>
+              <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                Liquid
+                <span className="eh-info-wrap" tabIndex={0} aria-label="About liquid net worth">
+                  <span className="eh-info-icon">i</span>
+                  <span className="eh-info-tooltip" role="tooltip">
+                    <div className="eh-info-tooltip-title">Liquid net worth</div>
+                    Everything except property and vehicles. A house raises net
+                    worth without making a hard month any easier, so the
+                    emergency-fund runway ignores it on purpose — this is the
+                    figure that ratio reasons about.
+                  </span>
+                </span>
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{liquid}</div>
+            </div>
+          )}
           {(trend.delta_30d !== null && trend.delta_30d !== undefined) && (
             <div>
               <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>30-day Δ</div>
@@ -51,6 +76,22 @@ export default function NetWorthCard({ dashboard, loading, error, onHide, index,
               </div>
             </div>
           )}
+        </div>
+      )}
+      {parts && (
+        <div
+          className="nw-composition"
+          role="group"
+          aria-label="What makes up net worth"
+        >
+          {parts.map((p) => (
+            <div key={p.key} className="nw-part">
+              <span className="nw-part-label">{p.label}</span>
+              <span className={`nw-part-value${p.value < 0 ? ' is-neg' : ''}`}>
+                {fmtSigned(p.value)}
+              </span>
+            </div>
+          ))}
         </div>
       )}
       {series.length > 0 && (

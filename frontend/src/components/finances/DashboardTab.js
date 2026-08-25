@@ -7,6 +7,7 @@ import {
 import { fmt$, fmtSigned } from '../../utils/formatting';
 
 import NetWorthCard from './cards/NetWorthCard';
+import { liquidLabel } from '../../utils/netWorth';
 import CashFlowCard from './cards/CashFlowCard';
 import SpendingByCategoryCard from './cards/SpendingByCategoryCard';
 import RecurringChargesCard from './cards/RecurringChargesCard';
@@ -133,6 +134,13 @@ export default function DashboardTab({
 
   const netWorth = summary?.net_worth ?? trend?.current_net_worth ?? 0;
   const netWorthDelta = trend?.delta_30d ?? null;
+  // Once a house is in the total, "net worth" and "money you could reach" are
+  // two different numbers. The tile shows the total, so it has to name the
+  // other one and say which ratios deliberately leave property out.
+  const netWorthLiquid = liquidLabel(summary, trend?.current_net_worth ?? null);
+  const netWorthHelp = netWorthLiquid
+    ? `Assets minus liabilities across all linked and manual accounts, property and vehicles included. The delta shows the change vs. 30 days ago. ${netWorthLiquid} is everything except property — the emergency-fund runway ignores illiquid value on purpose, so it reasons about that figure instead.`
+    : 'Assets minus liabilities across all linked and manual accounts. The delta shows the change vs. 30 days ago.';
 
   const today = useMemo(() => new Date(), []);
   const greetingLine = `${greetingFor(today)}, ${formatToday(today)}`;
@@ -239,7 +247,8 @@ export default function DashboardTab({
             delta={netWorthDelta}
             barColor={netWorth < 0 ? '#ef4444' : '#059669'}
             blur={blurSensitive}
-            help="Assets minus liabilities across all linked and manual accounts. The delta shows the change vs. 30 days ago."
+            note={netWorthLiquid}
+            help={netWorthHelp}
           />
           <KpiCard
             label="This Month"
@@ -284,7 +293,7 @@ export default function DashboardTab({
               <WeeklyDigestCard />
             </div>
             <div className="eh-card-full">
-              <NetWorthCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
+              <NetWorthCard dashboard={dashboard} summary={summary} loading={dashboardLoading} error={dashboardErr} />
             </div>
             <CashFlowCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
             <SpendingByCategoryCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
@@ -315,7 +324,7 @@ export default function DashboardTab({
   );
 }
 
-function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur, help, inProgress }) {
+function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur, help, note, inProgress }) {
   let arrow = null;
   let deltaColor = 'var(--text-muted)';
   if ((delta !== null && delta !== undefined)) {
@@ -339,6 +348,9 @@ function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur
         )}
       </div>
       <div className={`eh-kpi-value ${valueClass || ''}${blur ? ' eh-blur' : ''}`}>{value}</div>
+      {note && (
+        <div className={`eh-kpi-note${blur ? ' eh-blur' : ''}`}>{note}</div>
+      )}
       {(delta !== null && delta !== undefined) && (
         <div className="eh-kpi-delta" style={{ color: deltaColor }}>
           <span>{arrow}</span>

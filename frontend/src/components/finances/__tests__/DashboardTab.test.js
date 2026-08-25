@@ -121,3 +121,20 @@ test('balances come from the page, not a second round-trip', async () => {
   await waitFor(() => expect(kpi('Net Worth')).toHaveTextContent('$4,200.00'));
   expect(getBalancesSummary).not.toHaveBeenCalled();
 });
+
+// Real assets make "net worth" and "money you could reach" two different
+// numbers. The KPI is the total, so its help text has to say what it includes
+// and which of the other numbers deliberately leaves property out.
+test('the net-worth KPI names the liquid figure and the runway exclusion', async () => {
+  renderTab({
+    rows: [],
+    summary: {
+      net_worth: 588000, total_cash: 18000, total_investments: 430000,
+      total_real_assets: 450000, total_credit_debt: 310000,
+    },
+  });
+
+  await waitFor(() => expect(kpi('Net Worth')).toBeInTheDocument());
+  expect(kpi('Net Worth')).toHaveTextContent(/\$138,000 liquid/);
+  expect(kpi('Net Worth')).toHaveTextContent(/runway/i);
+});

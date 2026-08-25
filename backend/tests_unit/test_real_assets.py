@@ -125,3 +125,29 @@ async def test_equity_is_presentational_and_never_lands_on_a_non_asset_row():
 
     assert loan_row.secured_debt is None
     assert loan_row.equity is None
+
+
+@pytest.mark.asyncio
+async def test_runway_reports_the_real_assets_it_leaves_out():
+    """Illiquid value inflates net worth without improving resilience. The
+    runway ignores it on purpose, so it has to say so rather than leaving the
+    two numbers looking inconsistent."""
+    import health_service
+
+    _add_manual_account(name="Checking", type="depository", available=6000.0)
+    _add_manual_account(name="House", type="asset", subtype="home", available=450000.0)
+
+    fund = (await health_service.compute_ratios())["emergency_fund"]
+
+    assert fund["cash"] == 6000.0
+    assert fund["excluded_real_assets"] == 450000.0
+
+
+def test_the_trend_signal_says_a_revaluation_can_move_it():
+    import health_service
+
+    trend = {"available": True, "delta_90d": 5000.0, "current_net_worth": 500000.0}
+
+    assert "revalu" in health_service._trend_signal(trend, 450000.0)["detail"]
+    # No property, no caveat — the sentence would only be noise.
+    assert "revalu" not in health_service._trend_signal(trend, 0.0)["detail"]

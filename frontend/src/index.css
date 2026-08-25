@@ -1540,6 +1540,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 }
 .eh-kpi-value--neg { color: var(--red); }
 .eh-kpi-value--pos { color: var(--accent); }
+.eh-kpi-note {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
 .eh-kpi-delta {
   font-size: 12px; font-weight: 700; margin-top: 4px;
   display: inline-flex; gap: 4px; align-items: center;
@@ -4408,3 +4414,22 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   .set-rule-row { grid-template-columns: minmax(0, 1fr) 28px; }
   .set-rule-row .set-rule-col:nth-child(2) { grid-column: 1 / -1; }
 }
+
+/* Net-worth composition — the four parts a balance sheet actually has, so a
+   six-figure jump can be attributed to one of them rather than read as a
+   change in behaviour. */
+.nw-composition {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.nw-part { display: flex; flex-direction: column; gap: 1px; }
+.nw-part-label { color: var(--text-muted); font-size: 11px; }
+.nw-part-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.nw-part-value.is-neg { color: var(--red); }

@@ -142,11 +142,15 @@ def _dti_signal(ratios: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def _trend_signal(trend: Dict[str, Any]) -> Dict[str, Any]:
+def _trend_signal(trend: Dict[str, Any], real_assets: float = 0.0) -> Dict[str, Any]:
     """90-day net-worth movement as a share of the position.
 
     The window is 90 days, not 30: a month of household balance-sheet movement
     is mostly paycheck timing, which made the old score swing on nothing.
+
+    When the household holds property, the caveat is spelled out: retyping
+    what a house is worth moves this signal exactly as far as three months of
+    saving would, and the user should not read one as the other.
     """
     delta = trend.get("delta_90d") if trend.get("available") else None
     if delta is None:
@@ -158,10 +162,10 @@ def _trend_signal(trend: Dict[str, Any]) -> Dict[str, Any]:
     base = abs(net_worth) or 1.0
     sub = _clamp01(0.5 + (delta / base) / TREND_BAND * 0.5)
     sign = "+" if delta >= 0 else "-"
-    return _signal(
-        "net_worth_trend", "Net worth trend", WEIGHT_TREND, sub,
-        f"{sign}{_money(abs(delta))} over 90 days",
-    )
+    detail = f"{sign}{_money(abs(delta))} over 90 days"
+    if real_assets > 0:
+        detail += " · a property revaluation moves this too, not just spending"
+    return _signal("net_worth_trend", "Net worth trend", WEIGHT_TREND, sub, detail)
 
 
 async def compute_health_score() -> Dict[str, Any]:
@@ -181,7 +185,9 @@ async def compute_health_score() -> Dict[str, Any]:
         _savings_signal(ratios),
         _utilization_signal(credit),
         _dti_signal(ratios),
-        _trend_signal(trend),
+        _trend_signal(
+            trend, (ratios.get("emergency_fund") or {}).get("excluded_real_assets") or 0.0
+        ),
     ]
 
     active = [s for s in signals if s["available"]]
@@ -326,6 +332,11 @@ async def compute_ratios(today: Optional[date] = None) -> Dict[str, Any]:
             "months_covered": months_covered,
             "target_months": target_months,
             "gap": gap,
+            # Homes and vehicles are deliberately absent from ``cash`` above.
+            # Reporting how much was left out is what lets the UI explain why
+            # a six-figure net worth still shows a two-month runway, instead
+            # of leaving the two numbers looking inconsistent.
+            "excluded_real_assets": round(summary.total_real_assets, 2),
         },
         "monthly_debt_payments": debt_payments,
         "dti_pct": dti_pct,
