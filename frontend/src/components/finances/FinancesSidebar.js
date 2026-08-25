@@ -1,32 +1,33 @@
 import React from 'react';
 import { useSidebarCollapsed } from '../../hooks/useSidebarCollapsed';
 import InfoPopover from '../ui/InfoPopover';
+import Icon from '../ui/Icon';
 
 const NAV_SECTIONS = [
   {
     label: 'Overview',
     items: [
-      { id: 'dashboard',   icon: '📊', label: 'Dashboard' },
-      { id: 'accounts',    icon: '🏦', label: 'Accounts' },
-      { id: 'investments', icon: '📈', label: 'Investments' },
+      { id: 'dashboard',   icon: 'home',     label: 'Dashboard' },
+      { id: 'accounts',    icon: 'accounts', label: 'Accounts' },
+      { id: 'investments', icon: 'invest',   label: 'Investments' },
     ],
   },
   {
     label: 'Plan',
     items: [
-      { id: 'budgets',     icon: '🎯', label: 'Budgets' },
-      { id: 'goals',       icon: '⭐', label: 'Goals' },
+      { id: 'budgets',     icon: 'plan',         label: 'Budgets' },
+      { id: 'goals',       icon: 'goal',         label: 'Goals' },
       // Bills and Subscriptions were two views of the same detector under two
       // nav entries; Commitments holds both.
-      { id: 'commitments', icon: '📅', label: 'Commitments' },
+      { id: 'commitments', icon: 'history',      label: 'Commitments' },
     ],
   },
   {
     label: 'Tools',
     items: [
-      { id: 'knowledge', icon: '📚', label: 'Knowledge' },
-      { id: 'advisor',   icon: '🤖', label: 'Ask Fin' },
-      { id: 'settings',  icon: '⚙️', label: 'Profile & settings' },
+      { id: 'knowledge', icon: 'info',     label: 'Knowledge' },
+      { id: 'advisor',   icon: 'ask',      label: 'Ask' },
+      { id: 'settings',  icon: 'settings', label: 'Profile & settings' },
     ],
   },
 ];
@@ -59,7 +60,9 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore, hea
       ><span aria-hidden="true">{collapsed ? '›' : '‹'}</span></button>
 
       <div className="eh-sidebar-logo">
-        <div className="eh-sidebar-logo-icon" aria-hidden="true">💰</div>
+        <div className="eh-sidebar-logo-icon" aria-hidden="true">
+          <Icon name="accounts" size={18} />
+        </div>
         <div className="eh-sidebar-logo-text">ExpensesHub</div>
       </div>
 
@@ -79,7 +82,9 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore, hea
                 aria-label={item.label}
                 aria-current={activeId === item.id ? 'page' : undefined}
               >
-                <span className="eh-nav-icon" aria-hidden="true">{item.icon}</span>
+                <span className="eh-nav-icon" aria-hidden="true">
+                  <Icon name={item.icon} size={18} />
+                </span>
                 <span className="eh-nav-text">{item.label}</span>
               </button>
             ))}

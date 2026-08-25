@@ -76,3 +76,10 @@ test('the nav sections are distinguishable landmarks', () => {
   expect(screen.getByRole('navigation', { name: 'Plan' })).toBeInTheDocument();
   expect(screen.getByRole('navigation', { name: 'Tools' })).toBeInTheDocument();
 });
+
+test('nav items render svg icons, not emoji glyphs', () => {
+  const { container } = renderSidebar();
+
+  expect(container.querySelectorAll('svg').length).toBeGreaterThanOrEqual(8);
+  expect(container.textContent).not.toMatch(EMOJI);
+});
