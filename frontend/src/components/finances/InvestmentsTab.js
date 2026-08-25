@@ -10,6 +10,7 @@ import {
 } from '../../api/snaptrade';
 import { getPortfolio, setCostBasis, clearCostBasis } from '../../api/investments';
 import RetirementSection from './RetirementSection';
+import PortfolioQuality from './PortfolioQuality';
 
 const ASSET_LABEL = {
   stock: 'Stock',
@@ -158,9 +159,13 @@ export default function InvestmentsTab({ onOpenSettings }) {
   const [syncing, setSyncing] = useState(false);
   const [syncingAccount, setSyncingAccount] = useState(null);
   const [notice, setNotice] = useState(null);
+  // Bumped on every reload so the self-fetching quality card refreshes with
+  // the rest of the page after a sync or a cost-basis edit.
+  const [dataVersion, setDataVersion] = useState(0);
   const pollRef = useRef(null);
 
   const reload = useCallback(() => {
+    setDataVersion((v) => v + 1);
     return Promise.all([
       getPortfolio().then((r) => setPortfolio(r.data)),
       listSnapTradeConnections()
@@ -409,6 +414,8 @@ export default function InvestmentsTab({ onOpenSettings }) {
           </div>
         </div>
       )}
+
+      {hasHoldings && <PortfolioQuality refreshKey={dataVersion} />}
 
       <RetirementSection onOpenSettings={onOpenSettings} />
 

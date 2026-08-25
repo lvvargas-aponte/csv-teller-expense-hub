@@ -170,3 +170,15 @@ async def clear_cost_basis(account_id: str, symbol: str) -> Dict[str, Any]:
 
     removed = get_repo().delete_cost_override(account_id, symbol)
     return {"account_id": account_id, "symbol": symbol, "removed": removed}
+
+
+@router.get("/investments/quality")
+async def get_quality() -> Dict[str, Any]:
+    """Concentration, allocation drift against the stated risk, cash drag.
+
+    Deliberately says nothing about what to buy or sell — the app cannot see
+    the tax consequences of a rebalancing trade.
+    """
+    import portfolio_quality
+
+    return portfolio_quality.assess()

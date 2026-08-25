@@ -25,3 +25,8 @@ export const clearCostBasis = (accountId, symbol) =>
   axios.delete(
     `${API}/api/investments/holdings/${encodeURIComponent(accountId)}/${encodeURIComponent(symbol)}/cost-basis`,
   );
+
+// Portfolio quality: concentration flags, allocation drift vs risk tolerance,
+// cash drag. Never returns trade suggestions.
+export const getPortfolioQuality = () =>
+  axios.get(`${API}/api/investments/quality`);

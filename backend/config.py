@@ -121,3 +121,18 @@ RETIREMENT_SCENARIO_SPREAD_PCT: float = 2.0
 # share of what it spends today. Always reported as an estimate, never
 # silently substituted.
 RETIREMENT_SPEND_SHARE_OF_TODAY: float = 0.80
+
+# --- Portfolio quality ------------------------------------------------------
+# A single position worth more than this share of the portfolio is the
+# widely used rule of thumb for concentration risk. Applied to individual
+# securities only — a broad fund at 20% is not the same exposure.
+PORTFOLIO_CONCENTRATION_THRESHOLD_PCT: float = 10.0
+
+# Target equity/bond/cash mix per stated risk tolerance. House defaults, shown
+# on the card next to the actual mix; the app never suggests trades to close
+# the gap because it cannot see the tax consequences of one.
+PORTFOLIO_TARGET_ALLOCATION_BY_RISK: dict = {
+    "conservative": {"equity": 30.0, "bond": 60.0, "cash": 10.0},
+    "balanced": {"equity": 60.0, "bond": 30.0, "cash": 10.0},
+    "aggressive": {"equity": 85.0, "bond": 10.0, "cash": 5.0},
+}
