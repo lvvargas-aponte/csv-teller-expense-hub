@@ -7,11 +7,14 @@ row→dict mapping live here so adding a column is one edit, not three.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Optional
 
 from sqlalchemy import text
 
 from db.base import sync_engine
+
+logger = logging.getLogger(__name__)
 
 PROFILE_ID = "household"
 
@@ -26,6 +29,8 @@ COLUMNS = (
     "target_retirement_age",
     "annual_retirement_spend",
     "expected_return_pct",
+    "marginal_tax_rate_pct",
+    "show_after_tax_net_worth",
     "notes",
     "updated_at",
 )
@@ -42,7 +47,10 @@ def _to_dict(row) -> Dict[str, Any]:
     want floats.
     """
     out: Dict[str, Any] = dict(zip(COLUMNS, row))
-    for key in ("monthly_income", "annual_retirement_spend", "expected_return_pct"):
+    for key in (
+        "monthly_income", "annual_retirement_spend", "expected_return_pct",
+        "marginal_tax_rate_pct",
+    ):
         if out.get(key) is not None:
             out[key] = float(out[key])
     for key in (
@@ -64,6 +72,19 @@ def load() -> Optional[Dict[str, Any]]:
     with sync_engine.connect() as conn:
         row = conn.execute(_SELECT_SQL, {"id": PROFILE_ID}).fetchone()
     return _to_dict(row) if row else None
+
+
+def load_quietly() -> Optional[Dict[str, Any]]:
+    """``load()``, but a database that is down reads as "nothing answered".
+
+    Every consumer of this row produces an estimate that already knows how to
+    say what it is missing, so degrading is strictly better than a 500.
+    """
+    try:
+        return load()
+    except Exception as e:  # noqa: BLE001 — any DB failure is the same answer here
+        logger.debug(f"[profile_repo] user_profile read skipped: {e}")
+        return None
 
 
 def upsert(values: Dict[str, Any]) -> None:

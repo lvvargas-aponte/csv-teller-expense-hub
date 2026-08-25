@@ -4,6 +4,7 @@ import {
   getDashboard,
   getIncomeVsExpenses,
 } from '../../api/dashboard';
+import { getAfterTaxNetWorth } from '../../api/tax';
 import { fmt$, fmtSigned } from '../../utils/formatting';
 
 import NetWorthCard from './cards/NetWorthCard';
@@ -83,6 +84,13 @@ export default function DashboardTab({
   useEffect(() => {
     getIncomeVsExpenses(months).then((r) => setIncomeData(r.data)).catch(() => {});
   }, [months]);
+
+  // Opt-in and unavailable by default, so a failure here is indistinguishable
+  // from the setting being off — both mean "don't render the line".
+  const [afterTax, setAfterTax] = useState(null);
+  useEffect(() => {
+    getAfterTaxNetWorth().then((r) => setAfterTax(r.data)).catch(() => setAfterTax(null));
+  }, []);
 
   // ── Derived banner + KPI values ──────────────────────────────────
   const trend = dashboard?.balance_trend;
@@ -293,7 +301,7 @@ export default function DashboardTab({
               <WeeklyDigestCard />
             </div>
             <div className="eh-card-full">
-              <NetWorthCard dashboard={dashboard} summary={summary} loading={dashboardLoading} error={dashboardErr} />
+              <NetWorthCard dashboard={dashboard} summary={summary} afterTax={afterTax} loading={dashboardLoading} error={dashboardErr} />
             </div>
             <CashFlowCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
             <SpendingByCategoryCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />

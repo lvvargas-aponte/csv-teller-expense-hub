@@ -251,3 +251,27 @@ test('a load failure offers a retry instead of an empty form', async () => {
   expect(await screen.findByText(/could not load settings/i)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
 });
+
+test('the marginal rate and the after-tax toggle save together', async () => {
+  const user = userEvent.setup();
+  renderPage();
+  await awaitLoad();
+
+  await user.type(screen.getByLabelText(/marginal tax rate/i), '22');
+  await user.click(screen.getByLabelText(/show after-tax net worth/i));
+  await user.click(screen.getByRole('button', { name: /save/i }));
+
+  await waitFor(() => expect(updateProfile).toHaveBeenCalledWith(
+    expect.objectContaining({
+      marginal_tax_rate_pct: 22,
+      show_after_tax_net_worth: true,
+    }),
+  ));
+});
+
+test('the after-tax toggle is off until the user turns it on', async () => {
+  renderPage();
+  await awaitLoad();
+
+  expect(screen.getByLabelText(/show after-tax net worth/i)).not.toBeChecked();
+});

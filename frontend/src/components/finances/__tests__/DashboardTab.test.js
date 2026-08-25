@@ -3,10 +3,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import DashboardTab from '../DashboardTab';
 import { getDashboard, getIncomeVsExpenses } from '../../../api/dashboard';
 import { getBalancesSummary } from '../../../api/balances';
+import { getAfterTaxNetWorth } from '../../../api/tax';
 
 jest.mock('axios');
 jest.mock('../../../api/dashboard');
 jest.mock('../../../api/balances');
+jest.mock('../../../api/tax');
 
 // The cards each fetch for themselves; this test is about the KPI row only.
 jest.mock('../SpendingInsights', () => () => <div />);
@@ -47,6 +49,7 @@ const renderTab = ({ rows, comparison = spendComparison(), signals, summary = { 
   });
   getIncomeVsExpenses.mockResolvedValue({ data: { months: [], rows } });
   getBalancesSummary.mockResolvedValue({ data: summary });
+  getAfterTaxNetWorth.mockResolvedValue({ data: { available: false } });
   return render(
     <DashboardTab healthScore={70} healthSignals={signals} summary={summary} />,
   );

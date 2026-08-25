@@ -162,6 +162,40 @@ export default function FinancialProfilePane({ profile, onChange }) {
         </div>
       </SettingsCard>
 
+      <SettingsCard title="Tax" hint="optional">
+        <div className="set-grid2">
+          <Field
+            label="Marginal tax rate (%)"
+            hint="The rate your next dollar of income is taxed at, federal plus state. Never worked out from your income — a bracket needs your filing status, deductions and state rules."
+          >
+            <input
+              className="form-input set-input--num" type="number"
+              id="marginal-tax-rate"
+              min="0" max="60" step="0.1" placeholder="22"
+              value={profile.marginal_tax_rate_pct}
+              onChange={set('marginal_tax_rate_pct')}
+            />
+          </Field>
+        </div>
+        <div className="set-field-block">
+          <label className="set-checkbox" htmlFor="show-after-tax">
+            <input
+              id="show-after-tax"
+              type="checkbox"
+              checked={!!profile.show_after_tax_net_worth}
+              onChange={(e) => onChange('show_after_tax_net_worth', e.target.checked)}
+            />
+            <span>Show after-tax net worth</span>
+          </label>
+          <div className="set-help">
+            Adds a second line under net worth with the income tax owed on your
+            traditional balances taken off. Off by default — some people find
+            the discounted figure clarifying and some find it discouraging.
+            Roth and taxable balances are never discounted.
+          </div>
+        </div>
+      </SettingsCard>
+
       <SettingsCard title="Context" hint="optional">
         <Field
           label="Notes for the advisor"

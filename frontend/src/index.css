@@ -4151,6 +4151,14 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 
 /* Form primitives */
 .set-field-block { margin-bottom: 18px; }
+.set-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
 .set-help {
   font-size: 11.5px;
   color: var(--text-faint);
@@ -4419,6 +4427,12 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 /* Net-worth composition — the four parts a balance sheet actually has, so a
    six-figure jump can be attributed to one of them rather than read as a
    change in behaviour. */
+.nw-after-tax {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.nw-after-tax-note { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
 .nw-composition {
   display: flex;
   flex-wrap: wrap;

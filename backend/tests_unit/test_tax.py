@@ -142,3 +142,94 @@ class TestSummaryCarriesTreatment:
         assert row.tax_treatment == "roth"
         assert row.tax_treatment_inferred == "traditional"
         assert row.tax_treatment_set_by_user is True
+
+
+def _seed_investment(account_id, name, value, subtype):
+    from db import accounts_repo_memory
+
+    state._manual_accounts[account_id] = {
+        "id": account_id, "institution": "Fidelity", "name": name,
+        "type": "investment", "subtype": subtype,
+        "available": value, "ledger": value, "manual": True,
+    }
+    accounts_repo_memory.active().upsert_manual_account(
+        account_id=account_id, institution="Fidelity", name=name,
+        type_="investment", subtype=subtype,
+    )
+
+
+@pytest.fixture
+def profile(monkeypatch):
+    """Stand in for the household profile row without a database."""
+    row = {}
+    from db import profile_repo
+
+    monkeypatch.setattr(profile_repo, "load_quietly", lambda: dict(row))
+    return row
+
+
+class TestAfterTaxNetWorth:
+    @pytest.mark.asyncio
+    async def test_traditional_balance_is_discounted_at_the_stated_rate(self, profile):
+        profile.update(marginal_tax_rate_pct=22.0, show_after_tax_net_worth=True)
+        _seed_investment("k401", "Employer 401(k)", 200000.0, "401k")
+
+        out = await tax.after_tax_net_worth()
+
+        assert out["available"] is True
+        assert out["pre_tax_balance"] == 200000.0
+        assert out["deferred_tax_estimate"] == 44000.0
+        assert out["rate_pct"] == 22.0
+        assert out["rate_source"] == "profile"
+        assert out["headline_net_worth"] == 200000.0
+        assert out["after_tax_net_worth"] == 156000.0
+        assert "estimate" in out["note"].lower()
+
+    @pytest.mark.asyncio
+    async def test_roth_hsa_and_taxable_balances_are_left_alone(self, profile):
+        profile.update(marginal_tax_rate_pct=22.0, show_after_tax_net_worth=True)
+        _seed_investment("roth1", "Roth IRA", 50000.0, "roth_ira")
+        _seed_investment("hsa1", "HSA", 10000.0, "hsa")
+        # Taxing a brokerage needs per-lot basis and holding periods; a flat
+        # rate on the whole balance would be wrong in the user's disfavour.
+        _seed_investment("brk", "Brokerage", 40000.0, "brokerage")
+
+        out = await tax.after_tax_net_worth()
+
+        assert out["pre_tax_balance"] == 0.0
+        assert out["deferred_tax_estimate"] == 0.0
+        assert out["after_tax_net_worth"] == out["headline_net_worth"] == 100000.0
+
+    @pytest.mark.asyncio
+    async def test_a_blank_rate_is_unavailable_rather_than_inferred(self, profile):
+        profile.update(show_after_tax_net_worth=True)
+        _seed_investment("k401", "Employer 401(k)", 200000.0, "401k")
+
+        out = await tax.after_tax_net_worth()
+
+        assert out["available"] is False
+        assert "marginal" in out["reason"].lower()
+        assert out.get("after_tax_net_worth") is None
+
+    @pytest.mark.asyncio
+    async def test_the_setting_is_opt_in_so_off_produces_nothing(self, profile):
+        profile.update(marginal_tax_rate_pct=22.0)
+        _seed_investment("k401", "Employer 401(k)", 200000.0, "401k")
+
+        out = await tax.after_tax_net_worth()
+
+        assert out["available"] is False
+        assert out.get("after_tax_net_worth") is None
+
+    @pytest.mark.asyncio
+    async def test_a_user_set_roth_401k_is_not_discounted(self, profile):
+        profile.update(marginal_tax_rate_pct=22.0, show_after_tax_net_worth=True)
+        _seed_investment("k401", "Employer 401(k)", 200000.0, "401k")
+        state.account_details["k401"] = {
+            "account_id": "k401", "tax_treatment": "roth",
+        }
+
+        out = await tax.after_tax_net_worth()
+
+        assert out["pre_tax_balance"] == 0.0
+        assert out["after_tax_net_worth"] == 200000.0

@@ -9,8 +9,12 @@ import { liquidLabel, netWorthComposition } from '../../../utils/netWorth';
 
 const AXIS = { fontSize: 11, fill: 'var(--text-secondary, #94a3b8)' };
 
+const WHOLE_DOLLARS = new Intl.NumberFormat('en-US', {
+  style: 'currency', currency: 'USD', maximumFractionDigits: 0,
+});
+
 export default function NetWorthCard({
-  dashboard, summary, loading, error, onHide, index, kicker,
+  dashboard, summary, loading, error, onHide, index, kicker, afterTax = null,
 }) {
   const trend = dashboard?.balance_trend;
   const series = dashboard?.net_worth_timeseries || [];
@@ -76,6 +80,18 @@ export default function NetWorthCard({
               </div>
             </div>
           )}
+        </div>
+      )}
+      {/* Opt-in, and secondary by construction: some households find the
+          discounted figure clarifying and others find it demoralising, so
+          it sits under the headline and never replaces it. "about" stays —
+          it is an estimate off a rate the user typed. */}
+      {afterTax?.available && (
+        <div className="nw-after-tax">
+          <div>
+            {`about ${WHOLE_DOLLARS.format(afterTax.after_tax_net_worth)} after deferred tax`}
+          </div>
+          <div className="nw-after-tax-note">{afterTax.note}</div>
         </div>
       )}
       {parts && (

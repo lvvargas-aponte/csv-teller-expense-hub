@@ -168,6 +168,10 @@ class UserProfileIn(BaseModel):
     target_retirement_age: Optional[int] = None
     annual_retirement_spend: Optional[float] = None
     expected_return_pct: Optional[float] = None
+    # Asked for, never derived from income. The bound is a sanity check, not
+    # a bracket table — combined federal/state marginal rates live inside it.
+    marginal_tax_rate_pct: Optional[float] = Field(default=None, ge=0, le=60)
+    show_after_tax_net_worth: Optional[bool] = None
     notes: Optional[str] = None
 
 
@@ -182,6 +186,8 @@ class UserProfileOut(BaseModel):
     target_retirement_age: Optional[int] = None
     annual_retirement_spend: Optional[float] = None
     expected_return_pct: Optional[float] = None
+    marginal_tax_rate_pct: Optional[float] = None
+    show_after_tax_net_worth: bool = False
     notes: str = ""
     updated_at: Optional[str] = None
 

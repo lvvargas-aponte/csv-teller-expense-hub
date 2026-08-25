@@ -55,3 +55,35 @@ test('with no real assets the liquid line is not shown at all', () => {
 
   expect(screen.queryByText(/liquid/)).not.toBeInTheDocument();
 });
+
+const afterTax = {
+  available: true,
+  headline_net_worth: 588000,
+  after_tax_net_worth: 539000,
+  deferred_tax_estimate: 49000,
+  pre_tax_balance: 222727,
+  rate_pct: 22,
+  rate_source: 'profile',
+  note: 'Estimate. Pre-tax balances discounted at your stated marginal rate.',
+};
+
+test('the after-tax figure is a hedged secondary line, never the headline', () => {
+  render(<NetWorthCard dashboard={dashboard} summary={summary} afterTax={afterTax} />);
+
+  // "about" is not optional — the figure is an estimate off a stated rate.
+  expect(screen.getByText(/about \$539,000 after deferred tax/i)).toBeInTheDocument();
+  expect(screen.getByText(/discounted at your stated marginal rate/i)).toBeInTheDocument();
+});
+
+test('with the setting off the after-tax line is not rendered at all', () => {
+  render(
+    <NetWorthCard
+      dashboard={dashboard}
+      summary={summary}
+      afterTax={{ available: false, reason: 'After-tax net worth is turned off.' }}
+    />,
+  );
+
+  expect(screen.queryByText(/after deferred tax/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/turned off/i)).not.toBeInTheDocument();
+});

@@ -20,6 +20,7 @@ from routers import (
 from routers import category_rules as category_rules_router
 from routers import retirement as retirement_router
 from routers import simplefin as simplefin_router
+from routers import tax as tax_router
 from routers import transactions
 
 # Re-export singletons so existing test imports (``from main import ...``) keep working.
@@ -117,6 +118,7 @@ app.include_router(digest.router,       prefix="/api")
 app.include_router(identity.router,      prefix="/api")
 app.include_router(sync.router,          prefix="/api")
 app.include_router(retirement_router.router, prefix="/api")
+app.include_router(tax_router.router, prefix="/api")
 
 
 # Static help site — built from /docs by mkdocs into /docs/site.

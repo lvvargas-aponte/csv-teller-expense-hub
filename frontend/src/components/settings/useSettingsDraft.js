@@ -11,6 +11,8 @@ const EMPTY_PROFILE = {
   target_retirement_age: '',
   annual_retirement_spend: '',
   expected_return_pct: '',
+  marginal_tax_rate_pct: '',
+  show_after_tax_net_worth: false,
   debt_strategy: '',
   emergency_fund_months: '',
   notes: '',
@@ -28,6 +30,10 @@ const profileToDraft = (p) => ({
   target_retirement_age:   p?.target_retirement_age ?? '',
   annual_retirement_spend: p?.annual_retirement_spend ?? '',
   expected_return_pct:     p?.expected_return_pct ?? '',
+  marginal_tax_rate_pct:   p?.marginal_tax_rate_pct ?? '',
+  // The one boolean in the draft: a checkbox has no "not set" state, and
+  // off is the deliberate default for the after-tax view.
+  show_after_tax_net_worth: !!p?.show_after_tax_net_worth,
   debt_strategy:         p?.debt_strategy ?? '',
   emergency_fund_months: p?.emergency_fund_months ?? '',
   notes:                 p?.notes ?? '',
@@ -50,6 +56,8 @@ const draftToPayload = (d) => ({
   target_retirement_age:   numOrNull(d.target_retirement_age, (v) => parseInt(v, 10)),
   annual_retirement_spend: numOrNull(d.annual_retirement_spend, parseFloat),
   expected_return_pct:     numOrNull(d.expected_return_pct, parseFloat),
+  marginal_tax_rate_pct:   numOrNull(d.marginal_tax_rate_pct, parseFloat),
+  show_after_tax_net_worth: !!d.show_after_tax_net_worth,
   notes:                 d.notes ?? '',
 });
 

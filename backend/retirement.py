@@ -156,13 +156,9 @@ def _load_profile() -> Optional[Dict[str, Any]]:
     Deliberately not ``analytics._load_user_profile``: that one curates the
     row for prompt context and drops fields this module needs.
     """
-    try:
-        from db import profile_repo
+    from db import profile_repo
 
-        return profile_repo.load()
-    except Exception as e:
-        logger.debug(f"[retirement] user_profile read skipped: {e}")
-        return None
+    return profile_repo.load_quietly()
 
 
 def _future_value(balance: float, annual_contribution: float, rate: float, years: int) -> float:

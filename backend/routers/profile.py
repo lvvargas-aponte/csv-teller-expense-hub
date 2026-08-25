@@ -32,6 +32,8 @@ def _load_profile() -> Optional[UserProfileOut]:
         target_retirement_age=row["target_retirement_age"],
         annual_retirement_spend=row["annual_retirement_spend"],
         expected_return_pct=row["expected_return_pct"],
+        marginal_tax_rate_pct=row["marginal_tax_rate_pct"],
+        show_after_tax_net_worth=bool(row["show_after_tax_net_worth"]),
         notes=row["notes"] or "",
         updated_at=row["updated_at"],
     )
@@ -57,6 +59,9 @@ async def upsert_profile(req: UserProfileIn) -> UserProfileOut:
     # notes is NOT NULL; "cleared" means the empty string, not NULL.
     if "notes" in payload and payload["notes"] is None:
         payload["notes"] = ""
+    # NOT NULL, and "cleared" for a toggle means off.
+    if "show_after_tax_net_worth" in payload:
+        payload["show_after_tax_net_worth"] = bool(payload["show_after_tax_net_worth"])
 
     profile_repo.upsert(payload)
 

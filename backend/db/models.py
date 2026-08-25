@@ -282,6 +282,12 @@ class UserProfile(Base):
     target_retirement_age: Mapped[Optional[int]] = mapped_column(Integer)
     annual_retirement_spend: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     expected_return_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 3))
+    # Asked for, never derived from income — a bracket needs filing status,
+    # deductions and state rules the app does not hold.
+    marginal_tax_rate_pct: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+    show_after_tax_net_worth: Mapped[bool] = mapped_column(
+        Boolean, server_default="false", nullable=False
+    )
     notes: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),

@@ -100,3 +100,80 @@ RETIREMENT_TREATMENTS = frozenset({"traditional", "roth"})
 
 def is_retirement(account: Any) -> bool:
     return effective_treatment(account) in RETIREMENT_TREATMENTS
+
+
+AFTER_TAX_NOTE = (
+    "Estimate. Pre-tax balances discounted at your stated marginal rate. "
+    "Taxable and Roth balances are left as they are."
+)
+
+_RATE_MISSING = (
+    "Add your marginal tax rate in Profile & settings to see an after-tax "
+    "figure. It is never inferred from your income."
+)
+
+_TOGGLE_OFF = "After-tax net worth is turned off in Profile & settings."
+
+
+def _unavailable(reason: str) -> Dict[str, Any]:
+    return {
+        "available": False,
+        "reason": reason,
+        "headline_net_worth": None,
+        "after_tax_net_worth": None,
+        "deferred_tax_estimate": None,
+        "pre_tax_balance": None,
+        "rate_pct": None,
+        "rate_source": None,
+        "note": AFTER_TAX_NOTE,
+    }
+
+
+def _balance(account: Any) -> float:
+    return float(account.available or 0.0) or float(account.ledger or 0.0)
+
+
+async def after_tax_net_worth() -> Dict[str, Any]:
+    """Net worth with the income tax owed on pre-tax balances taken off.
+
+    Only ``traditional`` balances are discounted. A taxable brokerage is left
+    alone on purpose: taxing it correctly needs per-lot cost basis and holding
+    periods the app does not hold, and applying a flat rate to the whole
+    balance rather than the gain would be badly wrong in the user's disfavour.
+
+    Opt-in, and unavailable rather than guessed. The rate is the user's own
+    figure — deriving a bracket from income needs filing status, deductions
+    and state rules, and a wrong bracket moves this number by five figures.
+    """
+    import balances_service
+    from db import profile_repo
+
+    profile = profile_repo.load_quietly() or {}
+    if not profile.get("show_after_tax_net_worth"):
+        return _unavailable(_TOGGLE_OFF)
+
+    rate = profile.get("marginal_tax_rate_pct")
+    if rate is None:
+        return _unavailable(_RATE_MISSING)
+
+    summary = await balances_service.build_summary()
+    pre_tax = round(
+        sum(
+            _balance(a) for a in summary.accounts
+            if effective_treatment(a) == "traditional"
+        ),
+        2,
+    )
+    deferred = round(pre_tax * float(rate) / 100.0, 2)
+
+    return {
+        "available": True,
+        "reason": None,
+        "headline_net_worth": summary.net_worth,
+        "after_tax_net_worth": round(summary.net_worth - deferred, 2),
+        "deferred_tax_estimate": deferred,
+        "pre_tax_balance": pre_tax,
+        "rate_pct": float(rate),
+        "rate_source": "profile",
+        "note": AFTER_TAX_NOTE,
+    }
