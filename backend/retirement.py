@@ -222,6 +222,7 @@ def _unavailable(missing: List[str], assumptions: Dict[str, Any]) -> Dict[str, A
         "available": False,
         "missing": missing,
         "years_to_retirement": None,
+        "retirement_age": None,
         "current_balance": None,
         "monthly_contribution": None,
         "contribution_confidence": None,
@@ -236,7 +237,11 @@ def _unavailable(missing: List[str], assumptions: Dict[str, Any]) -> Dict[str, A
     }
 
 
-async def project(today=None) -> Dict[str, Any]:
+async def project(
+    today=None,
+    inflation_pct: Optional[float] = None,
+    withdrawal_rate_pct: Optional[float] = None,
+) -> Dict[str, Any]:
     """Project the retirement pot in today's dollars, as a three-point band.
 
     Real returns, not nominal: inflation is subtracted from the return and the
@@ -247,6 +252,10 @@ async def project(today=None) -> Dict[str, Any]:
 
     ``available`` is False and ``missing`` names the fields whenever an input
     the user has to supply is absent. Nothing is silently defaulted.
+
+    ``inflation_pct`` and ``withdrawal_rate_pct`` override the house constants
+    for this call only — the card lets the user test a different assumption
+    without storing one.
     """
     today = today or date.today()
     profile = _load_profile() or {}
@@ -267,8 +276,13 @@ async def project(today=None) -> Dict[str, Any]:
     if target_spend is None:
         missing.append("annual_retirement_spend")
 
-    inflation_pct = config.RETIREMENT_INFLATION_PCT
-    withdrawal_pct = config.RETIREMENT_WITHDRAWAL_RATE_PCT
+    inflation_pct = (
+        config.RETIREMENT_INFLATION_PCT if inflation_pct is None else float(inflation_pct)
+    )
+    withdrawal_pct = (
+        config.RETIREMENT_WITHDRAWAL_RATE_PCT
+        if withdrawal_rate_pct is None else float(withdrawal_rate_pct)
+    )
     assumptions = {
         "nominal_return_pct": nominal_pct,
         "inflation_pct": inflation_pct,
@@ -317,6 +331,7 @@ async def project(today=None) -> Dict[str, Any]:
         "available": True,
         "missing": [],
         "years_to_retirement": years,
+        "retirement_age": int(target_age),
         "current_balance": current_balance,
         "monthly_contribution": round(monthly, 2),
         "contribution_confidence": contributions["confidence"],

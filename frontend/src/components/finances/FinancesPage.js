@@ -149,7 +149,9 @@ export default function FinancesPage() {
         )}
 
         {activeId === 'investments' && (
-          <SimplePage title="Investments"><InvestmentsTab /></SimplePage>
+          <SimplePage title="Investments">
+            <InvestmentsTab onOpenSettings={openSettings} />
+          </SimplePage>
         )}
 
         {activeId === 'budgets' && (

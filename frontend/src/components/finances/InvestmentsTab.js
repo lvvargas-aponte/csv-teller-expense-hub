@@ -9,6 +9,7 @@ import {
   listSnapTradeConnections,
 } from '../../api/snaptrade';
 import { getPortfolio } from '../../api/investments';
+import RetirementSection from './RetirementSection';
 
 const ASSET_LABEL = {
   stock: 'Stock',
@@ -32,7 +33,7 @@ const ALLOC_COLORS = {
 // allocation, and unrealized gain/loss. Mirrors the connect flow used for
 // bank accounts (accounts/AccountsModal.js) but SnapTrade hands back a
 // portal URL rather than a JS SDK, so we open it and sync once it closes.
-export default function InvestmentsTab() {
+export default function InvestmentsTab({ onOpenSettings }) {
   const [config, setConfig] = useState(null);
   const [portfolio, setPortfolio] = useState(null);
   const [connections, setConnections] = useState([]);
@@ -151,14 +152,21 @@ export default function InvestmentsTab() {
         account_id: a.account_id,
         account_name: a.account_name,
         institution: a.institution,
+        source: a.source,
+        value: a.value,
         holdings: [],
       };
     }
     for (const h of portfolio?.holdings || []) {
+      // An account with positions but no by_account entry can only have come
+      // from a positions sync, so it gets the snaptrade treatment (per-account
+      // Sync button) rather than falling through to the balance-only branch.
       const g = map[h.account_id] || (map[h.account_id] = {
         account_id: h.account_id,
         account_name: h.account_name,
         institution: h.institution,
+        source: h.source || 'snaptrade',
+        value: null,
         holdings: [],
       });
       g.holdings.push(h);
@@ -175,10 +183,15 @@ export default function InvestmentsTab() {
   }
 
   if (config && !config.configured) {
+    // The projection reads balances, not positions, so it still has something
+    // to say when no brokerage is linked.
     return (
-      <div className="finances-section" style={{ color: 'var(--text-muted)' }}>
-        SnapTrade isn&apos;t configured on the server. Add <code>SNAPTRADE_CLIENT_ID</code> and{' '}
-        <code>SNAPTRADE_CONSUMER_KEY</code> to your <code>.env</code>, then restart the backend.
+      <div style={{ display: 'grid', gap: 16 }}>
+        <div className="finances-section" style={{ color: 'var(--text-muted)' }}>
+          SnapTrade isn&apos;t configured on the server. Add <code>SNAPTRADE_CLIENT_ID</code> and{' '}
+          <code>SNAPTRADE_CONSUMER_KEY</code> to your <code>.env</code>, then restart the backend.
+        </div>
+        <RetirementSection onOpenSettings={onOpenSettings} />
       </div>
     );
   }
@@ -202,6 +215,12 @@ export default function InvestmentsTab() {
                   ? ` (${portfolio.total_gain_pct >= 0 ? '+' : ''}${portfolio.total_gain_pct}%)`
                   : ''}
                 {' · '}cost basis {fmt$(portfolio.total_cost || 0)}
+              </div>
+            )}
+            {portfolio?.balance_only_value > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                Includes {fmt$(portfolio.balance_only_value)} from accounts that report a
+                balance but no positions — gain and allocation below cover the rest.
               </div>
             )}
           </div>
@@ -276,6 +295,8 @@ export default function InvestmentsTab() {
         </div>
       )}
 
+      <RetirementSection onOpenSettings={onOpenSettings} />
+
       {/* Holdings by account */}
       {!hasHoldings && groups.length === 0 && (
         <div className="finances-section" style={{ color: 'var(--text-muted)' }}>
@@ -291,22 +312,39 @@ export default function InvestmentsTab() {
               {g.account_name}
               {g.institution ? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> · {g.institution}</span> : null}
             </h3>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => runAccountSync(g.account_id, g.account_name)}
-              disabled={syncing || syncingAccount === g.account_id}
-              title="Sync only this account"
-            >
-              {syncingAccount === g.account_id ? 'Syncing…' : '↺ Sync'}
-            </button>
+            {/* Per-account sync is a SnapTrade endpoint — a bank-synced
+                brokerage refreshes with the rest of the balances instead. */}
+            {g.source === 'snaptrade' ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => runAccountSync(g.account_id, g.account_name)}
+                disabled={syncing || syncingAccount === g.account_id}
+                title="Sync only this account"
+              >
+                {syncingAccount === g.account_id ? 'Syncing…' : '↺ Sync'}
+              </button>
+            ) : (
+              <span style={{ fontFamily: "'DM Mono', ui-monospace, monospace", fontWeight: 500 }}>
+                {fmt$(g.value || 0)}
+              </span>
+            )}
           </div>
           {g.holdings.length === 0 ? (
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>
-              No positions returned yet for this account. SnapTrade can take up to ~30 minutes
-              after a fresh brokerage connection to surface positions. If it stays empty after
-              that, reconnect this brokerage via <strong>+ Connect a brokerage</strong>.
-            </div>
+            g.source === 'snaptrade' ? (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>
+                No positions returned yet for this account. SnapTrade can take up to ~30 minutes
+                after a fresh brokerage connection to surface positions. If it stays empty after
+                that, reconnect this brokerage via <strong>+ Connect a brokerage</strong>.
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>
+                Balance only — this account is synced through your bank connection, which
+                reports its value but not the individual positions. Connect{' '}
+                {g.institution || 'this brokerage'} via <strong>+ Connect a brokerage</strong>{' '}
+                to see holdings.
+              </div>
+            )
           ) : (
           <table className="eh-table" style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
             <thead>
