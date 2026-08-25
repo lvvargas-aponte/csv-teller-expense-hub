@@ -1,5 +1,6 @@
 import React from 'react';
 import Spin from '../ui/Spin';
+import Icon from '../ui/Icon';
 import { usePayoffPlanner } from './payoff/usePayoffPlanner';
 import PayoffForm from './payoff/PayoffForm';
 import PayoffResults from './payoff/PayoffResults';
@@ -24,7 +25,7 @@ export default function PayoffPlanner({ creditAccounts = [] }) {
         >
           {planner.adviceLoading
             ? <><Spin /> Thinking…</>
-            : <><span aria-hidden="true">🤖</span> Ask Fin</>}
+            : <><Icon name="ask" size={14} /> Ask Fin</>}
         </button>
       </div>
 

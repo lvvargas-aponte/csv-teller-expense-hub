@@ -63,7 +63,7 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore, hea
         <div className="eh-sidebar-logo-icon" aria-hidden="true">
           <Icon name="accounts" size={18} />
         </div>
-        <div className="eh-sidebar-logo-text">ExpensesHub</div>
+        <div className="eh-sidebar-logo-text">Fin</div>
       </div>
 
       {NAV_SECTIONS.map((section) => (

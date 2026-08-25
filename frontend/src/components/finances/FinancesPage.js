@@ -209,7 +209,7 @@ export default function FinancesPage() {
         )}
 
         {activeId === 'advisor' && (
-          <SimplePage title="Ask Fin"><AdvisorChat /></SimplePage>
+          <SimplePage title="Ask"><AdvisorChat /></SimplePage>
         )}
 
         {activeId === 'settings' && (
