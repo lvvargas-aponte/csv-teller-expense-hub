@@ -61,6 +61,16 @@ describe.each([['light', LIGHT], ['dark', DARK]])('%s theme', (name, t) => {
       expect(t[`--chart-${i}`]).toMatch(/^#[0-9a-f]{6}$/i);
     }
   });
+
+  test.each(['--brand-grad-from', '--brand-grad-to'])(
+    // Defined only in :root — held at the same value in both themes on
+    // purpose (white-text fills must not shift to the lighter dark-theme
+    // blues), so both runs assert against LIGHT rather than the per-theme t.
+    'white text on %s clears AA',
+    (token) => {
+      expect(contrast('#ffffff', LIGHT[token])).toBeGreaterThanOrEqual(4.5);
+    },
+  );
 });
 
 test('light theme defines the spacing and type scales once', () => {

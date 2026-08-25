@@ -13,7 +13,12 @@
   --brand-alt:        #7c3aed;
   --brand-wash:       #eff5ff;
   --brand-alt-wash:   #f3f0fd;
-  --brand-gradient:   linear-gradient(135deg, var(--brand) 0%, var(--brand-alt) 100%);
+  /* Gradient stops for fills that carry white text. Held at the light-theme
+     blues in BOTH themes — the dark palette's #60a5fa / #a78bfa under white
+     are 2.54:1 and 2.72:1, well below AA. */
+  --brand-grad-from: #2563eb;
+  --brand-grad-to:   #7c3aed;
+  --brand-gradient:   linear-gradient(135deg, var(--brand-grad-from) 0%, var(--brand-grad-to) 100%);
 
   --surface-ground:   #f8fafc;
   --surface-card:     #ffffff;
