@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import NetWorthCard from '../NetWorthCard';
 
 // A single number that jumps by $450,000 when a house is added, with no
@@ -38,10 +39,13 @@ test('total and liquid net worth are shown side by side', () => {
   expect(screen.getByText(/\$138,000 liquid/)).toBeInTheDocument();
 });
 
-test('the liquid figure explains why the runway ignores property', () => {
+test('the liquid figure explains why the runway ignores property', async () => {
+  const user = userEvent.setup();
   render(<NetWorthCard dashboard={dashboard} summary={summary} />);
 
-  expect(screen.getByRole('tooltip'))
+  await user.click(screen.getByRole('button', { name: 'About liquid net worth' }));
+
+  expect(screen.getByRole('note'))
     .toHaveTextContent(/emergency.*runway|runway.*ignore/i);
 });
 

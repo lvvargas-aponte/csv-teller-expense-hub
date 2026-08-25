@@ -1269,10 +1269,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 }
 /* The shared info bubble is styled for the dark banner; recolor it for the
    light sidebar card and open it rightward so it clears the narrow rail. */
-.eh-health-card-score .eh-info-icon {
+.eh-health-card-score .eh-info-btn {
   background: var(--accent); border-color: var(--accent); color: #fff;
 }
-.eh-health-card-score .eh-info-tooltip { left: 0; right: auto; }
+.eh-health-card-score .eh-info-panel { left: 0; right: auto; }
 .eh-health-card-sub { font-size: 11px; color: var(--text-muted); }
 
 /* Topbar */
@@ -1413,9 +1413,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 .eh-banner-score-label { font-size: 11px; opacity: 0.7; margin-top: 4px; }
 .eh-banner-score-coverage { font-size: 10px; opacity: 0.6; margin-top: 2px; }
 
-/* Info icon + tooltip */
-.eh-info-wrap { position: relative; display: inline-flex; }
-.eh-info-icon {
+/* Info popover — the one explain-this widget (components/ui/InfoPopover.js).
+   The panel only exists while open, so there is no hover-only variant to
+   copy into a new card. */
+.eh-info { position: relative; display: inline-flex; }
+.eh-info-btn {
   width: 18px; height: 18px;
   border-radius: 50%;
   background: rgba(255,255,255,0.2);
@@ -1425,11 +1427,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   font-weight: 700;
   display: inline-flex;
   align-items: center; justify-content: center;
-  cursor: help;
+  padding: 0;
+  cursor: pointer;
   font-family: serif;
   font-style: italic;
 }
-.eh-info-tooltip {
+.eh-info-panel {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
@@ -1442,13 +1445,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   padding: 10px 12px;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.25);
-  z-index: 50;
   letter-spacing: 0;
   text-align: left;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(-4px);
-  transition: opacity 0.15s, transform 0.15s;
   z-index: 1000;
 }
 .recharts-tooltip-wrapper { z-index: 1000 !important; }
@@ -1477,13 +1475,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 [data-theme='dark'] .recharts-default-tooltip .recharts-tooltip-item-unit {
   color: var(--text-primary) !important;
 }
-.eh-info-tooltip-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; color: #34d399; }
-.eh-info-tooltip ul { margin: 4px 0 0 16px; padding: 0; }
-.eh-info-tooltip li { margin-bottom: 2px; }
-.eh-info-wrap:hover .eh-info-tooltip,
-.eh-info-wrap:focus-within .eh-info-tooltip {
-  opacity: 1; transform: translateY(0); pointer-events: auto;
-}
+.eh-info-panel-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; color: #34d399; }
+.eh-info-panel ul { margin: 4px 0 0 16px; padding: 0; }
+.eh-info-panel li { margin-bottom: 2px; }
 
 /* KPI row */
 .eh-kpi-row {
@@ -1508,7 +1502,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   color: var(--text-faint);
   display: flex; align-items: center; gap: 6px;
 }
-.eh-kpi-info .eh-info-icon {
+.eh-info--kpi .eh-info-btn {
   width: 14px; height: 14px;
   background: transparent;
   border: 1px solid var(--text-faint);
@@ -1516,23 +1510,17 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   font-size: 9px;
   font-style: italic;
   font-weight: 700;
-  cursor: help;
   text-transform: none;
 }
-.eh-kpi-info:hover .eh-info-icon,
-.eh-kpi-info:focus-within .eh-info-icon {
+.eh-info--kpi .eh-info-btn:hover,
+.eh-info--kpi .eh-info-btn:focus-visible {
   border-color: var(--accent);
   color: var(--accent);
 }
-.eh-kpi-info .eh-info-tooltip {
+.eh-info--kpi .eh-info-panel {
   width: 240px;
   right: auto; left: 0;
   top: auto; bottom: calc(100% + 8px);
-  transform: translateY(4px);
-}
-.eh-kpi-info:hover .eh-info-tooltip,
-.eh-kpi-info:focus-within .eh-info-tooltip {
-  transform: translateY(0);
 }
 .eh-kpi-value {
   font-size: 22px; font-weight: 700;

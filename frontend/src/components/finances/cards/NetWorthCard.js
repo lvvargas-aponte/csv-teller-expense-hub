@@ -6,6 +6,7 @@ import DashboardCard from './DashboardCard';
 import { fmt$, fmtSigned } from '../../../utils/formatting';
 import Num from '../Num';
 import { liquidLabel, netWorthComposition } from '../../../utils/netWorth';
+import InfoPopover from '../../ui/InfoPopover';
 
 const AXIS = { fontSize: 11, fill: 'var(--text-secondary, #94a3b8)' };
 
@@ -47,16 +48,12 @@ export default function NetWorthCard({
             <div>
               <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>
                 Liquid
-                <span className="eh-info-wrap" tabIndex={0} aria-label="About liquid net worth">
-                  <span className="eh-info-icon">i</span>
-                  <span className="eh-info-tooltip" role="tooltip">
-                    <div className="eh-info-tooltip-title">Liquid net worth</div>
-                    Everything except property and vehicles. A house raises net
-                    worth without making a hard month any easier, so the
-                    emergency-fund runway ignores it on purpose — this is the
-                    figure that ratio reasons about.
-                  </span>
-                </span>
+                <InfoPopover label="liquid net worth" title="Liquid net worth">
+                  Everything except property and vehicles. A house raises net
+                  worth without making a hard month any easier, so the
+                  emergency-fund runway ignores it on purpose — this is the
+                  figure that ratio reasons about.
+                </InfoPopover>
               </div>
               <div style={{ fontSize: 18, fontWeight: 700 }}>{liquid}</div>
             </div>

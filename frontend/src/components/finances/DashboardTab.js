@@ -23,6 +23,7 @@ import WeeklyDigestCard from './cards/WeeklyDigestCard';
 import StandingCard from './cards/StandingCard';
 import SpendingInsights from './SpendingInsights';
 import { BlurContext } from './Num';
+import InfoPopover from '../ui/InfoPopover';
 
 const RANGE_OPTIONS = [
   { label: '3M', months: 3 },
@@ -208,10 +209,7 @@ export default function DashboardTab({
           <div className="eh-banner-right">
             <div className={`eh-banner-score${blurSensitive ? ' eh-blur' : ''}`}>
               <span>{(healthScore === null || healthScore === undefined) ? '—' : healthScore}</span>
-              <span className="eh-info-wrap" tabIndex={0} aria-label="About the health score">
-                <span className="eh-info-icon">i</span>
-                <span className="eh-info-tooltip" role="tooltip">
-                  <div className="eh-info-tooltip-title">Financial Health Score</div>
+              <InfoPopover label="the health score" title="Financial Health Score">
                   A 0–100 estimate of your overall financial position. Higher is better.
                   <div style={{ marginTop: 6, fontWeight: 600 }}>How it&apos;s calculated</div>
                   Each signal contributes a 0–1 sub-score scaled by its weight, then summed and divided by the weights that had data:
@@ -237,8 +235,7 @@ export default function DashboardTab({
                   )}
                   {coverageLine}
                   {' '}Signals with no data are skipped; below half coverage no score is shown at all.
-                </span>
-              </span>
+              </InfoPopover>
             </div>
             <div className="eh-banner-score-label">Health Score</div>
             {coverageLine && availableCount < signalCount && (
@@ -348,13 +345,9 @@ function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur
       <div className="eh-kpi-label">
         <span>{label}</span>
         {help && (
-          <span className="eh-info-wrap eh-kpi-info" tabIndex={0} aria-label={`About ${label}`}>
-            <span className="eh-info-icon">i</span>
-            <span className="eh-info-tooltip" role="tooltip">
-              <div className="eh-info-tooltip-title">{label}</div>
-              {help}
-            </span>
-          </span>
+          <InfoPopover className="eh-info--kpi" label={label} title={label}>
+            {help}
+          </InfoPopover>
         )}
       </div>
       <div className={`eh-kpi-value ${valueClass || ''}${blur ? ' eh-blur' : ''}`}>{value}</div>

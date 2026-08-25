@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSidebarCollapsed } from '../../hooks/useSidebarCollapsed';
+import InfoPopover from '../ui/InfoPopover';
 
 const NAV_SECTIONS = [
   {
@@ -89,23 +90,19 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore, hea
           <div className="eh-health-card-score">
             <span>{(healthScore === null || healthScore === undefined) ? '—' : healthScore}</span>
             {healthSignals && healthSignals.length > 0 && (
-              <span className="eh-info-wrap" tabIndex={0} aria-label="About the health score">
-                <span className="eh-info-icon">i</span>
-                <span className="eh-info-tooltip" role="tooltip">
-                  <div className="eh-info-tooltip-title">Financial Health Score</div>
-                  A 0–100 estimate of your overall position. Each signal contributes a
-                  0–1 sub-score scaled by its weight; signals with no data are skipped
-                  and the remaining weights are renormalized.
-                  <ul>
-                    {healthSignals.map((s) => (
-                      <li key={s.key}>
-                        <strong>{s.label} ({s.weight}%)</strong>
-                        {s.available ? ` — ${s.detail}` : ` — skipped: ${s.detail}`}
-                      </li>
-                    ))}
-                  </ul>
-                </span>
-              </span>
+              <InfoPopover label="the health score" title="Financial Health Score">
+                A 0–100 estimate of your overall position. Each signal contributes a
+                0–1 sub-score scaled by its weight; signals with no data are skipped
+                and the remaining weights are renormalized.
+                <ul>
+                  {healthSignals.map((s) => (
+                    <li key={s.key}>
+                      <strong>{s.label} ({s.weight}%)</strong>
+                      {s.available ? ` — ${s.detail}` : ` — skipped: ${s.detail}`}
+                    </li>
+                  ))}
+                </ul>
+              </InfoPopover>
             )}
           </div>
           <div className="eh-health-card-sub">

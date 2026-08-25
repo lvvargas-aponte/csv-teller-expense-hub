@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import DashboardTab from '../DashboardTab';
 import { getDashboard, getIncomeVsExpenses } from '../../../api/dashboard';
 import { getBalancesSummary } from '../../../api/balances';
@@ -58,6 +59,13 @@ const renderTab = ({ rows, comparison = spendComparison(), signals, summary = { 
 
 const kpi = (label) => screen.getByRole('group', { name: label });
 
+// The KPI help text now lives behind a real popover button, so a test that
+// asserts on it has to open the popover first.
+const openHelp = async (label) => {
+  await userEvent.setup().click(screen.getByRole('button', { name: `About ${label}` }));
+  return screen.getByRole('note');
+};
+
 beforeEach(() => jest.clearAllMocks());
 
 test('an income month still in progress renders no delta arrow', async () => {
@@ -92,7 +100,7 @@ test('this month compares against the same stretch of the prior month', async ()
 
   await waitFor(() => expect(kpi('This Month')).toHaveTextContent('$120.00'));
   expect(kpi('This Month')).toHaveTextContent(/\$20\.00\s*vs prior/);
-  expect(kpi('This Month')).toHaveTextContent(/first 10 days of July/i);
+  expect(await openHelp('This Month')).toHaveTextContent(/first 10 days of July/i);
 });
 
 // The score is renormalized over whatever had data, so the banner has to say
@@ -140,5 +148,5 @@ test('the net-worth KPI names the liquid figure and the runway exclusion', async
 
   await waitFor(() => expect(kpi('Net Worth')).toBeInTheDocument());
   expect(kpi('Net Worth')).toHaveTextContent(/\$138,000 liquid/);
-  expect(kpi('Net Worth')).toHaveTextContent(/runway/i);
+  expect(await openHelp('Net Worth')).toHaveTextContent(/runway/i);
 });

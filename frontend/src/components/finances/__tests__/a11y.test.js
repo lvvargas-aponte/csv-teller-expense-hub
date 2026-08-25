@@ -50,6 +50,13 @@ jest.mock('../../../api/profile');
 //   investments  violations: landmark-unique x1, region x20
 //                needs review: aria-prohibited-attr x1
 //
+// After F2 (hover tooltips replaced by InfoPopover):
+//   dashboard    violations: landmark-unique x1, region x29
+//   accounts     violations: empty-table-header x2, landmark-unique x1,
+//                            region x13
+//   investments  violations: landmark-unique x1, region x20
+//   aria-prohibited-attr is gone from all three.
+//
 // What each one is:
 //   region               — .eh-main is a plain div, so nothing on the page
 //                          sits inside a landmark.
