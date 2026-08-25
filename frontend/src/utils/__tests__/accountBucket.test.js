@@ -61,3 +61,16 @@ test('an empty or failed fetch keeps the bundled list', () => {
   expect(classifyAccountBucket({ type: 'depository', subtype: 'roth ira' }))
     .toBe('investment');
 });
+
+test('a home or vehicle is a real asset, never cash', () => {
+  expect(classifyAccountBucket({ type: 'asset', subtype: 'home' })).toBe('real_asset');
+  expect(classifyAccountBucket({ type: 'asset', subtype: 'vehicle' })).toBe('real_asset');
+  expect(classifyAccountBucket({ type: 'asset', subtype: '' })).toBe('real_asset');
+});
+
+test('a real asset is not reclassified by an investment subtype', () => {
+  // "investment" is in the subtype vocabulary; a house labelled that way is
+  // still a house, and must not join the portfolio allocation.
+  expect(classifyAccountBucket({ type: 'asset', subtype: 'investment' }))
+    .toBe('real_asset');
+});

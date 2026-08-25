@@ -3,6 +3,13 @@ import Spin from '../ui/Spin';
 import { fmt$ } from '../../utils/formatting';
 import { listGoals, createGoal, deleteGoal } from '../../api/goals';
 import { getBalancesSummary } from '../../api/balances';
+import { classifyAccountBucket, loadInvestmentSubtypes } from '../../utils/accountBucket';
+
+// Where a goal's money can actually sit. Filtering on `type === 'depository'`
+// excluded every brokerage, so a house deposit held in a taxable account
+// could not be linked to the goal it was funding. Cards and houses are not
+// funding sources.
+const FUNDING_BUCKETS = new Set(['cash', 'investment']);
 
 const EMPTY_DRAFT = {
   name: '', target_amount: '', target_date: '',
@@ -21,10 +28,11 @@ export default function GoalsSection() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([listGoals(), getBalancesSummary(false)])
+    Promise.all([listGoals(), getBalancesSummary(false), loadInvestmentSubtypes()])
       .then(([g, b]) => {
         setGoals(g.data);
-        setAccounts((b.data?.accounts ?? []).filter((a) => a.type === 'depository'));
+        setAccounts((b.data?.accounts ?? [])
+          .filter((a) => FUNDING_BUCKETS.has(classifyAccountBucket(a))));
       })
       .catch(() => setError('Could not load goals — is the backend running?'))
       .finally(() => setLoading(false));

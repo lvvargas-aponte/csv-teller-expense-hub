@@ -45,6 +45,9 @@ export function classifyAccountBucket(account) {
   const subtype = (account?.subtype || '').toLowerCase().trim();
   const subtypes = serverSubtypes || INVESTMENT_SUBTYPES;
 
+  // Real assets first: 'investment' is a legal subtype string, and a house
+  // labelled that way is still a house, not a tradeable holding.
+  if (type === 'asset') return 'real_asset';
   if (type === 'investment' || subtypes.has(subtype)) return 'investment';
   if (type === 'depository') return 'cash';
   if (type === 'credit') return 'credit';

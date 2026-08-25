@@ -14,6 +14,7 @@ import React, { useEffect, useRef, useState } from 'react';
 //   align     — 'left' | 'right' (default 'left')
 //   placeholder — text shown when value is empty
 //   className — extra classes (e.g. 'due-urgent')
+//   ariaLabel — accessible name, for fields with no visible <label>
 //   inputMode — passed to <input> (defaults from type)
 //   step, min, max — passed to <input>
 export default function InlineField({
@@ -25,6 +26,7 @@ export default function InlineField({
   align = 'left',
   placeholder = '—',
   className = '',
+  ariaLabel,
   step,
   min,
   max,
@@ -81,6 +83,7 @@ export default function InlineField({
       // We use type="text" universally so prefix/suffix display works; numeric
       // validation happens on parse. inputMode hints to mobile keyboards.
       type="text"
+      aria-label={ariaLabel}
       inputMode={type === 'number' ? 'decimal' : 'text'}
       value={draft}
       placeholder={placeholder}

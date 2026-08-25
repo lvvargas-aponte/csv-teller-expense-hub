@@ -3,12 +3,16 @@ import Backdrop from '../../ui/Backdrop';
 import Field from '../../ui/Field';
 import Spin from '../../ui/Spin';
 import { addManualAccount } from '../../../api/balances';
+import { upsertAccountDetails } from '../../../api/accountDetails';
 import { userMessage } from '../../../utils/errorMessage';
+import { toYMD } from '../../../utils/formatting';
 import { Z_BACKDROP_TOP } from '../../../utils/zIndex';
 
 // Presets the modal title and the underlying account `type` field. The credit
 // preset asks for "balance owed" (stored as ledger) and "available credit";
-// depository asks for "available" + "ledger" balances directly.
+// depository asks for "available" + "ledger" balances directly. The asset
+// preset asks for one value and the date it was true — a house has no bank,
+// so there is no institution and no second balance.
 const PRESETS = {
   credit: {
     title: 'Add Credit Card or Loan',
@@ -30,18 +34,36 @@ const PRESETS = {
     primaryField: 'available',
     secondaryField: 'ledger',
   },
+  asset: {
+    title: 'Add Property or Vehicle',
+    sub:   'Counts toward net worth. Nothing estimates it for you — you set the value, and the app tells you when it is getting old.',
+    type:  'asset',
+    isAsset: true,
+    nameHint: 'e.g. Maple Street',
+    primaryLabel: 'Current Value ($)',
+    primaryField: 'available',
+    secondaryField: 'ledger',
+  },
 };
+
+const ASSET_SUBTYPES = [
+  ['home', 'Home'],
+  ['vehicle', 'Vehicle'],
+  ['other', 'Other'],
+];
 
 export default function AddAccountModal({ kind, onClose, onSaved }) {
   const preset = PRESETS[kind] || PRESETS.depository;
   const [institution, setInstitution] = useState('');
   const [name, setName]               = useState('');
+  const [subtype, setSubtype]         = useState('home');
+  const [valuedOn, setValuedOn]       = useState(() => toYMD(new Date()));
   const [primary, setPrimary]         = useState('');
   const [secondary, setSecondary]     = useState('');
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState(null);
 
-  const canSave = institution.trim() && name.trim() && !saving;
+  const canSave = (preset.isAsset || institution.trim()) && name.trim() && !saving;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -49,13 +71,20 @@ export default function AddAccountModal({ kind, onClose, onSaved }) {
     setSaving(true);
     setError(null);
     try {
-      await addManualAccount({
-        institution: institution.trim(),
+      const value = parseFloat(primary) || 0;
+      const created = await addManualAccount({
+        institution: preset.isAsset ? '' : institution.trim(),
         name:        name.trim(),
         type:        preset.type,
-        [preset.primaryField]:   parseFloat(primary)   || 0,
-        [preset.secondaryField]: parseFloat(secondary) || 0,
+        ...(preset.isAsset ? { subtype } : {}),
+        [preset.primaryField]:   value,
+        // A real asset has one figure; storing it in both keeps every
+        // consumer that reads either field agreeing on the value.
+        [preset.secondaryField]: preset.isAsset ? value : (parseFloat(secondary) || 0),
       });
+      if (preset.isAsset && created?.data?.id) {
+        await upsertAccountDetails(created.data.id, { valuation_updated_on: valuedOn });
+      }
       onSaved?.();
       onClose();
     } catch (err) {
@@ -78,13 +107,24 @@ export default function AddAccountModal({ kind, onClose, onSaved }) {
         <form onSubmit={submit}>
           <div className="modal-body">
             <div className="form-row-2">
-              <Field label="Institution">
-                <input className="form-input" type="text" autoFocus
-                       placeholder="e.g. Chase"
-                       value={institution}
-                       onChange={(e) => setInstitution(e.target.value)} />
-              </Field>
-              <Field label="Account Name">
+              {preset.isAsset ? (
+                <Field label="Kind">
+                  <select className="form-input" value={subtype}
+                          onChange={(e) => setSubtype(e.target.value)}>
+                    {ASSET_SUBTYPES.map(([v, label]) => (
+                      <option key={v} value={v}>{label}</option>
+                    ))}
+                  </select>
+                </Field>
+              ) : (
+                <Field label="Institution">
+                  <input className="form-input" type="text" autoFocus
+                         placeholder="e.g. Chase"
+                         value={institution}
+                         onChange={(e) => setInstitution(e.target.value)} />
+                </Field>
+              )}
+              <Field label={preset.isAsset ? 'Name' : 'Account Name'}>
                 <input className="form-input" type="text"
                        placeholder={preset.nameHint}
                        value={name}
@@ -97,11 +137,19 @@ export default function AddAccountModal({ kind, onClose, onSaved }) {
                        value={primary}
                        onChange={(e) => setPrimary(e.target.value)} />
               </Field>
-              <Field label={preset.secondaryLabel}>
-                <input className="form-input" type="number" step="0.01" min="0" placeholder="0.00"
-                       value={secondary}
-                       onChange={(e) => setSecondary(e.target.value)} />
-              </Field>
+              {preset.isAsset ? (
+                <Field label="Value as of">
+                  <input className="form-input" type="date"
+                         value={valuedOn}
+                         onChange={(e) => setValuedOn(e.target.value)} />
+                </Field>
+              ) : (
+                <Field label={preset.secondaryLabel}>
+                  <input className="form-input" type="number" step="0.01" min="0" placeholder="0.00"
+                         value={secondary}
+                         onChange={(e) => setSecondary(e.target.value)} />
+                </Field>
+              )}
             </div>
             {error && <div className="ov-error">{error}</div>}
           </div>

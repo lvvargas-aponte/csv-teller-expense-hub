@@ -54,15 +54,33 @@ export function buildCashRow(account) {
   };
 }
 
+const ASSET_SUBTYPE_LABELS = { home: 'Home', vehicle: 'Vehicle' };
+
+// A home or vehicle: the stored figure is the whole story. There is no ledger
+// to reconcile against and no transaction that moves it — only a user edit.
+export function buildAssetRow(account) {
+  const subtype = (account.subtype || '').toLowerCase();
+  return {
+    account,
+    id: account.id,
+    name: account.name,
+    subtype,
+    subtypeLabel: ASSET_SUBTYPE_LABELS[subtype] || (account.subtype || 'Other'),
+    value: num(account.available) ?? num(account.ledger) ?? 0,
+    valuationUpdatedOn: account.valuation_updated_on ?? null,
+  };
+}
+
 // Per-section totals shown on each group header. Net worth, utilization and
 // the next payment deliberately live on the Overview and Dashboard pages
 // instead — this page lists accounts, it doesn't summarize the household.
-export function summarize(creditRows, cashRows, investmentRows = []) {
+export function summarize(creditRows, cashRows, investmentRows = [], assetRows = []) {
   return {
     totalOwed: creditRows.reduce((s, r) => s + r.owed, 0),
     totalCash: cashRows.reduce((s, r) => s + r.available, 0),
     totalInvestments: investmentRows.reduce(
       (s, a) => s + (num(a.ledger) ?? num(a.available) ?? 0), 0,
     ),
+    totalAssets: assetRows.reduce((s, r) => s + r.value, 0),
   };
 }

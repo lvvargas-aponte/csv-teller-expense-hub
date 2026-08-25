@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Spin from '../ui/Spin';
-import { getBalancesSummary } from '../../api/balances';
+import { getBalancesSummary, updateAccountBalance } from '../../api/balances';
 import {
   getAllAccountDetails,
   upsertAccountDetails,
@@ -11,8 +11,10 @@ import AccountSection from './accounts/AccountSection';
 import AccountListRow from './accounts/AccountListRow';
 import SimpleAccountRow from './accounts/SimpleAccountRow';
 import AddAccountModal from './accounts/AddAccountModal';
+import AssetRow from './accounts/AssetRow';
 import useConnectionHealth from './accounts/useConnectionHealth';
-import { buildCreditRow, buildCashRow, summarize } from './accounts/accountMath';
+import { buildCreditRow, buildCashRow, buildAssetRow, summarize } from './accounts/accountMath';
+import { toYMD } from '../../utils/formatting';
 import { classifyAccountBucket, loadInvestmentSubtypes } from '../../utils/accountBucket';
 
 // AccountsTab — one summary bar, a connection-health strip, then collapsible
@@ -87,9 +89,20 @@ export default function AccountsTab({
     [investmentAccounts],
   );
 
+  const assetRows = useMemo(
+    () => accounts
+      .filter((a) => bucketOf(a) === 'real_asset')
+      .map((a) => buildAssetRow({
+        ...a,
+        valuation_updated_on:
+          detailsMap[a.id]?.valuation_updated_on ?? a.valuation_updated_on ?? null,
+      })),
+    [accounts, detailsMap, bucketOf],
+  );
+
   const stats = useMemo(
-    () => summarize(creditRows, cashRows, investmentAccounts),
-    [creditRows, cashRows, investmentAccounts],
+    () => summarize(creditRows, cashRows, investmentAccounts, assetRows),
+    [creditRows, cashRows, investmentAccounts, assetRows],
   );
 
   const health = useConnectionHealth(effectiveSummary?.connections);
@@ -114,6 +127,7 @@ export default function AccountsTab({
       statement_day:   toInt(next.statement_day),
       due_day:         toInt(next.due_day),
       opened_on:       next.opened_on || null,
+      valuation_updated_on: next.valuation_updated_on || null,
       notes:           next.notes ?? '',
     };
     try {
@@ -123,6 +137,17 @@ export default function AccountsTab({
       setDetailsMap(detailsRef.current);
     }
   }, []);
+
+  // Revaluing a real asset is the only thing that moves its worth — no
+  // transaction does, and nothing estimates it. The new figure and the date
+  // it was true are written together so the row can never show a fresh value
+  // under a stale date.
+  const handleAssetRevalue = useCallback(async (accountId, value) => {
+    if (value === null || value === undefined) return;
+    await updateAccountBalance(accountId, { available: value, ledger: value });
+    await handleFieldUpdate(accountId, 'valuation_updated_on', toYMD(new Date()));
+    await onRefresh?.();
+  }, [handleFieldUpdate, onRefresh]);
 
   // "Sync all" — force a balances refresh and, when brokerages are connected,
   // a SnapTrade pull. Failures surface in the connections strip, not per row.
@@ -247,6 +272,30 @@ export default function AccountsTab({
             cacheFetchedAt={cacheFetchedAt}
           />
         ))}
+      </AccountSection>
+
+      <AccountSection
+        title="Property & vehicles"
+        count={countLabel(assetRows.length)}
+        total={assetRows.length ? stats.totalAssets : null}
+        defaultOpen={assetRows.length > 0}
+      >
+        {assetRows.length === 0 ? (
+          <div className="acct-empty-note">
+            Add a home or a vehicle to count it toward net worth. You set the
+            value — nothing here estimates it.
+          </div>
+        ) : assetRows.map((row) => (
+          <AssetRow
+            key={row.id}
+            row={row}
+            onValueChange={(v) => handleAssetRevalue(row.id, v)}
+          />
+        ))}
+        <button type="button" className="acct-add-row" onClick={() => setAddingKind('asset')}>
+          <span aria-hidden="true">+</span>
+          <span>Add property or vehicle</span>
+        </button>
       </AccountSection>
 
       {addingKind && (

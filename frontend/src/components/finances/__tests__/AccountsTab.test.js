@@ -228,3 +228,72 @@ test('the open date is editable and survives an edit to another field', async ()
   const [, payload] = axios.put.mock.calls[axios.put.mock.calls.length - 1];
   expect(payload.opened_on).toBe('2016-04-02');
 });
+
+// --- Real assets -----------------------------------------------------------
+// A house is part of net worth and part of nothing else. Grouping it with
+// cash would present $450,000 of illiquid value as spendable savings.
+
+const assetAccount = (over = {}) => ({
+  id: 'a1',
+  institution: '',
+  name: 'Maple Street',
+  type: 'asset',
+  subtype: 'home',
+  available: 450000,
+  ledger: 450000,
+  source: 'manual',
+  manual: true,
+  valuation_updated_on: '2026-08-01',
+  ...over,
+});
+
+const sectionNamed = async (title) => {
+  const head = await screen.findByRole('button', { name: new RegExp(title) });
+  return head.closest('section');
+};
+
+test('a property renders under Property & vehicles, not under Cash & savings', async () => {
+  renderTab([assetAccount(), creditAccount()]);
+
+  const assets = await sectionNamed('Property & vehicles');
+  expect(within(assets).getByText('Maple Street')).toBeInTheDocument();
+
+  const cash = await sectionNamed('Cash & savings');
+  expect(within(cash).queryByText('Maple Street')).not.toBeInTheDocument();
+});
+
+test('an asset row shows the date its value was last set', async () => {
+  renderTab([assetAccount({ valuation_updated_on: '2026-08-01' })]);
+
+  const assets = await sectionNamed('Property & vehicles');
+  expect(within(assets).getByText(/Valued/)).toBeInTheDocument();
+});
+
+test('a valuation older than a year is called out in words, not colour alone', async () => {
+  renderTab([assetAccount({ valuation_updated_on: '2025-06-01' })]);
+
+  const assets = await sectionNamed('Property & vehicles');
+  expect(within(assets).getByText(/worth a refresh/)).toBeInTheDocument();
+});
+
+test('updating an asset value stamps the valuation date', async () => {
+  const user = userEvent.setup();
+  renderTab([assetAccount()]);
+
+  const assets = await sectionNamed('Property & vehicles');
+  const input = within(assets).getByLabelText(/value/i);
+  await user.clear(input);
+  await user.type(input, '470000');
+  await user.tab();
+
+  await waitFor(() => expect(axios.put).toHaveBeenCalledWith(
+    expect.stringContaining('/api/balances/a1'),
+    expect.objectContaining({ available: 470000, ledger: 470000 }),
+  ));
+  await waitFor(() => expect(axios.put).toHaveBeenCalledWith(
+    expect.stringContaining('/api/accounts/a1/details'),
+    expect.objectContaining({
+      valuation_updated_on: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    }),
+  ));
+});
