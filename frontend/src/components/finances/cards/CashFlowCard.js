@@ -33,7 +33,7 @@ export default function CashFlowCard({ dashboard, loading, error, onHide, index,
           textTransform: 'uppercase', letterSpacing: '0.04em',
           padding: '2px 8px', borderRadius: 99,
           background: high ? '#fee2e2' : '#d1fae5',
-          color: high ? '#ef4444' : '#059669',
+          color: high ? 'var(--status-bad-text)' : 'var(--status-good-text)',
         }}>
           {high ? 'High' : 'On track'}
         </span>
@@ -51,7 +51,7 @@ export default function CashFlowCard({ dashboard, loading, error, onHide, index,
             <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>vs. last</div>
             <div style={{
               fontSize: 19, fontWeight: 700,
-              color: delta <= 0 ? '#059669' : '#ef4444',
+              color: delta <= 0 ? 'var(--status-good-text)' : 'var(--status-bad-text)',
               fontFamily: "'DM Mono', monospace",
             }}>
               <Num value={delta} prefix={delta >= 0 ? '+' : '-'} />

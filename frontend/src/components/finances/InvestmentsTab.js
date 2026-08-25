@@ -140,7 +140,7 @@ function CostBasisCell({ holding, onSaved }) {
       >
         Cancel
       </button>
-      {failed && <span style={{ fontSize: 10, color: '#ef4444' }}>Enter a price above 0.</span>}
+      {failed && <span style={{ fontSize: 10, color: 'var(--status-bad-text)' }}>Enter a price above 0.</span>}
     </div>
   );
 }
@@ -318,7 +318,7 @@ export default function InvestmentsTab({ onOpenSettings }) {
 
   const hasHoldings = portfolio && portfolio.holding_count > 0;
   const gain = portfolio?.total_gain ?? 0;
-  const gainColor = gain >= 0 ? '#059669' : '#ef4444';
+  const gainColor = gain >= 0 ? 'var(--status-good-text)' : 'var(--status-bad-text)';
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -330,7 +330,7 @@ export default function InvestmentsTab({ onOpenSettings }) {
             <div style={{ fontSize: 28, fontWeight: 700 }}>{fmt$(portfolio?.total_value || 0)}</div>
             {hasHoldings && (
               <div style={{ fontSize: 13, color: gainColor, marginTop: 2 }}>
-                {fmtSigned(gain)} unrealized
+                {gain >= 0 ? '+' : ''}{fmtSigned(gain)} unrealized {gain >= 0 ? 'gain' : 'loss'}
                 {portfolio.total_gain_pct !== null && portfolio.total_gain_pct !== undefined
                   ? ` (${portfolio.total_gain_pct >= 0 ? '+' : ''}${portfolio.total_gain_pct}%)`
                   : ''}
@@ -366,8 +366,8 @@ export default function InvestmentsTab({ onOpenSettings }) {
           </div>
         </div>
 
-        {notice && <div style={{ marginTop: 10, color: '#059669', fontSize: 13 }}>{notice}</div>}
-        {error && <div style={{ marginTop: 10, color: '#ef4444', fontSize: 13 }}>{error}</div>}
+        {notice && <div style={{ marginTop: 10, color: 'var(--status-good-text)', fontSize: 13 }}>{notice}</div>}
+        {error && <div style={{ marginTop: 10, color: 'var(--status-bad-text)', fontSize: 13 }}>{error}</div>}
 
         {connections.length > 0 && (
           <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -377,7 +377,7 @@ export default function InvestmentsTab({ onOpenSettings }) {
                 style={{
                   fontSize: 12, padding: '3px 10px', borderRadius: 12,
                   background: 'var(--border, #334155)',
-                  color: c.disabled ? '#ef4444' : 'var(--text, inherit)',
+                  color: c.disabled ? 'var(--status-bad-text)' : 'var(--text, inherit)',
                 }}
               >
                 {c.brokerage}{c.disabled ? ' · needs reconnect' : ''}
@@ -482,7 +482,8 @@ export default function InvestmentsTab({ onOpenSettings }) {
             <tbody>
               {g.holdings.map((h) => {
                 const g$ = h.unrealized_gain;
-                const gColor = (g$ ?? 0) >= 0 ? '#059669' : '#ef4444';
+                const isLoss = (g$ ?? 0) < 0;
+                const gColor = isLoss ? 'var(--status-bad-text)' : 'var(--status-good-text)';
                 return (
                   <tr key={`${h.account_id}-${h.symbol}`} style={{ borderTop: '1px solid var(--border, #334155)' }}>
                     <td style={{ padding: '6px 0' }}>
@@ -509,10 +510,13 @@ export default function InvestmentsTab({ onOpenSettings }) {
                       {h.market_value !== null && h.market_value !== undefined ? fmt$(h.market_value) : '—'}
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace", color: gColor }}>
-                      {g$ !== null && g$ !== undefined
-                        ? `${fmtSigned(g$)}${h.gain_pct !== null && h.gain_pct !== undefined
-                          ? ` (${h.gain_pct >= 0 ? '+' : ''}${h.gain_pct}%)` : ''}`
-                        : '—'}
+                      {g$ !== null && g$ !== undefined ? (
+                        <>
+                          {`${isLoss ? '' : '+'}${fmtSigned(g$)}${h.gain_pct !== null && h.gain_pct !== undefined
+                            ? ` (${h.gain_pct >= 0 ? '+' : ''}${h.gain_pct}%)` : ''}`}
+                          <span className="sr-only">{isLoss ? ' loss' : ' gain'}</span>
+                        </>
+                      ) : '—'}
                     </td>
                   </tr>
                 );

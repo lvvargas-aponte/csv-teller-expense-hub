@@ -31,7 +31,8 @@ test('Enter opens the panel and aria-controls points at it', async () => {
   await user.keyboard('{Enter}');
 
   expect(trigger()).toHaveAttribute('aria-expanded', 'true');
-  const panel = screen.getByText(/Assets minus liabilities/).closest('[id]');
+  const panel = screen.getByRole('note');
+  expect(panel).toHaveTextContent(/Assets minus liabilities/);
   expect(trigger()).toHaveAttribute('aria-controls', panel.id);
 });
 

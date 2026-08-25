@@ -203,7 +203,7 @@ export default function RetirementSection({ onOpenSettings }) {
   }
 
   if (error && !data) {
-    return <div className="finances-section" style={{ color: '#ef4444' }}>{error}</div>;
+    return <div className="finances-section" style={{ color: 'var(--status-bad-text)' }}>{error}</div>;
   }
 
   if (!data) return null;
@@ -316,7 +316,7 @@ export default function RetirementSection({ onOpenSettings }) {
 
       <HeadroomPanel headroom={headroom} />
 
-      {error && <div style={{ marginTop: 10, color: '#ef4444', fontSize: 13 }}>{error}</div>}
+      {error && <div style={{ marginTop: 10, color: 'var(--status-bad-text)', fontSize: 13 }}>{error}</div>}
     </div>
   );
 }

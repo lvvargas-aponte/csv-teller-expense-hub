@@ -38,3 +38,17 @@ test('an alert with nowhere to go is still readable, just not clickable', async 
   expect(await screen.findByText(/Netflix went up/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Netflix went up/ })).toBeNull();
 });
+
+// Severity is carried by a red/amber/green stripe and a glyph whose shapes
+// (!, ⚠, i) are weak differentiators. Each row has to say its level in words.
+test('every severity says its level in words, not only in colour', async () => {
+  renderCard([
+    { severity: 'error', category: 'credit', message: 'Sapphire is over 90% utilized', tab: null },
+    { severity: 'warn', category: 'budget', message: 'Dining is pacing to $930', tab: null },
+    { severity: 'info', category: 'recurring', message: 'Netflix went up', tab: null },
+  ]);
+
+  expect(await screen.findByText('Urgent')).toBeInTheDocument();
+  expect(screen.getByText('Warning')).toBeInTheDocument();
+  expect(screen.getByText('Info')).toBeInTheDocument();
+});

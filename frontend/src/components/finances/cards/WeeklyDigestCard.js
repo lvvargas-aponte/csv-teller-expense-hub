@@ -70,7 +70,7 @@ export default function WeeklyDigestCard({ onHide, index, kicker }) {
             <Stat label="Prior week"><Num value={spending.prior_week} /></Stat>
             {changePct !== null && changePct !== undefined && (
               <Stat label="Change">
-                <span style={{ color: changePct > 0 ? '#ef4444' : '#059669' }}>
+                <span style={{ color: changePct > 0 ? 'var(--status-bad-text)' : 'var(--status-good-text)' }}>
                   {changePct > 0 ? '▲' : '▼'} {Math.abs(changePct).toFixed(0)}%
                 </span>
               </Stat>

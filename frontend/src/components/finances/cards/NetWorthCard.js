@@ -63,7 +63,7 @@ export default function NetWorthCard({
               <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>30-day Δ</div>
               <div style={{
                 fontSize: 18, fontWeight: 700,
-                color: trend.delta_30d >= 0 ? '#059669' : '#ef4444',
+                color: trend.delta_30d >= 0 ? 'var(--status-good-text)' : 'var(--status-bad-text)',
               }}>
                 <Num value={trend.delta_30d} signed prefix={trend.delta_30d >= 0 ? '+' : ''} />
               </div>

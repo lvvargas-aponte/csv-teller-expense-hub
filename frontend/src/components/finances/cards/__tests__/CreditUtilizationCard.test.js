@@ -68,3 +68,18 @@ test('no debt means no carry-cost headline', async () => {
   await screen.findAllByText('42%');
   expect(screen.queryByText(/costs about/i)).toBeNull();
 });
+
+// Utilization is good/warn/high in colour alone; one reader in twelve cannot
+// separate the red from the green, so the band gets its word.
+test('utilization bands carry their word alongside the colour', async () => {
+  renderCard(health({
+    overall_status: 'high',
+    overall_utilization_pct: 92,
+    accounts: [{
+      account_id: 'c1', institution: 'Chase', name: 'Sapphire',
+      balance: 9200, credit_limit: 10000, utilization_pct: 92, status: 'high',
+    }],
+  }));
+
+  expect(await screen.findAllByText('High')).toHaveLength(2);
+});

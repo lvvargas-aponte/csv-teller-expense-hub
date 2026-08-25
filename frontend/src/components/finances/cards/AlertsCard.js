@@ -3,10 +3,13 @@ import DashboardCard from './DashboardCard';
 import { getAlerts } from '../../../api/dashboard';
 import { BlurMoney } from '../Num';
 
+// !, ⚠ and i are close enough in shape to be weak differentiators, and the
+// stripe colour says nothing to a colour-blind reader — so each level is also
+// spelled out.
 const SEVERITY = {
-  error: { color: '#ef4444', icon: '!' },
-  warn:  { color: '#f59e0b', icon: '⚠' },
-  info:  { color: '#059669', icon: 'i' },
+  error: { color: 'var(--red)', text: 'var(--status-bad-text)', icon: '!', word: 'Urgent' },
+  warn:  { color: 'var(--amber)', text: 'var(--status-warn-text)', icon: '⚠', word: 'Warning' },
+  info:  { color: 'var(--accent)', text: 'var(--status-good-text)', icon: 'i', word: 'Info' },
 };
 
 export default function AlertsCard({ onHide, index, kicker, onNavigate }) {
@@ -58,7 +61,8 @@ export default function AlertsCard({ onHide, index, kicker, onNavigate }) {
           };
           const content = (
             <>
-              <span style={{ color: sev.color, fontWeight: 700 }}>{sev.icon}</span>
+              <span style={{ color: sev.text, fontWeight: 700 }} aria-hidden="true">{sev.icon}</span>
+              <span className="eh-alert-level" style={{ color: sev.text }}>{sev.word}</span>
               <span><BlurMoney text={a.message} /></span>
             </>
           );

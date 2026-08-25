@@ -189,7 +189,7 @@ export default function RecurringChargesCard({ dashboard, loading, error, index,
                     <td style={{ padding: '8px' }}>
                       <div style={{ fontWeight: 600 }}>{dueLabel}</div>
                       {daysLabel && (
-                        <div style={{ fontSize: 11, color: urgent ? '#ef4444' : 'var(--text-muted)' }}>
+                        <div style={{ fontSize: 11, color: urgent ? 'var(--status-bad-text)' : 'var(--text-muted)' }}>
                           {daysLabel}
                         </div>
                       )}

@@ -20,7 +20,7 @@ export default function BalancesCard({ summary, loading, error, onHide, index, k
       {summary && (
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Net Worth</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: summary.net_worth >= 0 ? '#059669' : '#ef4444' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: summary.net_worth >= 0 ? 'var(--status-good-text)' : 'var(--status-bad-text)' }}>
             <Num value={summary.net_worth} signed />
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
@@ -47,12 +47,12 @@ export default function BalancesCard({ summary, loading, error, onHide, index, k
                     const owed = parseFloat(a.ledger) || 0;
                     const hasDebt = Math.round(owed * 100) !== 0;
                     return (
-                      <span style={{ color: hasDebt ? '#ef4444' : 'var(--text-muted)', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
+                      <span style={{ color: hasDebt ? 'var(--status-bad-text)' : 'var(--text-muted)', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
                         {hasDebt ? <Num value={owed} prefix="-" /> : <Num value={0} />}
                       </span>
                     );
                   })()
-                : <span style={{ color: '#059669', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
+                : <span style={{ color: 'var(--status-good-text)', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
                     <Num value={a.available || 0} />
                   </span>}
             </div>

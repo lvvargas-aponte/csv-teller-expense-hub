@@ -3,9 +3,14 @@ import DashboardCard from './DashboardCard';
 import { getCashflowProjection } from '../../../api/cashflow';
 import Num, { BlurMoney } from '../Num';
 
-const IN_COLOR = '#059669';
-const OUT_COLOR = '#f59e0b';
-const NEG_COLOR = '#ef4444';
+// Bars keep the saturated fill; the figures beside them use the text-grade
+// sibling, which is the only one that clears 4.5:1 on the white card.
+const IN_FILL = 'var(--accent)';
+const OUT_FILL = 'var(--amber)';
+const NEG_FILL = 'var(--red)';
+const IN_TEXT = 'var(--status-good-text)';
+const OUT_TEXT = 'var(--status-warn-text)';
+const NEG_TEXT = 'var(--status-bad-text)';
 
 const CONFIDENCE_NOTE = {
   high: 'median of your last three complete months',
@@ -33,15 +38,16 @@ export default function CashFlowOutlookCard() {
   const empty = !loading && !error && moneyIn === 0 && recurring === 0 && discretionary === 0;
 
   const rows = [
-    { key: 'in', label: 'Money in', value: moneyIn, color: IN_COLOR },
-    { key: 'recurring', label: 'Recurring bills', value: -recurring, color: OUT_COLOR },
+    { key: 'in', label: 'Money in', value: moneyIn, fill: IN_FILL, text: IN_TEXT },
+    { key: 'recurring', label: 'Recurring bills', value: -recurring, fill: OUT_FILL, text: OUT_TEXT },
   ];
   if (!incomplete) {
     rows.push({
       key: 'discretionary',
       label: 'Typical spending',
       value: -discretionary,
-      color: OUT_COLOR,
+      fill: OUT_FILL,
+      text: OUT_TEXT,
       note: CONFIDENCE_NOTE[confidence],
     });
   }
@@ -49,7 +55,8 @@ export default function CashFlowOutlookCard() {
     key: 'net',
     label: 'Projected net',
     value: net,
-    color: net < 0 ? NEG_COLOR : IN_COLOR,
+    fill: net < 0 ? NEG_FILL : IN_FILL,
+    text: net < 0 ? NEG_TEXT : IN_TEXT,
     emphasis: true,
   });
 
@@ -68,15 +75,19 @@ export default function CashFlowOutlookCard() {
           <div key={r.key}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
               <span style={{ fontWeight: r.emphasis ? 700 : 500 }}>{r.label}</span>
-              <span style={{ color: r.color, fontWeight: r.emphasis ? 700 : 500 }}>
-                <Num value={r.value} signed />
+              <span style={{ color: r.text, fontWeight: r.emphasis ? 700 : 500 }}>
+                <Num value={r.value} signed prefix={r.value >= 0 ? '+' : ''} />
+                <span className="sr-only">{r.value < 0 ? ' out' : ' in'}</span>
               </span>
             </div>
-            <div style={{ height: 6, background: 'var(--border, #334155)', borderRadius: 3, marginTop: 3 }}>
+            <div
+              style={{ height: 6, background: 'var(--border, #334155)', borderRadius: 3, marginTop: 3 }}
+              aria-hidden="true"
+            >
               <div style={{
                 height: '100%',
                 width: `${Math.min(100, (Math.abs(r.value) / widest) * 100)}%`,
-                background: r.color,
+                background: r.fill,
                 borderRadius: 3,
               }} />
             </div>
@@ -88,7 +99,7 @@ export default function CashFlowOutlookCard() {
       </div>
 
       {net < 0 && (
-        <div style={{ fontSize: 12, color: NEG_COLOR, marginTop: 10, fontWeight: 600 }}>
+        <div style={{ fontSize: 12, color: NEG_TEXT, marginTop: 10, fontWeight: 600 }}>
           <BlurMoney
             text={`Spending is projected to exceed income by about $${Math.round(Math.abs(net)).toLocaleString()} over the next ${horizon} days.`}
           />

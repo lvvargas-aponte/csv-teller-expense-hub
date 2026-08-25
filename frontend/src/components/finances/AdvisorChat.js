@@ -334,7 +334,7 @@ export default function AdvisorChat() {
               </div>
             </div>
           )}
-          {error && <div style={{ color: '#f87171', fontSize: 13 }}>{error}</div>}
+          {error && <div style={{ color: 'var(--status-bad-text)', fontSize: 13 }}>{error}</div>}
         </div>
 
         <AdvisorMemory />

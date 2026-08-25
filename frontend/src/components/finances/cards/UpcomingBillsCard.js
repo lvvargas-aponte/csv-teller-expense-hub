@@ -77,7 +77,7 @@ export default function UpcomingBillsCard({ onHide, onNavigateToAccounts }) {
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ color: urgent ? '#f87171' : 'inherit', fontWeight: 600 }}>
+                <div style={{ color: urgent ? 'var(--status-bad-text)' : 'inherit', fontWeight: 600 }}>
                   {(b.amount_due !== null && b.amount_due !== undefined)
                     ? fmt$(b.amount_due)
                     : 'no minimum set'}

@@ -6,10 +6,10 @@ import { fmt$ } from '../../../utils/formatting';
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
 const PACE_COLOR = {
-  ahead: '#10b981',
-  on_track: '#10b981',
-  behind: '#f59e0b',
-  stalled: '#f87171',
+  ahead: 'var(--status-good-text)',
+  on_track: 'var(--status-good-text)',
+  behind: 'var(--status-warn-text)',
+  stalled: 'var(--status-bad-text)',
 };
 
 export default function GoalsCard({ onHide }) {

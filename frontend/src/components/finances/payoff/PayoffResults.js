@@ -78,7 +78,7 @@ export default function PayoffResults({ results, strategy, totalMonths, totalPai
 
       {(results.interest_saved_vs_minimums !== null && results.interest_saved_vs_minimums !== undefined) && results.interest_saved_vs_minimums > 0 && (
         <div style={{
-          marginTop: 14, fontSize: 12, color: '#059669', fontWeight: 600,
+          marginTop: 14, fontSize: 12, color: 'var(--status-good-text)', fontWeight: 600,
         }}>
           You save {fmt$(results.interest_saved_vs_minimums)} vs. paying minimums only.
         </div>

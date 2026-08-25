@@ -40,17 +40,17 @@ export default function IncomeVsExpensesCard({ months = 6, onHide, index, kicker
         <div style={{ display: 'flex', gap: 16, marginBottom: 8, fontSize: 13 }}>
           <div>
             <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>Income</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#059669' }}><Num value={latest.income} /></div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--status-good-text)' }}><Num value={latest.income} /></div>
           </div>
           <div>
             <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>Expenses</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#ef4444' }}><Num value={latest.expenses} /></div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--status-bad-text)' }}><Num value={latest.expenses} /></div>
           </div>
           <div>
             <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>Net</div>
             <div style={{
               fontSize: 16, fontWeight: 700,
-              color: latest.net >= 0 ? '#10b981' : '#f87171',
+              color: latest.net >= 0 ? 'var(--status-good-text)' : 'var(--status-bad-text)',
             }}>
               <Num value={latest.net} prefix={latest.net >= 0 ? '+' : '-'} />
             </div>

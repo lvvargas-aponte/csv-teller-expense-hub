@@ -338,7 +338,7 @@ function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur
     const positive = delta >= 0;
     arrow = positive ? '↑' : '↓';
     const good = deltaInverse ? !positive : positive;
-    deltaColor = good ? '#059669' : '#ef4444';
+    deltaColor = good ? 'var(--status-good-text)' : 'var(--status-bad-text)';
   }
   return (
     <div className="eh-kpi" role="group" aria-label={label}>

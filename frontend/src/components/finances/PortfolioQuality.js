@@ -78,7 +78,7 @@ export default function PortfolioQuality({ refreshKey = 0 }) {
       <h3 className="finances-section-title" style={{ marginTop: 0 }}>Portfolio quality</h3>
 
       <div style={{ display: 'grid', gap: 6, marginBottom: 16 }}>
-        <div style={{ fontSize: 13, color: concentrated ? '#f59e0b' : '#059669', fontWeight: 600 }}>
+        <div style={{ fontSize: 13, color: concentrated ? 'var(--status-warn-text)' : 'var(--status-good-text)', fontWeight: 600 }}>
           {concentrated
             ? `Concentrated — ${conc.positions_over_threshold} position${conc.positions_over_threshold === 1 ? '' : 's'} above ${conc.threshold_pct}% of the portfolio`
             : `No single company above ${conc.threshold_pct}% of the portfolio`}
@@ -122,7 +122,7 @@ export default function PortfolioQuality({ refreshKey = 0 }) {
           </div>
           {expensive.length > 0 && (
             <div style={{ marginTop: 8, display: 'grid', gap: 3, fontSize: 12 }}>
-              <div style={{ color: '#f59e0b' }}>
+              <div style={{ color: 'var(--status-warn-text)' }}>
                 Above {fees.high_fee_threshold_pct}%:
               </div>
               {expensive.map((f) => (
@@ -155,7 +155,7 @@ export default function PortfolioQuality({ refreshKey = 0 }) {
                 <span style={{ color: 'var(--text-muted)' }}>{PERIOD_LABEL[p.period] || p.period}</span>
                 {p.available ? (
                   <span style={{ fontFamily: "'DM Mono', monospace" }}>
-                    <span style={{ color: p.mix_return_pct >= 0 ? '#059669' : '#ef4444' }}>
+                    <span style={{ color: p.mix_return_pct >= 0 ? 'var(--status-good-text)' : 'var(--status-bad-text)' }}>
                       {p.mix_return_pct >= 0 ? '+' : ''}{p.mix_return_pct}%
                     </span>
                     {p.benchmark_return_pct !== null && p.benchmark_return_pct !== undefined && (

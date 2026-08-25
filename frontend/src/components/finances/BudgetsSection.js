@@ -112,7 +112,7 @@ export default function BudgetsSection() {
       )}
 
       {loading && <div style={{ textAlign: 'center', padding: '20px 0' }}><Spin /> Loading…</div>}
-      {error && <div style={{ color: '#f87171', fontSize: 14 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--status-bad-text)', fontSize: 14 }}>{error}</div>}
 
       {!loading && !error && budgets.length === 0 && (
         <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
@@ -138,7 +138,9 @@ const PACE_CHIP = {
 function BudgetRow({ budget, onDelete }) {
   const pct = Math.min(budget.percent_used, 100);
   const overflow = Math.max(budget.percent_used - 100, 0);
-  const barColor = budget.over_budget ? '#f87171' : (budget.percent_used > 80 ? '#fbbf24' : '#10b981');
+  const barColor = budget.over_budget
+    ? 'var(--red)'
+    : (budget.percent_used > 80 ? 'var(--amber)' : 'var(--accent)');
   const chip = PACE_CHIP[budget.pace_status];
   const progress = budget.month_progress_pct;
   const projected = budget.projected_month_end;
@@ -171,7 +173,7 @@ function BudgetRow({ budget, onDelete }) {
                 / {fmt$(budget.monthly_limit)}
               </span>
             </div>
-            <div style={{ fontSize: 12, color: budget.over_budget ? '#f87171' : 'var(--text-muted)' }}>
+            <div style={{ fontSize: 12, color: budget.over_budget ? 'var(--status-bad-text)' : 'var(--text-muted)' }}>
               {budget.percent_used}% used
             </div>
           </div>
@@ -180,10 +182,18 @@ function BudgetRow({ budget, onDelete }) {
                   style={{ padding: '1px 6px' }}>✕</button>
         </div>
       </div>
-      <div style={{
-        position: 'relative', background: 'var(--bg-secondary)',
-        borderRadius: 4, height: 6,
-      }}>
+      <div
+        style={{
+          position: 'relative', background: 'var(--bg-secondary)',
+          borderRadius: 4, height: 6,
+        }}
+        role="progressbar"
+        aria-label={`${budget.category} budget`}
+        aria-valuenow={Math.round(pct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext={`${budget.percent_used}% of ${fmt$(budget.monthly_limit)} used${chip ? ` — ${chip.label}` : ''}`}
+      >
         <div style={{
           borderRadius: 4, height: '100%', overflow: 'hidden',
         }}>

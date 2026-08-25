@@ -57,6 +57,11 @@ jest.mock('../../../api/profile');
 //   investments  violations: landmark-unique x1, region x20
 //   aria-prohibited-attr is gone from all three.
 //
+// After F3 (colour paired with text): unchanged except region, which counts
+// nodes and so grows with the words F3 added — dashboard region x37. Nothing
+// F3 touched was axe-detectable; the contrast work it did is invisible to
+// axe in jsdom and was verified by computing the ratios by hand.
+//
 // What each one is:
 //   region               — .eh-main is a plain div, so nothing on the page
 //                          sits inside a landmark.

@@ -45,6 +45,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   --red-text:       #991b1b;
   --amber-wash:     #fffbeb;
   --amber-text:     #92400e;
+  /* Status *as text*. The fill colours (--accent #059669, --red #ef4444,
+     --amber #f59e0b) sit at 3.75:1, 3.76:1 and 2.15:1 on the white card —
+     all below 4.5:1 — so text uses these darker siblings instead and the
+     fills stay for bars and stripes. */
+  --status-good-text: #047857;
+  --status-warn-text: #92400e;
+  --status-bad-text:  #991b1b;
   --surface-muted:  #f3f4f6;
   --border-soft:    #e5e7eb;
   --text-disabled:  #b6bec7;
@@ -86,6 +93,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   --amber-light:    #3a2c0d;
   --amber-wash:     #2b2109;
   --amber-text:     #fcd34d;
+  /* On the dark card the light-theme values invert: the bright siblings are
+     the ones that clear 4.5:1. */
+  --status-good-text: #6ee7b7;
+  --status-warn-text: #fcd34d;
+  --status-bad-text:  #fca5a5;
   --surface-muted:  #163d26;
   --border-soft:    #1f5c3a;
   --text-disabled:  #3f7a5a;

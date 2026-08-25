@@ -146,7 +146,7 @@ export default function GoalsSection() {
       )}
 
       {loading && <div style={{ textAlign: 'center', padding: '20px 0' }}><Spin /> Loading…</div>}
-      {error && <div style={{ color: '#f87171', fontSize: 14 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--status-bad-text)', fontSize: 14 }}>{error}</div>}
 
       {!loading && !error && goals.length === 0 && (
         <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
@@ -164,7 +164,7 @@ export default function GoalsSection() {
 const KIND_BADGE = {
   emergency_fund: { label: 'Emergency',    color: '#3b82f6' },
   travel:         { label: 'Travel',       color: '#8b5cf6' },
-  big_purchase:   { label: 'Big purchase', color: '#f59e0b' },
+  big_purchase:   { label: 'Big purchase', color: 'var(--status-warn-text)' },
 };
 const KIND_BAR_COLOR = {
   emergency_fund: '#3b82f6',
@@ -172,11 +172,21 @@ const KIND_BAR_COLOR = {
   big_purchase:   '#f59e0b',
 };
 
+const PACE_WORD = {
+  ahead: 'Ahead of pace',
+  on_track: 'On pace',
+  behind: 'Behind pace',
+  stalled: 'Stalled',
+};
+
 function GoalRow({ goal, onDelete }) {
   const pct = Math.min(goal.progress_pct, 100);
   const reached = goal.progress_pct >= 100;
-  const barColor = reached ? '#10b981' : (KIND_BAR_COLOR[goal.kind] || '#10b981');
+  const barColor = reached ? 'var(--accent)' : (KIND_BAR_COLOR[goal.kind] || 'var(--accent)');
   const badge = KIND_BADGE[goal.kind];
+  // Pace was carried by bar colour alone on this page, though the dashboard
+  // card has said it in words all along.
+  const paceWord = PACE_WORD[goal.pace_status] || '';
 
   return (
     <div className="balance-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
@@ -210,8 +220,9 @@ function GoalRow({ goal, onDelete }) {
                 / {fmt$(goal.target_amount)}
               </span>
             </div>
-            <div style={{ fontSize: 12, color: reached ? '#10b981' : 'var(--text-muted)' }}>
-              {goal.progress_pct}% {reached ? '✓ reached' : ''}
+            <div style={{ fontSize: 12, color: reached ? 'var(--status-good-text)' : 'var(--text-muted)' }}>
+              {goal.progress_pct}%{' '}
+              {reached ? <><span aria-hidden="true">✓</span> reached</> : paceWord}
             </div>
           </div>
           <button type="button" className="btn btn-ghost btn-sm"
@@ -219,7 +230,15 @@ function GoalRow({ goal, onDelete }) {
                   style={{ padding: '1px 6px' }}>✕</button>
         </div>
       </div>
-      <div style={{ background: 'var(--bg-secondary)', borderRadius: 4, height: 6, overflow: 'hidden' }}>
+      <div
+        style={{ background: 'var(--bg-secondary)', borderRadius: 4, height: 6, overflow: 'hidden' }}
+        role="progressbar"
+        aria-label={`${goal.name} progress`}
+        aria-valuenow={Math.round(pct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext={`${goal.progress_pct}% of ${fmt$(goal.target_amount)}${paceWord ? ` — ${paceWord}` : ''}`}
+      >
         <div style={{ width: `${pct}%`, height: '100%', background: barColor, transition: 'width .3s' }} />
       </div>
     </div>

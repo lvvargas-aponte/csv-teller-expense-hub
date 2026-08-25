@@ -270,7 +270,7 @@ export default function BudgetPresetModal({ categories, existingBudgets, onClose
                       <div style={{ fontSize: 12, color: BUCKET_COLOR[b], fontWeight: 600 }}>
                         {BUCKET_LABEL[b]} · target {fmt$(bucketTotals[b])}
                       </div>
-                      <div style={{ fontSize: 13, color: over ? '#f87171' : 'var(--text-secondary)' }}>
+                      <div style={{ fontSize: 13, color: over ? 'var(--status-bad-text)' : 'var(--text-secondary)' }}>
                         Allocated {fmt$(allocatedBy[b])}
                         {over && ' (over)'}
                       </div>
@@ -281,7 +281,7 @@ export default function BudgetPresetModal({ categories, existingBudgets, onClose
 
               {overwriteCount > 0 && (
                 <div style={{
-                  fontSize: 12, color: '#fbbf24', marginBottom: 12,
+                  fontSize: 12, color: 'var(--status-warn-text)', marginBottom: 12,
                   padding: 8, border: '1px solid #fbbf24', borderRadius: 6,
                 }}>
                   {overwriteCount} existing budget{overwriteCount === 1 ? '' : 's'} will be overwritten.
@@ -356,7 +356,7 @@ export default function BudgetPresetModal({ categories, existingBudgets, onClose
           )}
 
           {error && (
-            <div style={{ color: '#f87171', fontSize: 13, marginTop: 12 }}>{error}</div>
+            <div style={{ color: 'var(--status-bad-text)', fontSize: 13, marginTop: 12 }}>{error}</div>
           )}
         </div>
 

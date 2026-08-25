@@ -9,9 +9,9 @@ import { getCreditFactors } from '../../api/dashboard';
 // number, no gauge, no letter grade, no "estimated range" — any of those
 // become the thing users quote in a real borrowing decision.
 
-const GOOD = '#059669';
-const WARN = '#f59e0b';
-const BAD = '#ef4444';
+const GOOD = 'var(--status-good-text)';
+const WARN = 'var(--status-warn-text)';
+const BAD = 'var(--status-bad-text)';
 
 function utilizationColor(pct) {
   if (pct === null || pct === undefined) return 'var(--text-muted)';

@@ -61,7 +61,7 @@ function FactRow({ fact, onConfirm, onReject, onDelete, onSave }) {
           {CATEGORY_LABEL[fact.category] || fact.category}
         </span>
         {isProposed && (
-          <span style={{ fontSize: 10, color: '#f59e0b' }}>Pending review</span>
+          <span style={{ fontSize: 10, color: 'var(--status-warn-text)' }}>Pending review</span>
         )}
         {isRejected && (
           <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Rejected</span>
@@ -155,7 +155,7 @@ function FactRow({ fact, onConfirm, onReject, onDelete, onSave }) {
               type="button"
               className="btn btn-sm"
               onClick={() => onDelete(fact.id)}
-              style={{ marginLeft: 'auto', color: '#f87171' }}
+              style={{ marginLeft: 'auto', color: 'var(--status-bad-text)' }}
             >
               🗑️
             </button>
@@ -236,7 +236,7 @@ export default function AdvisorMemory() {
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {proposed.length > 0 && (
             <>
-              <div style={{ fontSize: 11, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <div style={{ fontSize: 11, color: 'var(--status-warn-text)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 Pending review
               </div>
               {proposed.map((f) => (

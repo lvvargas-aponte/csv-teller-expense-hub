@@ -46,7 +46,7 @@ export default function PortfolioCard({ onHide, index, kicker }) {
 
   const empty = !loading && !error && (!portfolio || portfolio.holding_count === 0);
   const gain = portfolio?.total_gain ?? 0;
-  const gainColor = gain >= 0 ? '#059669' : '#ef4444';
+  const gainColor = gain >= 0 ? 'var(--status-good-text)' : 'var(--status-bad-text)';
   const gainPct = portfolio?.total_gain_pct;
   const allocation = portfolio?.allocation || [];
 
@@ -87,6 +87,7 @@ export default function PortfolioCard({ onHide, index, kicker }) {
                 <Num value={gain} signed prefix={gain >= 0 ? '+' : ''} />
                 {gainPct !== null && gainPct !== undefined &&
                   ` (${gainPct >= 0 ? '+' : ''}${gainPct}%)`}
+                <span className="sr-only">{gain < 0 ? ' loss' : ' gain'}</span>
               </span>
               {' · '}{portfolio.holding_count} position{portfolio.holding_count === 1 ? '' : 's'}
             </div>

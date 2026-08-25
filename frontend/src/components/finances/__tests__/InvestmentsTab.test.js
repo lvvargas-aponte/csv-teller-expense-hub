@@ -69,3 +69,31 @@ test('shows the empty state when there are no holdings', async () => {
   render(<InvestmentsTab />);
   expect(await screen.findByText(/No holdings yet/i)).toBeInTheDocument();
 });
+
+// Gain and loss are red vs green in the holdings table. The sign is the first
+// redundant channel and a word is the second — neither may be dropped.
+test('a losing holding says it is a loss, not only in red', async () => {
+  mockGet({ configured: true, connected: true }, {
+    ...portfolioWithHoldings,
+    total_gain: -500,
+    total_gain_pct: -3.03,
+    holdings: [{
+      ...portfolioWithHoldings.holdings[0],
+      unrealized_gain: -500, gain_pct: -25,
+    }],
+  });
+  render(<InvestmentsTab />);
+
+  const row = await screen.findByRole('row', { name: /AAPL/ });
+  expect(row).toHaveTextContent('-$500.00');
+  expect(row).toHaveTextContent(/loss/i);
+});
+
+test('a winning holding keeps its plus sign and says gain', async () => {
+  mockGet({ configured: true, connected: true }, portfolioWithHoldings);
+  render(<InvestmentsTab />);
+
+  const row = await screen.findByRole('row', { name: /AAPL/ });
+  expect(row).toHaveTextContent('+$500.00');
+  expect(row).toHaveTextContent(/gain/i);
+});
