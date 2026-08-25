@@ -1,4 +1,5 @@
-# Bank Statement & Shared Expense Tracker
+# Fin
+*Personal finance and shared expenses, with a local AI advisor.*
 
 ## 🎯 Overview
 This app helps you:

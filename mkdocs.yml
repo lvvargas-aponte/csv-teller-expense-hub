@@ -1,5 +1,5 @@
-site_name: Personal Finance Hub — Help
-site_description: User and developer knowledge base for the Personal Finance Hub with AI Virtual Financial Advisor.
+site_name: Fin — Help
+site_description: User and developer knowledge base for Fin, a personal finance app with a local AI virtual financial advisor.
 site_url: http://localhost:8000/help/
 docs_dir: docs
 site_dir: site
