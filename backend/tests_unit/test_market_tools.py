@@ -151,3 +151,56 @@ class TestBuildMarketTools:
         assert [t.name for t in tools] == [
             "get_stock_quote", "get_stock_history", "get_stock_fundamentals",
         ]
+
+
+class TestFundProfiles:
+    """Expense ratios change about once a year — they are cached for a week."""
+
+    def _yf(self, info):
+        return _install_fake_yf(MagicMock(return_value=MagicMock(info=info)))
+
+    def setup_method(self):
+        from agent import market_tools
+
+        market_tools.clear_fund_profile_cache()
+
+    def test_ratio_is_normalized_to_a_percentage(self):
+        from agent.market_tools import get_fund_profiles
+
+        with self._yf({"annualReportExpenseRatio": 0.0003, "category": "Large Blend"}):
+            out = _run(get_fund_profiles(["VTI"]))
+        assert out["VTI"]["expense_ratio_pct"] == pytest.approx(0.03)
+        assert out["VTI"]["category"] == "Large Blend"
+
+    def test_a_stock_has_no_ratio(self):
+        from agent.market_tools import get_fund_profiles
+
+        with self._yf({"shortName": "NVIDIA Corp"}):
+            out = _run(get_fund_profiles(["NVDA"]))
+        assert out["NVDA"]["expense_ratio_pct"] is None
+
+    def test_a_second_call_is_served_from_the_cache(self):
+        from agent import market_tools
+
+        factory = MagicMock(return_value=MagicMock(
+            info={"annualReportExpenseRatio": 0.0003, "category": "Large Blend"}
+        ))
+        with _install_fake_yf(factory):
+            _run(market_tools.get_fund_profiles(["VTI"]))
+            _run(market_tools.get_fund_profiles(["VTI"]))
+        assert factory.call_count == 1
+        assert market_tools.cached_fund_profiles(["VTI"])["VTI"]["category"] == "Large Blend"
+
+    def test_a_stale_entry_is_refetched(self):
+        from agent import market_tools
+
+        factory = MagicMock(return_value=MagicMock(
+            info={"annualReportExpenseRatio": 0.0003, "category": "Large Blend"}
+        ))
+        with _install_fake_yf(factory):
+            _run(market_tools.get_fund_profiles(["VTI"]))
+            market_tools._FUND_PROFILE_CACHE["VTI"] = (
+                0.0, market_tools._FUND_PROFILE_CACHE["VTI"][1]
+            )
+            _run(market_tools.get_fund_profiles(["VTI"]))
+        assert factory.call_count == 2

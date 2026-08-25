@@ -146,3 +146,7 @@ PORTFOLIO_BENCHMARK_SYMBOL: str = "SPY"
 # shown at all. Below this the number describes a different portfolio than
 # the user's, so the card names the unpriceable symbols instead.
 PORTFOLIO_BACKTEST_MIN_COVERAGE_PCT: float = 80.0
+
+# A fund charging more than this is worth a second look — index equivalents
+# in most categories sit an order of magnitude below it.
+PORTFOLIO_HIGH_FEE_PCT: float = 0.50

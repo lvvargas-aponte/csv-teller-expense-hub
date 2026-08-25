@@ -30,3 +30,12 @@ export const clearCostBasis = (accountId, symbol) =>
 // cash drag. Never returns trade suggestions.
 export const getPortfolioQuality = () =>
   axios.get(`${API}/api/investments/quality`);
+
+// How today's holdings would have performed over trailing windows. Reaches
+// the network, so it is its own call — the quality card renders without it.
+export const getMixBacktest = () =>
+  axios.get(`${API}/api/investments/backtest`);
+
+// Weighted expense ratio and the annual dollar cost of fund fees.
+export const getPortfolioFees = () =>
+  axios.get(`${API}/api/investments/fees`);

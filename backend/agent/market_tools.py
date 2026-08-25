@@ -7,6 +7,7 @@ All yfinance calls run in a thread so the event loop stays free.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any, Dict, List, Optional
 
 from agent.schemas import (
@@ -134,6 +135,86 @@ async def get_price_changes(
     codebase needs to import yfinance.
     """
     return await asyncio.to_thread(_price_changes, symbols, period)
+
+
+# symbol -> (fetched_at_monotonic_epoch, profile). Expense ratios move about
+# once a year, so a week-old answer is as good as a fresh one and costs no
+# request. In-memory on purpose: it is a cache, not a record.
+_FUND_PROFILE_CACHE: Dict[str, tuple] = {}
+_FUND_PROFILE_TTL_SEC = 7 * 24 * 60 * 60
+
+
+def clear_fund_profile_cache() -> None:
+    _FUND_PROFILE_CACHE.clear()
+
+
+def _expense_ratio_pct(info: Dict[str, Any]) -> Optional[float]:
+    """Yahoo reports the ratio as a fraction (0.0003 = 0.03%).
+
+    Some feeds hand back the percentage instead, so anything above 1 is taken
+    as already-a-percentage rather than silently multiplied into nonsense.
+    """
+    for key in ("annualReportExpenseRatio", "netExpenseRatio"):
+        raw = info.get(key)
+        if raw is None:
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        return round(value if value > 1 else value * 100, 4)
+    return None
+
+
+def _fund_profile(symbol: str) -> Dict[str, Any]:
+    import yfinance as yf
+
+    try:
+        info = yf.Ticker(symbol).info or {}
+    except Exception:
+        return {"expense_ratio_pct": None, "category": None}
+    return {
+        "expense_ratio_pct": _expense_ratio_pct(info),
+        "category": info.get("category"),
+    }
+
+
+def _fund_profiles(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+    now = time.time()
+    out: Dict[str, Dict[str, Any]] = {}
+    for symbol in symbols:
+        cached = _FUND_PROFILE_CACHE.get(symbol)
+        if cached and now - cached[0] < _FUND_PROFILE_TTL_SEC:
+            out[symbol] = cached[1]
+            continue
+        profile = _fund_profile(symbol)
+        _FUND_PROFILE_CACHE[symbol] = (now, profile)
+        out[symbol] = profile
+    return out
+
+
+async def get_fund_profiles(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Expense ratio (as a percentage) and fund category per symbol.
+
+    A symbol that is not a fund simply has no ratio — callers exclude it
+    rather than counting it as zero.
+    """
+    return await asyncio.to_thread(_fund_profiles, symbols)
+
+
+def cached_fund_profiles(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Whatever the cache already knows. Never fetches, never blocks.
+
+    Lets an offline-safe caller use categories it happens to have without
+    making its own render depend on the network.
+    """
+    now = time.time()
+    return {
+        s: _FUND_PROFILE_CACHE[s][1]
+        for s in symbols
+        if s in _FUND_PROFILE_CACHE
+        and now - _FUND_PROFILE_CACHE[s][0] < _FUND_PROFILE_TTL_SEC
+    }
 
 
 async def _get_stock_quote(args: GetStockQuoteArgs) -> Dict[str, Any]:

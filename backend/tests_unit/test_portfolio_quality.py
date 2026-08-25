@@ -245,3 +245,119 @@ class TestMixBacktest:
         await portfolio_quality.mix_backtest(periods=("1y",))
 
         assert len(fake.calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Fees — the one portfolio number that is knowable in advance
+# ---------------------------------------------------------------------------
+
+class _FakeFunds:
+    def __init__(self, profiles, error=None):
+        self.profiles = profiles
+        self.error = error
+        self.calls = []
+
+    async def get_fund_profiles(self, symbols):
+        self.calls.append(tuple(symbols))
+        if self.error:
+            raise self.error
+        return {s: self.profiles.get(s, {}) for s in symbols}
+
+    def cached_fund_profiles(self, symbols):
+        return {s: self.profiles[s] for s in symbols if s in self.profiles}
+
+
+@pytest.fixture
+def funds(monkeypatch):
+    from agent import market_tools
+
+    def _install(profiles, error=None):
+        fake = _FakeFunds(profiles, error)
+        monkeypatch.setattr(market_tools, "get_fund_profiles", fake.get_fund_profiles)
+        monkeypatch.setattr(
+            market_tools, "cached_fund_profiles", fake.cached_fund_profiles
+        )
+        return fake
+
+    return _install
+
+
+class TestFeeSummary:
+    @pytest.mark.asyncio
+    async def test_weighted_expense_ratio_excludes_individual_stocks(self, funds):
+        _seed([_holding("VTI", "etf", 60000.0), _holding("ARKK", "etf", 40000.0),
+               _holding("NVDA", "stock", 50000.0)])
+        funds({
+            "VTI": {"expense_ratio_pct": 0.03, "category": "Large Blend"},
+            "ARKK": {"expense_ratio_pct": 0.65, "category": "Mid-Cap Growth"},
+            "NVDA": {"expense_ratio_pct": None, "category": None},
+        })
+
+        out = await portfolio_quality.fee_summary()
+
+        assert out["available"] is True
+        assert out["weighted_expense_ratio_pct"] == pytest.approx(0.278, abs=0.001)
+        assert out["annual_fee_cost"] == pytest.approx(278.0, abs=1.0)
+        assert out["funds_priced"] == 2
+
+    @pytest.mark.asyncio
+    async def test_an_expensive_fund_is_flagged(self, funds):
+        _seed([_holding("VTI", "etf", 60000.0), _holding("ARKK", "etf", 40000.0)])
+        funds({
+            "VTI": {"expense_ratio_pct": 0.03, "category": "Large Blend"},
+            "ARKK": {"expense_ratio_pct": 0.65, "category": "Mid-Cap Growth"},
+        })
+
+        rows = (await portfolio_quality.fee_summary())["holdings"]
+
+        expensive = [r for r in rows if r["high"]]
+        assert [r["symbol"] for r in expensive] == ["ARKK"]
+        assert rows[0]["symbol"] == "ARKK"        # biggest annual cost first
+        assert rows[0]["annual_cost"] == pytest.approx(260.0, abs=0.5)
+
+    @pytest.mark.asyncio
+    async def test_a_portfolio_of_only_stocks_reports_no_fee_figure(self, funds):
+        _seed([_holding("NVDA", "stock", 50000.0)])
+        funds({"NVDA": {"expense_ratio_pct": None, "category": None}})
+
+        out = await portfolio_quality.fee_summary()
+
+        assert out["available"] is False
+        assert out["funds_priced"] == 0
+        assert out["annual_fee_cost"] is None
+
+    @pytest.mark.asyncio
+    async def test_offline_degrades_without_raising(self, funds):
+        _seed([_holding("VTI", "etf", 60000.0)])
+        funds({}, error=OSError("no route to host"))
+
+        out = await portfolio_quality.fee_summary()
+
+        assert out["available"] is False
+        assert out["reason"]
+
+
+class TestFundCategoriesFeedTheAllocation:
+    def test_a_known_bond_fund_leaves_the_equity_bucket(self, funds):
+        _seed([_holding("BND", "etf", 40000.0), _holding("VTI", "etf", 60000.0)],
+              risk="balanced")
+        funds({
+            "BND": {"expense_ratio_pct": 0.03, "category": "Intermediate Core Bond"},
+            "VTI": {"expense_ratio_pct": 0.03, "category": "Large Blend"},
+        })
+
+        out = portfolio_quality.assess()["allocation"]
+
+        assert out["by_class"]["bond"] == 40.0
+        assert out["by_class"]["equity"] == 60.0
+        assert out["etf_caveat"] is None
+
+    def test_the_caveat_stays_for_funds_with_no_known_category(self, funds):
+        _seed([_holding("BND", "etf", 40000.0), _holding("MYSTERY", "etf", 60000.0)])
+        funds({"BND": {"expense_ratio_pct": 0.03, "category": "Intermediate Core Bond"}})
+
+        out = portfolio_quality.assess()["allocation"]
+
+        assert out["by_class"]["bond"] == 40.0
+        assert out["by_class"]["equity"] == 60.0
+        assert out["etf_caveat"] is not None

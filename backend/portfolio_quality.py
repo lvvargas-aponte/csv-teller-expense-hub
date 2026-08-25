@@ -57,8 +57,32 @@ def _load_summary() -> Dict[str, Any]:
     return summarize_holdings(get_repo().get_holdings())
 
 
-def asset_class(holding: Dict[str, Any]) -> str:
-    """Broad class for one holding."""
+_BOND_CATEGORY_WORDS = ("bond", "fixed income", "treasury", "muni", "government")
+_CASH_CATEGORY_WORDS = ("money market", "ultrashort")
+
+
+def class_from_category(category: Optional[str]) -> Optional[str]:
+    """Broad class implied by a yfinance fund category, or None if it says nothing.
+
+    Yahoo's category is a Morningstar-style label ("Intermediate Core Bond",
+    "Foreign Large Blend"). It is the cheapest fix for the biggest hole in the
+    allocation view: without it every fund reads as equity.
+    """
+    if not category:
+        return None
+    text = category.lower()
+    if any(word in text for word in _CASH_CATEGORY_WORDS):
+        return "cash"
+    if any(word in text for word in _BOND_CATEGORY_WORDS):
+        return "bond"
+    return "equity"
+
+
+def asset_class(holding: Dict[str, Any], fund_classes: Optional[Dict[str, str]] = None) -> str:
+    """Broad class for one holding — the fund's own category wins when known."""
+    known = (fund_classes or {}).get(holding.get("symbol"))
+    if known:
+        return known
     return _CLASS_BY_ASSET_TYPE.get(holding.get("asset_type"), "other")
 
 
@@ -108,7 +132,11 @@ def _concentration(summary: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _allocation(summary: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, Any]:
+def _allocation(
+    summary: Dict[str, Any],
+    profile: Dict[str, Any],
+    fund_classes: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
     total_value = summary["total_value"]
     actual = {
         a["asset_type"]: a["pct"] for a in summary["allocation"]
@@ -116,7 +144,7 @@ def _allocation(summary: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, A
 
     by_class: Dict[str, float] = {"equity": 0.0, "bond": 0.0, "cash": 0.0, "other": 0.0}
     for h in summary["holdings"]:
-        by_class[asset_class(h)] += float(h.get("market_value") or 0.0)
+        by_class[asset_class(h, fund_classes)] += float(h.get("market_value") or 0.0)
     by_class = {
         k: round(v / total_value * 100, 1) if total_value else 0.0
         for k, v in by_class.items()
@@ -143,8 +171,12 @@ def _allocation(summary: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, A
             "drift_pts": abs(largest["drift_pts"]),
         }
 
-    holds_funds = any(
-        h.get("asset_type") in _FUND_ASSET_TYPES for h in summary["holdings"]
+    # The caveat is per-portfolio and drops away once every fund's category
+    # is known — a fund we can place properly is no longer "counted as equity".
+    uncategorized_funds = any(
+        h.get("asset_type") in _FUND_ASSET_TYPES
+        and not (fund_classes or {}).get(h.get("symbol"))
+        for h in summary["holdings"]
     )
 
     return {
@@ -154,11 +186,35 @@ def _allocation(summary: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, A
         "target_source": target_source,
         "drift": drift,
         "largest_drift": largest_drift,
-        "etf_caveat": ETF_CAVEAT if holds_funds else None,
+        "etf_caveat": ETF_CAVEAT if uncategorized_funds else None,
     }
 
 
-def assess(summary: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _cached_fund_classes(summary: Dict[str, Any]) -> Dict[str, str]:
+    """Fund classes from whatever the profile cache already holds.
+
+    Cache-only, never a fetch: this card has to render with the machine
+    offline, so it uses categories it happens to know and falls back to the
+    asset-type mapping (plus the caveat) for the rest.
+    """
+    try:
+        from agent import market_tools
+
+        symbols = [h["symbol"] for h in summary["holdings"]]
+        return {
+            symbol: cls
+            for symbol, profile in market_tools.cached_fund_profiles(symbols).items()
+            if (cls := class_from_category(profile.get("category")))
+        }
+    except Exception:
+        logger.warning("Could not read cached fund categories", exc_info=True)
+        return {}
+
+
+def assess(
+    summary: Optional[Dict[str, Any]] = None,
+    fund_classes: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
     """Concentration, allocation drift against the stated risk, and cash drag.
 
     ``available`` is False when there is nothing to judge — no positions, or
@@ -176,7 +232,9 @@ def assess(summary: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         }
 
     profile = _load_profile()
-    allocation = _allocation(summary, profile)
+    if fund_classes is None:
+        fund_classes = _cached_fund_classes(summary)
+    allocation = _allocation(summary, profile, fund_classes)
     return {
         "available": True,
         "total_value": summary["total_value"],
@@ -331,3 +389,92 @@ async def mix_backtest(
         result["reason"] = "Not enough of the portfolio could be priced."
     _BACKTEST_CACHE[cache_key] = result
     return result
+
+
+# ---------------------------------------------------------------------------
+# Fees
+# ---------------------------------------------------------------------------
+
+async def fee_summary(summary: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """What the portfolio costs in fund fees, in dollars a year.
+
+    Unlike a return, this is knowable in advance, which makes it the most
+    actionable number on the page. A holding with no expense ratio — an
+    individual stock, or a fund Yahoo doesn't cover — is left out of the
+    weighting entirely rather than counted as a free 0%, which would drag the
+    average toward a figure nobody is actually paying.
+    """
+    from agent import market_tools
+
+    summary = summary if summary is not None else _load_summary()
+    holdings = [h for h in summary["holdings"] if h.get("asset_type") != "cash"]
+    if not holdings:
+        return _no_fees("No fund holdings to price.")
+
+    symbols = sorted({h["symbol"] for h in holdings})
+    try:
+        profiles = await market_tools.get_fund_profiles(symbols)
+    except Exception as e:
+        logger.info("Fund profiles unavailable: %s", e)
+        return _no_fees("Fund data is unreachable right now.")
+
+    rows: List[Dict[str, Any]] = []
+    fund_value = 0.0
+    annual_cost = 0.0
+    unpriced: List[str] = []
+    fund_classes: Dict[str, str] = {}
+    for h in holdings:
+        profile = profiles.get(h["symbol"]) or {}
+        cls = class_from_category(profile.get("category"))
+        if cls:
+            fund_classes[h["symbol"]] = cls
+        ratio = profile.get("expense_ratio_pct")
+        value = float(h.get("market_value") or 0.0)
+        if ratio is None:
+            unpriced.append(h["symbol"])
+            continue
+        cost = value * float(ratio) / 100
+        fund_value += value
+        annual_cost += cost
+        rows.append({
+            "symbol": h["symbol"],
+            "value": round(value, 2),
+            "expense_ratio_pct": round(float(ratio), 3),
+            "annual_cost": round(cost, 2),
+            "high": float(ratio) > config.PORTFOLIO_HIGH_FEE_PCT,
+        })
+
+    if not rows or not fund_value:
+        out = _no_fees("No fund holdings to price.")
+        out["unpriced_symbols"] = sorted(set(unpriced))
+        out["fund_classes"] = fund_classes
+        return out
+
+    rows.sort(key=lambda r: r["annual_cost"], reverse=True)
+    return {
+        "available": True,
+        "reason": None,
+        "annual_fee_cost": round(annual_cost, 2),
+        "weighted_expense_ratio_pct": round(annual_cost / fund_value * 100, 4),
+        "funds_priced": len(rows),
+        "fund_value": round(fund_value, 2),
+        "holdings": rows,
+        "high_fee_threshold_pct": config.PORTFOLIO_HIGH_FEE_PCT,
+        "unpriced_symbols": sorted(set(unpriced)),
+        "fund_classes": fund_classes,
+    }
+
+
+def _no_fees(reason: str) -> Dict[str, Any]:
+    return {
+        "available": False,
+        "reason": reason,
+        "annual_fee_cost": None,
+        "weighted_expense_ratio_pct": None,
+        "funds_priced": 0,
+        "fund_value": 0.0,
+        "holdings": [],
+        "high_fee_threshold_pct": config.PORTFOLIO_HIGH_FEE_PCT,
+        "unpriced_symbols": [],
+        "fund_classes": {},
+    }

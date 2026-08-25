@@ -194,3 +194,11 @@ async def get_mix_backtest() -> Dict[str, Any]:
     import portfolio_quality
 
     return await portfolio_quality.mix_backtest()
+
+
+@router.get("/investments/fees")
+async def get_fee_summary() -> Dict[str, Any]:
+    """Annual dollar cost of the portfolio's fund fees, and the funds driving it."""
+    import portfolio_quality
+
+    return await portfolio_quality.fee_summary()

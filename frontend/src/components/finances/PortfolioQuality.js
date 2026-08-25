@@ -1,8 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getPortfolioQuality } from '../../api/investments';
+import { fmt$ } from '../../utils/formatting';
+import { getPortfolioQuality, getPortfolioFees, getMixBacktest } from '../../api/investments';
 
 const CLASS_LABEL = { equity: 'Equity', bond: 'Bonds', cash: 'Cash' };
 const CLASS_COLOR = { equity: '#6366f1', bond: '#0ea5e9', cash: '#10b981' };
+const PERIOD_LABEL = { '1mo': 'Past month', '1y': 'Past year', '5y': 'Past 5 years' };
+
+// Fees are decided in dollars, not basis points — cents on an annual estimate
+// are noise, so the headline figure is whole dollars.
+const fmtWhole = (n) => new Intl.NumberFormat('en-US', {
+  style: 'currency', currency: 'USD', maximumFractionDigits: 0,
+}).format(Math.abs(parseFloat(n) || 0));
 
 // One class: actual bar against a target marker. A bar plus a tick reads as
 // "here vs there" without needing a legend.
@@ -43,12 +51,18 @@ function DriftBar({ row }) {
  */
 export default function PortfolioQuality({ refreshKey = 0 }) {
   const [data, setData] = useState(null);
+  const [fees, setFees] = useState(null);
+  const [backtest, setBacktest] = useState(null);
   const [failed, setFailed] = useState(false);
 
   const load = useCallback(() => {
     getPortfolioQuality()
       .then((r) => { setData(r.data); setFailed(false); })
       .catch(() => setFailed(true));
+    // Both of these reach the network. Neither is allowed to take the card
+    // down with it — an offline install still sees concentration and drift.
+    getPortfolioFees().then((r) => setFees(r.data)).catch(() => setFees(null));
+    getMixBacktest().then((r) => setBacktest(r.data)).catch(() => setBacktest(null));
   }, []);
 
   useEffect(() => { load(); }, [load, refreshKey]);
@@ -57,6 +71,7 @@ export default function PortfolioQuality({ refreshKey = 0 }) {
 
   const { concentration: conc, allocation: alloc } = data;
   const concentrated = conc.flag === 'concentrated';
+  const expensive = (fees?.holdings || []).filter((f) => f.high);
 
   return (
     <div className="finances-section">
@@ -93,6 +108,74 @@ export default function PortfolioQuality({ refreshKey = 0 }) {
       ) : (
         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           Set a risk tolerance in settings and this will show your mix against a target.
+        </div>
+      )}
+
+      {fees && fees.available && (
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border, #334155)' }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>
+            {fmtWhole(fees.annual_fee_cost)}/year in fund fees
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+            {fees.weighted_expense_ratio_pct}% weighted across {fmt$(fees.fund_value)} in{' '}
+            {fees.funds_priced} fund{fees.funds_priced === 1 ? '' : 's'}.
+          </div>
+          {expensive.length > 0 && (
+            <div style={{ marginTop: 8, display: 'grid', gap: 3, fontSize: 12 }}>
+              <div style={{ color: '#f59e0b' }}>
+                Above {fees.high_fee_threshold_pct}%:
+              </div>
+              {expensive.map((f) => (
+                <div key={f.symbol} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{f.symbol}</span>
+                  <span style={{ fontFamily: "'DM Mono', monospace" }}>
+                    {fmtWhole(f.annual_cost)}/yr <span style={{ color: 'var(--text-muted)' }}>({f.expense_ratio_pct}%)</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {fees.unpriced_symbols.length > 0 && (
+            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+              Not in the average — no published expense ratio:{' '}
+              {fees.unpriced_symbols.join(', ')}.
+            </div>
+          )}
+        </div>
+      )}
+
+      {backtest && backtest.available && (
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border, #334155)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>
+            How your current mix would have performed
+          </div>
+          <div style={{ marginTop: 8, display: 'grid', gap: 4, fontSize: 12 }}>
+            {Object.values(backtest.periods).map((p) => (
+              <div key={p.period} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ color: 'var(--text-muted)' }}>{PERIOD_LABEL[p.period] || p.period}</span>
+                {p.available ? (
+                  <span style={{ fontFamily: "'DM Mono', monospace" }}>
+                    <span style={{ color: p.mix_return_pct >= 0 ? '#059669' : '#ef4444' }}>
+                      {p.mix_return_pct >= 0 ? '+' : ''}{p.mix_return_pct}%
+                    </span>
+                    {p.benchmark_return_pct !== null && p.benchmark_return_pct !== undefined && (
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {' '}vs {p.benchmark} {p.benchmark_return_pct >= 0 ? '+' : ''}{p.benchmark_return_pct}%
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)' }}>{p.reason}</span>
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+            {backtest.disclaimer}
+            {backtest.unpriceable_symbols.length > 0
+              ? ` Couldn't price: ${backtest.unpriceable_symbols.join(', ')}.`
+              : ''}
+          </div>
         </div>
       )}
 
