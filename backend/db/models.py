@@ -184,6 +184,26 @@ class Holding(Base):
     __table_args__ = (Index("ix_holdings_account_id", "account_id"),)
 
 
+class HoldingCostOverride(Base):
+    """A cost basis the user typed, kept out of ``holdings`` on purpose.
+
+    Every sync rewrites that table wholesale, so anything stored on a holding
+    row is destroyed the next time the scheduler runs. Joined at read time in
+    ``analytics.summarize_holdings``.
+    """
+
+    __tablename__ = "holding_cost_overrides"
+
+    account_id: Mapped[str] = mapped_column(
+        String, ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    symbol: Mapped[str] = mapped_column(String, primary_key=True)
+    average_purchase_price: Mapped[float] = mapped_column(Numeric(20, 8), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 

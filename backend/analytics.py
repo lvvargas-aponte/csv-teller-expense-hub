@@ -224,22 +224,49 @@ def classify_account_bucket(acct_type: str, subtype: str) -> str:
 _classify_account_bucket = classify_account_bucket
 
 
+def _cost_overrides() -> Dict[Any, float]:
+    """User-entered average costs, keyed (account_id, symbol).
+
+    Degrades to no overrides rather than failing the whole portfolio if the
+    table cannot be read.
+    """
+    try:
+        from db.accounts_repo import get_repo
+
+        return get_repo().get_cost_overrides()
+    except Exception:  # pragma: no cover - store unavailable
+        logger.warning("Could not read holding cost overrides", exc_info=True)
+        return {}
+
+
 def summarize_holdings(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Aggregate a flat list of holdings into a portfolio summary.
 
     Single source of truth for both ``GET /investments/portfolio`` and the
     advisor's ``investments`` snapshot block. Each input holding is the dict
     shape ``accounts_repo.get_holdings()`` returns. Output: per-holding rows
-    enriched with ``cost_basis`` / ``unrealized_gain`` / ``gain_pct`` plus
-    portfolio totals, allocation by asset type, and concentration ranking.
+    enriched with ``cost_basis`` / ``unrealized_gain`` / ``gain_pct`` /
+    ``cost_basis_source`` plus portfolio totals, allocation by asset type,
+    and concentration ranking.
+
+    A user-entered cost basis is joined in here rather than stored on the
+    holding, because every sync rewrites that table. It wins over the
+    provider's value, and ``cost_basis_source`` says which one was used.
     """
+    overrides = _cost_overrides()
     enriched: List[Dict[str, Any]] = []
     total_value = 0.0
     total_cost = 0.0
     for h in holdings:
         mv = h.get("market_value")
         qty = float(h.get("quantity") or 0.0)
-        avg = h.get("average_purchase_price")
+        override = overrides.get((h.get("account_id"), h.get("symbol")))
+        avg = override if override is not None else h.get("average_purchase_price")
+        source = (
+            "user" if override is not None
+            else "provider" if avg is not None
+            else None
+        )
         cost = round(qty * float(avg), 2) if avg is not None else None
         gain = round(mv - cost, 2) if (mv is not None and cost is not None) else None
         gain_pct = (
@@ -251,9 +278,14 @@ def summarize_holdings(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
             total_value += mv
         if cost is not None:
             total_cost += cost
-        enriched.append(
-            {**h, "cost_basis": cost, "unrealized_gain": gain, "gain_pct": gain_pct}
-        )
+        enriched.append({
+            **h,
+            "average_purchase_price": avg,
+            "cost_basis": cost,
+            "unrealized_gain": gain,
+            "gain_pct": gain_pct,
+            "cost_basis_source": source,
+        })
 
     total_value = round(total_value, 2)
     total_cost = round(total_cost, 2)
@@ -1603,6 +1635,7 @@ def _investments_snapshot() -> Optional[Dict[str, Any]]:
             "cost_basis": h.get("cost_basis"),
             "unrealized_gain": h.get("unrealized_gain"),
             "gain_pct": h.get("gain_pct"),
+            "cost_basis_source": h.get("cost_basis_source"),
         }
         for h in summary["holdings"][:30]
     ]

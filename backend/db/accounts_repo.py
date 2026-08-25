@@ -7,7 +7,7 @@ in-memory implementation used by unit tests lives in
 swap the backing store via ``set_repo()``.
 """
 import json
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 from sqlalchemy import text
 
@@ -54,6 +54,14 @@ class AccountsRepo(Protocol):
     def get_holdings(self) -> List[Dict[str, Any]]: ...
 
     def get_holdings_for_account(self, account_id: str) -> List[Dict[str, Any]]: ...
+
+    def set_cost_override(
+        self, account_id: str, symbol: str, average_purchase_price: float
+    ) -> None: ...
+
+    def delete_cost_override(self, account_id: str, symbol: str) -> int: ...
+
+    def get_cost_overrides(self) -> Dict[Tuple[str, str], float]: ...
 
 
 def _enrollment_id(account: Dict[str, Any]) -> Optional[str]:
@@ -345,6 +353,50 @@ class PgAccountsRepo:
                 {"aid": account_id},
             ).fetchall()
         return [self._row_to_holding(r) for r in rows]
+
+    # ── cost-basis overrides ─────────────────────────────────────────────────
+
+    def set_cost_override(
+        self, account_id: str, symbol: str, average_purchase_price: float
+    ) -> None:
+        """Record the user's average cost for one position."""
+        with sync_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO holding_cost_overrides ("
+                    "  account_id, symbol, average_purchase_price"
+                    ") VALUES (:account_id, :symbol, :price) "
+                    "ON CONFLICT (account_id, symbol) DO UPDATE SET "
+                    "  average_purchase_price = EXCLUDED.average_purchase_price, "
+                    "  updated_at = NOW()"
+                ),
+                {
+                    "account_id": account_id,
+                    "symbol": symbol,
+                    "price": average_purchase_price,
+                },
+            )
+
+    def delete_cost_override(self, account_id: str, symbol: str) -> int:
+        with sync_engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    "DELETE FROM holding_cost_overrides "
+                    "WHERE account_id = :account_id AND symbol = :symbol"
+                ),
+                {"account_id": account_id, "symbol": symbol},
+            )
+        return result.rowcount or 0
+
+    def get_cost_overrides(self) -> Dict[Tuple[str, str], float]:
+        with sync_engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT account_id, symbol, average_purchase_price "
+                    "FROM holding_cost_overrides"
+                )
+            ).fetchall()
+        return {(r[0], r[1]): float(r[2]) for r in rows}
 
 
 # ---------------------------------------------------------------------------

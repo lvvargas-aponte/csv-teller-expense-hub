@@ -5,6 +5,7 @@ import pytest
 
 import state
 import analytics
+from db import accounts_repo_memory
 from analytics import (
     _normalize_merchant,
     build_financial_snapshot,
@@ -302,3 +303,44 @@ class TestCarryCostEndpoint:
         assert body["carry_cost"]["accounts_missing_apr"] == 0
         # The utilization composition is untouched.
         assert body["accounts"][0]["account_id"] == "c1"
+
+
+class TestCostBasisOverrides:
+    """A user-entered average cost is joined into summarize_holdings at read
+    time and stamped so a gain figure never hides where its basis came from."""
+
+    def _holdings(self, avg):
+        return [{
+            "account_id": "a1", "symbol": "VTI", "asset_type": "etf",
+            "quantity": 100.0, "average_purchase_price": avg,
+            "market_value": 30000.0,
+        }]
+
+    def test_override_supplies_a_missing_provider_basis(self):
+        repo = accounts_repo_memory.active()
+        repo.set_cost_override("a1", "VTI", 210.0)
+
+        row = analytics.summarize_holdings(self._holdings(None))["holdings"][0]
+
+        assert row["cost_basis"] == 21000.0
+        assert row["unrealized_gain"] == 9000.0
+        assert row["cost_basis_source"] == "user"
+
+    def test_override_wins_over_the_provider_value(self):
+        repo = accounts_repo_memory.active()
+        repo.set_cost_override("a1", "VTI", 210.0)
+
+        summary = analytics.summarize_holdings(self._holdings(100.0))
+
+        assert summary["holdings"][0]["cost_basis"] == 21000.0
+        assert summary["total_cost"] == 21000.0
+        assert summary["total_gain"] == 9000.0
+
+    def test_provider_basis_is_labelled_provider(self):
+        row = analytics.summarize_holdings(self._holdings(100.0))["holdings"][0]
+        assert row["cost_basis_source"] == "provider"
+
+    def test_no_basis_anywhere_leaves_the_source_unset(self):
+        row = analytics.summarize_holdings(self._holdings(None))["holdings"][0]
+        assert row["cost_basis"] is None
+        assert row["cost_basis_source"] is None

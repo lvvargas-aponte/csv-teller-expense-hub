@@ -127,3 +127,83 @@ class TestSnapTradeSyncEndpoint:
         portfolio = client.get("/api/investments/portfolio").json()
         assert portfolio["total_value"] == 2000.0
         assert portfolio["total_gain"] == 500.0   # 2000 - 10*150
+
+
+# ---------------------------------------------------------------------------
+# User cost-basis overrides — the point is that they outlive a resync
+# ---------------------------------------------------------------------------
+
+class TestCostBasisOverrides:
+    def _sync(self, repo, avg=None):
+        repo.replace_holdings("st_acc_1", [
+            _holding("VTI", "etf", 100, avg, 300.0, 30000.0),
+        ])
+
+    def test_user_cost_basis_survives_a_resync(self):
+        from analytics import summarize_holdings
+
+        repo = get_repo()
+        _seed_account(repo)
+        self._sync(repo)                      # provider sends no average cost
+        repo.set_cost_override("st_acc_1", "VTI", 210.0)
+        self._sync(repo)                      # provider still sends none
+
+        row = summarize_holdings(repo.get_holdings())["holdings"][0]
+        assert row["cost_basis"] == 21000.0
+        assert row["unrealized_gain"] == 9000.0
+        assert row["cost_basis_source"] == "user"
+
+    def test_override_is_upserted_not_duplicated(self):
+        repo = get_repo()
+        _seed_account(repo)
+        self._sync(repo)
+        repo.set_cost_override("st_acc_1", "VTI", 210.0)
+        repo.set_cost_override("st_acc_1", "VTI", 190.0)
+        assert repo.get_cost_overrides() == {("st_acc_1", "VTI"): 190.0}
+
+    def test_delete_restores_the_provider_value(self):
+        from analytics import summarize_holdings
+
+        repo = get_repo()
+        _seed_account(repo)
+        self._sync(repo, avg=100.0)
+        repo.set_cost_override("st_acc_1", "VTI", 210.0)
+        assert repo.delete_cost_override("st_acc_1", "VTI") == 1
+
+        row = summarize_holdings(repo.get_holdings())["holdings"][0]
+        assert row["cost_basis"] == 10000.0
+        assert row["cost_basis_source"] == "provider"
+
+
+class TestCostBasisEndpoints:
+    def test_put_then_delete_round_trip(self, client):
+        repo = get_repo()
+        _seed_account(repo)
+        repo.replace_holdings("st_acc_1", [_holding("VTI", "etf", 100, None, 300.0, 30000.0)])
+
+        resp = client.put(
+            "/api/investments/holdings/st_acc_1/VTI/cost-basis",
+            json={"average_purchase_price": 210.0},
+        )
+        assert resp.status_code == 200, resp.text
+        portfolio = client.get("/api/investments/portfolio").json()
+        row = next(h for h in portfolio["holdings"] if h["symbol"] == "VTI")
+        assert row["cost_basis"] == 21000.0
+        assert row["cost_basis_source"] == "user"
+
+        assert client.delete("/api/investments/holdings/st_acc_1/VTI/cost-basis").status_code == 200
+        portfolio = client.get("/api/investments/portfolio").json()
+        row = next(h for h in portfolio["holdings"] if h["symbol"] == "VTI")
+        assert row["cost_basis"] is None
+        assert row["cost_basis_source"] is None
+
+    def test_a_non_positive_price_is_rejected(self, client):
+        repo = get_repo()
+        _seed_account(repo)
+        repo.replace_holdings("st_acc_1", [_holding("VTI", "etf", 100, None, 300.0, 30000.0)])
+
+        resp = client.put(
+            "/api/investments/holdings/st_acc_1/VTI/cost-basis",
+            json={"average_purchase_price": 0},
+        )
+        assert resp.status_code == 422

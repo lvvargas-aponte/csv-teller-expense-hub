@@ -8,7 +8,7 @@ import {
   syncSnapTradeAccount,
   listSnapTradeConnections,
 } from '../../api/snaptrade';
-import { getPortfolio } from '../../api/investments';
+import { getPortfolio, setCostBasis, clearCostBasis } from '../../api/investments';
 import RetirementSection from './RetirementSection';
 
 const ASSET_LABEL = {
@@ -28,6 +28,121 @@ const ALLOC_COLORS = {
   cash: '#10b981',
   other: '#94a3b8',
 };
+
+// Avg-cost cell. Brokerages often report no average purchase price, which is
+// exactly where a gain figure would be most useful, so the user can type one.
+// A typed value is labelled "yours" so the origin of a gain is never
+// ambiguous; it lives in its own table and survives the next sync.
+function CostBasisCell({ holding, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const avg = holding.average_purchase_price;
+  const mine = holding.cost_basis_source === 'user';
+  const known = avg !== null && avg !== undefined;
+
+  const startEdit = () => {
+    setDraft(known ? String(avg) : '');
+    setFailed(false);
+    setEditing(true);
+  };
+
+  const run = async (fn) => {
+    setBusy(true);
+    setFailed(false);
+    try {
+      await fn();
+      setEditing(false);
+      await onSaved();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const save = () => {
+    const value = Number(draft);
+    if (!Number.isFinite(value) || value <= 0) {
+      setFailed(true);
+      return;
+    }
+    run(() => setCostBasis(holding.account_id, holding.symbol, value));
+  };
+
+  if (!editing) {
+    return (
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+        {known ? (
+          <>
+            <span style={{ fontFamily: "'DM Mono', monospace" }}>{fmt$(avg)}</span>
+            {mine && (
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }} title="You entered this cost basis">
+                yours
+              </span>
+            )}
+            <button
+              type="button"
+              className="btn-link"
+              onClick={startEdit}
+              style={{ fontSize: 11, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}
+            >
+              Edit
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={startEdit}
+            style={{ fontSize: 11, background: 'none', border: 'none', color: '#0ea5e9', cursor: 'pointer', padding: 0 }}
+          >
+            Add cost basis
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        value={draft}
+        aria-label={`Average cost per share for ${holding.symbol}`}
+        onChange={(e) => setDraft(e.target.value)}
+        disabled={busy}
+        style={{ width: 88, fontSize: 12, textAlign: 'right' }}
+      />
+      <button type="button" className="btn btn-secondary" onClick={save} disabled={busy} style={{ fontSize: 11, padding: '2px 8px' }}>
+        Save
+      </button>
+      {mine && (
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => run(() => clearCostBasis(holding.account_id, holding.symbol))}
+          disabled={busy}
+          style={{ fontSize: 11, padding: '2px 8px' }}
+        >
+          Clear
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => setEditing(false)}
+        disabled={busy}
+        style={{ fontSize: 11, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+      >
+        Cancel
+      </button>
+      {failed && <span style={{ fontSize: 10, color: '#ef4444' }}>Enter a price above 0.</span>}
+    </div>
+  );
+}
 
 // InvestmentsTab — connects brokerages via SnapTrade and shows holdings,
 // allocation, and unrealized gain/loss. Mirrors the connect flow used for
@@ -377,9 +492,8 @@ export default function InvestmentsTab({ onOpenSettings }) {
                       )}
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace" }}>{h.quantity}</td>
-                    <td style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace" }}>
-                      {h.average_purchase_price !== null && h.average_purchase_price !== undefined
-                        ? fmt$(h.average_purchase_price) : '—'}
+                    <td style={{ textAlign: 'right' }}>
+                      <CostBasisCell holding={h} onSaved={reload} />
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace" }}>
                       {h.last_price !== null && h.last_price !== undefined ? fmt$(h.last_price) : '—'}

@@ -145,6 +145,7 @@ _TABLES_TO_TRUNCATE = [
     "sync_corrections",
     "sync_runs",
     "sync_row_state",
+    "period_settlements",
     "peers",
     "peer_shared_transactions",
     "instance_identity",
@@ -158,9 +159,11 @@ _TABLES_TO_TRUNCATE = [
     "seed_removed_defaults",
     "allowlist_hosts",
     "user_profile",
+    "category_rules",
     "account_details",
     "goals",
     "budgets",
+    "holding_cost_overrides",
     "holdings",
     "balance_snapshots",
     "transactions",
@@ -218,6 +221,25 @@ def _block_env_and_token_leaks(monkeypatch):
     original_urls = list(state.SIMPLEFIN_ACCESS_URLS)
     yield
     state.SIMPLEFIN_ACCESS_URLS[:] = original_urls
+
+
+@pytest.fixture(autouse=True)
+def _block_google_sheets(monkeypatch):
+    """Keep tests off the real spreadsheet.
+
+    ``build_gateway`` is the single door to Google, and several routes now walk
+    through it on their own — marking a period ready or paid publishes a footer
+    immediately. With real credentials in the environment those routes would
+    write to the household's live sheet, which holds years of settled records.
+    Every test gets a refusal instead; a test that wants gateway behaviour
+    passes its own ``InMemoryGateway``.
+    """
+    from sheet_sync import service
+
+    def _refuse(*_a, **_kw):
+        raise service.SyncDisabled("Sheet access is disabled in tests.")
+
+    monkeypatch.setattr(service, "build_gateway", _refuse)
 
 
 @pytest.fixture

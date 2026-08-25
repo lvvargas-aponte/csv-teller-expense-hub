@@ -6,7 +6,7 @@ fresh ``InMemoryAccountsRepo`` and returns it. The module exposes
 conftest fixture can clear it between tests.
 """
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class InMemoryAccountsRepo:
@@ -24,6 +24,8 @@ class InMemoryAccountsRepo:
         self.snapshots: List[Dict[str, Any]] = []
         # account_id -> list of holding dicts (current position snapshot).
         self.holdings: Dict[str, List[Dict[str, Any]]] = {}
+        # (account_id, symbol) -> user-entered average purchase price.
+        self.cost_overrides: Dict[Tuple[str, str], float] = {}
 
     def upsert_synced_account(
         self, account: Dict[str, Any], source: str = "simplefin"
@@ -169,10 +171,22 @@ class InMemoryAccountsRepo:
         rows.sort(key=lambda r: r.get("market_value") or 0.0, reverse=True)
         return rows
 
+    def set_cost_override(
+        self, account_id: str, symbol: str, average_purchase_price: float
+    ) -> None:
+        self.cost_overrides[(account_id, symbol)] = float(average_purchase_price)
+
+    def delete_cost_override(self, account_id: str, symbol: str) -> int:
+        return 1 if self.cost_overrides.pop((account_id, symbol), None) is not None else 0
+
+    def get_cost_overrides(self) -> Dict[Tuple[str, str], float]:
+        return dict(self.cost_overrides)
+
     def reset(self) -> None:
         self.accounts.clear()
         self.snapshots.clear()
         self.holdings.clear()
+        self.cost_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
