@@ -42,9 +42,37 @@ const projection = (over = {}) => ({
   ...over,
 });
 
-const mockGet = (data) => {
+const headroom = (over = {}) => ({
+  available: true,
+  reason: null,
+  year: 2026,
+  as_of: '2026-09-01',
+  months_remaining: 4,
+  catch_up_eligible: false,
+  groups: [
+    {
+      key: 'ira',
+      label: 'IRA',
+      ytd: 4200,
+      limit: 7500,
+      limit_note: null,
+      headroom: 3300,
+      months_remaining: 4,
+      monthly_to_use_remaining: 825,
+      accounts: ['Fidelity Roth IRA'],
+      approximate: false,
+      approximate_reason: null,
+    },
+  ],
+  ...over,
+});
+
+const mockGet = (data, headroomData = { available: false, groups: [] }) => {
   axios.get.mockImplementation((url) => {
     if (url.includes('/api/retirement/projection')) return Promise.resolve({ data });
+    if (url.includes('/api/tax/contribution-headroom')) {
+      return Promise.resolve({ data: headroomData });
+    }
     return Promise.reject(new Error(`Unexpected GET ${url}`));
   });
 };
@@ -133,5 +161,52 @@ describe('RetirementSection', () => {
     expect(await screen.findByText(/birth year/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /profile/i }));
     expect(onOpenSettings).toHaveBeenCalledWith('profile');
+  });
+});
+
+describe('RetirementSection contribution headroom', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    axios.put.mockResolvedValue({ data: {} });
+  });
+
+  it("compares this year's contributions against the published limit", async () => {
+    mockGet(projection(), headroom());
+    render(<RetirementSection />);
+
+    const bar = await screen.findByRole('progressbar', { name: /IRA contributions/i });
+    expect(bar).toHaveAttribute('aria-valuenow', '4200');
+    expect(bar).toHaveAttribute('aria-valuemax', '7500');
+    expect(screen.getByText(/\$3,300 of room left/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$825\/month/i)).toBeInTheDocument();
+    expect(screen.getByText(/4 months left/i)).toBeInTheDocument();
+  });
+
+  it('says why a velocity-derived figure is only approximate', async () => {
+    mockGet(projection(), headroom({
+      groups: [{
+        ...headroom().groups[0],
+        key: 'workplace',
+        label: 'Workplace plan',
+        approximate: true,
+        approximate_reason:
+          'Approximate — based on balance changes, which include growth as well as contributions.',
+      }],
+    }));
+    render(<RetirementSection />);
+
+    expect(await screen.findByText(/based on balance changes, which include growth/i))
+      .toBeInTheDocument();
+  });
+
+  it('names the year when its limits have not been added', async () => {
+    mockGet(projection(), {
+      available: false,
+      reason: "Contribution limits for 2099 haven't been added yet.",
+      groups: [],
+    });
+    render(<RetirementSection />);
+
+    expect(await screen.findByText(/limits for 2099/i)).toBeInTheDocument();
   });
 });

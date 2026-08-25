@@ -150,3 +150,35 @@ PORTFOLIO_BACKTEST_MIN_COVERAGE_PCT: float = 80.0
 # A fund charging more than this is worth a second look — index equivalents
 # in most categories sit an order of magnitude below it.
 PORTFOLIO_HIGH_FEE_PCT: float = 0.50
+
+# --- Contribution limits ----------------------------------------------------
+# Keyed by calendar year on purpose. A year absent from this map makes the
+# headroom view report itself unavailable and name the missing year; it never
+# falls back to the previous year's figure. A silently stale limit tells
+# someone they have room they do not have, and the penalty for
+# over-contributing is real money.
+#
+#   2025 — IRS Notice 2024-80, published November 2024.
+#   2026 — IRS Notice 2025-67, published November 2025.
+#
+# ``ira`` pools traditional and Roth IRAs, which share one annual limit.
+# ``workplace`` is the elective-deferral limit for 401(k)/403(b)/457(b) plans,
+# which is separate from the IRA limit. HSAs are deliberately absent: the
+# limit depends on whether the coverage is self-only or family, which nothing
+# in this app can see, so HSA contributions are reported without a limit
+# rather than measured against a guessed one. SEP and SIMPLE IRAs are absent
+# for the same reason — their limits are a function of compensation.
+CONTRIBUTION_LIMITS_BY_YEAR: dict = {
+    2025: {
+        "ira": 7000.0, "ira_catch_up": 1000.0,
+        "workplace": 23500.0, "workplace_catch_up": 7500.0,
+    },
+    2026: {
+        "ira": 7500.0, "ira_catch_up": 1100.0,
+        "workplace": 24500.0, "workplace_catch_up": 8000.0,
+    },
+}
+
+# Catch-up contributions are allowed from the calendar year the taxpayer
+# turns this age, not from their birthday.
+CONTRIBUTION_CATCH_UP_AGE: int = 50

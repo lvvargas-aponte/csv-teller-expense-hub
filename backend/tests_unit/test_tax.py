@@ -233,3 +233,138 @@ class TestAfterTaxNetWorth:
 
         assert out["pre_tax_balance"] == 0.0
         assert out["after_tax_net_worth"] == 200000.0
+
+
+@pytest.fixture
+def contributions(monkeypatch):
+    """Stand in for B2's detection — D3's job starts once the rows exist."""
+    import retirement
+
+    rows = []
+
+    async def fake():
+        return {
+            "monthly_total": round(sum(r["monthly"] for r in rows), 2),
+            "by_account": rows,
+            "confidence": "high",
+            "caveat": None,
+        }
+
+    monkeypatch.setattr(retirement, "estimate_contributions", fake)
+    return rows
+
+
+def _contributing(rows, account_id, name, monthly, method="recurring_transfer"):
+    rows.append({
+        "account_id": account_id, "name": name, "monthly": monthly,
+        "method": method, "confidence": "high" if method == "recurring_transfer" else "low",
+    })
+
+
+def _group(out, key):
+    return next(g for g in out["groups"] if g["key"] == key)
+
+
+class TestContributionHeadroom:
+    @pytest.mark.asyncio
+    async def test_ytd_against_the_limit_produces_headroom(self, profile, contributions):
+        profile.update(birth_year=1990)
+        _seed_investment("roth1", "Fidelity Roth IRA", 42000.0, "roth_ira")
+        _contributing(contributions, "roth1", "Fidelity Roth IRA", 525.0)
+
+        out = await tax.contribution_headroom(today=date(2026, 9, 1))
+
+        assert out["available"] is True
+        assert out["year"] == 2026
+        assert out["catch_up_eligible"] is False
+        ira = _group(out, "ira")
+        assert ira["ytd"] == 4200.0
+        assert ira["limit"] == 7500.0
+        assert ira["headroom"] == 3300.0
+        assert ira["months_remaining"] == 4.0
+        assert ira["monthly_to_use_remaining"] == 825.0
+        assert ira["approximate"] is False
+
+    @pytest.mark.asyncio
+    async def test_missing_year_returns_unavailable_not_a_stale_limit(
+        self, profile, contributions
+    ):
+        out = await tax.contribution_headroom(today=date(2099, 3, 1))
+        assert out["available"] is False
+        assert "2099" in out["reason"]
+
+    @pytest.mark.asyncio
+    async def test_catch_up_applies_from_the_year_the_user_turns_fifty(
+        self, profile, contributions
+    ):
+        profile.update(birth_year=1976)   # turns 50 in 2026
+        _seed_investment("ira1", "Vanguard IRA", 80000.0, "ira")
+        _contributing(contributions, "ira1", "Vanguard IRA", 100.0)
+
+        out = await tax.contribution_headroom(today=date(2026, 9, 1))
+
+        assert out["catch_up_eligible"] is True
+        assert _group(out, "ira")["limit"] == 8600.0
+
+    @pytest.mark.asyncio
+    async def test_iras_pool_together_and_the_workplace_plan_stands_apart(
+        self, profile, contributions
+    ):
+        profile.update(birth_year=1990)
+        _seed_investment("roth1", "Roth IRA", 42000.0, "roth_ira")
+        _seed_investment("ira1", "Traditional IRA", 30000.0, "ira")
+        _seed_investment("k401", "Employer 401(k)", 200000.0, "401k")
+        _contributing(contributions, "roth1", "Roth IRA", 300.0)
+        _contributing(contributions, "ira1", "Traditional IRA", 200.0)
+        _contributing(contributions, "k401", "Employer 401(k)", 1000.0)
+
+        out = await tax.contribution_headroom(today=date(2026, 9, 1))
+
+        assert _group(out, "ira")["ytd"] == 4000.0
+        assert _group(out, "ira")["limit"] == 7500.0
+        assert _group(out, "workplace")["ytd"] == 8000.0
+        assert _group(out, "workplace")["limit"] == 24500.0
+
+    @pytest.mark.asyncio
+    async def test_hsa_is_reported_without_a_limit_rather_than_a_guessed_one(
+        self, profile, contributions
+    ):
+        profile.update(birth_year=1990)
+        _seed_investment("hsa1", "Fidelity HSA", 9000.0, "hsa")
+        _contributing(contributions, "hsa1", "Fidelity HSA", 300.0)
+
+        out = await tax.contribution_headroom(today=date(2026, 9, 1))
+
+        hsa = _group(out, "hsa")
+        assert hsa["ytd"] == 2400.0
+        assert hsa["limit"] is None
+        assert hsa["headroom"] is None
+        assert "coverage" in hsa["limit_note"].lower()
+
+    @pytest.mark.asyncio
+    async def test_velocity_derived_rows_mark_the_group_approximate(
+        self, profile, contributions
+    ):
+        profile.update(birth_year=1990)
+        _seed_investment("k401", "Employer 401(k)", 200000.0, "401k")
+        _contributing(
+            contributions, "k401", "Employer 401(k)", 1000.0, method="snapshot_velocity"
+        )
+
+        out = await tax.contribution_headroom(today=date(2026, 9, 1))
+
+        workplace = _group(out, "workplace")
+        assert workplace["approximate"] is True
+        assert "growth" in workplace["approximate_reason"].lower()
+
+    @pytest.mark.asyncio
+    async def test_a_taxable_brokerage_has_no_limit_to_compare_against(
+        self, profile, contributions
+    ):
+        profile.update(birth_year=1990)
+        _seed_investment("brk", "Brokerage", 40000.0, "brokerage")
+        _contributing(contributions, "brk", "Brokerage", 500.0)
+
+        out = await tax.contribution_headroom(today=date(2026, 9, 1))
+
+        assert out["groups"] == []

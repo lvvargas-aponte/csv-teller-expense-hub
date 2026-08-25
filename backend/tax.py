@@ -14,7 +14,9 @@ inference alongside whether the user has confirmed it.
 """
 from __future__ import annotations
 
+import calendar
 import re
+from datetime import date
 from typing import Any, Dict, Optional
 
 TREATMENTS = ("taxable", "traditional", "roth", "hsa", "education", "other")
@@ -176,4 +178,162 @@ async def after_tax_net_worth() -> Dict[str, Any]:
         "rate_pct": float(rate),
         "rate_source": "profile",
         "note": AFTER_TAX_NOTE,
+    }
+
+
+# --- Contribution headroom --------------------------------------------------
+# Which annual limit an account answers to. Not the same question as the tax
+# treatment: a traditional IRA and a traditional 401(k) share a treatment and
+# have entirely separate limits.
+_IRA_PLANS = frozenset({"ira", "traditionalira", "rolloverira", "rothira"})
+_WORKPLACE_PLANS = frozenset({
+    "401k", "roth401k", "403b", "roth403b", "457b", "roth457b", "tsp",
+})
+
+PLAN_FAMILY_LABEL = {
+    "ira": "IRA",
+    "workplace": "Workplace plan",
+    "hsa": "HSA",
+    "education": "Education (529)",
+    "other": "Other tax-advantaged",
+}
+
+_HSA_LIMIT_NOTE = (
+    "No limit shown: the HSA limit depends on whether your coverage is "
+    "self-only or family, which this app cannot see."
+)
+_OTHER_LIMIT_NOTE = (
+    "No limit shown: this account's limit depends on your compensation."
+)
+
+VELOCITY_HEADROOM_CAVEAT = (
+    "Approximate — based on balance changes, which include growth as well as "
+    "contributions."
+)
+
+
+def plan_family(subtype: Optional[str]) -> str:
+    """``ira`` / ``workplace`` / ``hsa`` / ``education`` / ``taxable`` / ``other``.
+
+    SEP and SIMPLE IRAs land in ``other`` rather than ``ira`` on purpose:
+    their limits are a function of compensation, so pooling them against the
+    IRA limit would overstate how much room the household has left.
+    """
+    s = _normalize(subtype)
+    if s in _IRA_PLANS:
+        return "ira"
+    if s in _WORKPLACE_PLANS:
+        return "workplace"
+    if "hsa" in s:
+        return "hsa"
+    if "529" in s or "coverdell" in s:
+        return "education"
+    if s in _TAXABLE:
+        return "taxable"
+    return "other"
+
+
+def _elapsed_months(today: date) -> float:
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    return round((today.month - 1) + (today.day - 1) / days_in_month, 4)
+
+
+def _limit_for(family: str, limits: Dict[str, float], catch_up: bool) -> Optional[float]:
+    base = limits.get(family)
+    if base is None:
+        return None
+    return round(base + (limits.get(f"{family}_catch_up", 0.0) if catch_up else 0.0), 2)
+
+
+async def contribution_headroom(today: Optional[date] = None) -> Dict[str, Any]:
+    """This year's detected contributions against the published annual limits.
+
+    The most actionable tax-adjacent sentence the app can produce, and it
+    needs no tax computation at all — only what went in and a published
+    number. Contributions come from ``retirement.estimate_contributions``,
+    so a group fed by a velocity-derived row reports itself approximate and
+    says why: a rising balance is contributions plus market return.
+    """
+    import config
+    import retirement
+    from db import profile_repo
+
+    today = today or date.today()
+    limits = config.CONTRIBUTION_LIMITS_BY_YEAR.get(today.year)
+    if limits is None:
+        return {
+            "available": False,
+            "reason": (
+                f"Contribution limits for {today.year} haven't been added yet. "
+                "Last year's figures are deliberately not reused."
+            ),
+            "year": today.year,
+            "groups": [],
+            "catch_up_eligible": None,
+        }
+
+    profile = profile_repo.load_quietly() or {}
+    birth_year = profile.get("birth_year")
+    catch_up = (
+        birth_year is not None
+        and today.year - int(birth_year) >= config.CONTRIBUTION_CATCH_UP_AGE
+    )
+
+    accounts = {a.id: a for a in await retirement.load_investment_accounts()}
+    contributions = await retirement.estimate_contributions()
+
+    elapsed = _elapsed_months(today)
+    remaining = round(12.0 - elapsed, 2)
+
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for row in contributions["by_account"]:
+        account = accounts.get(row["account_id"])
+        if account is None:
+            continue
+        family = plan_family(account.subtype)
+        if family == "taxable":
+            continue
+        bucket = buckets.setdefault(
+            family, {"monthly": 0.0, "accounts": [], "approximate": False}
+        )
+        bucket["monthly"] += float(row["monthly"])
+        bucket["accounts"].append(row["name"])
+        if row["method"] == "snapshot_velocity":
+            bucket["approximate"] = True
+
+    groups = []
+    for family, bucket in buckets.items():
+        limit = _limit_for(family, limits, catch_up)
+        ytd = round(bucket["monthly"] * elapsed, 2)
+        headroom = round(limit - ytd, 2) if limit is not None else None
+        groups.append({
+            "key": family,
+            "label": PLAN_FAMILY_LABEL[family],
+            "ytd": ytd,
+            "limit": limit,
+            "limit_note": None if limit is not None else (
+                _HSA_LIMIT_NOTE if family == "hsa" else _OTHER_LIMIT_NOTE
+            ),
+            "headroom": headroom,
+            "months_remaining": remaining,
+            "monthly_to_use_remaining": (
+                round(max(headroom, 0.0) / remaining, 2)
+                if headroom is not None and remaining > 0 else None
+            ),
+            "accounts": bucket["accounts"],
+            "approximate": bucket["approximate"],
+            "approximate_reason": (
+                VELOCITY_HEADROOM_CAVEAT if bucket["approximate"] else None
+            ),
+        })
+
+    groups.sort(key=lambda g: (g["limit"] is None, -g["ytd"]))
+    return {
+        "available": True,
+        "reason": None,
+        "year": today.year,
+        "as_of": today.isoformat(),
+        "months_remaining": remaining,
+        "catch_up_eligible": catch_up,
+        "groups": groups,
     }

@@ -21,3 +21,13 @@ async def get_after_tax_net_worth() -> Dict[str, Any]:
     stated a marginal rate — the reason says which.
     """
     return await tax.after_tax_net_worth()
+
+
+@router.get("/tax/contribution-headroom")
+async def get_contribution_headroom() -> Dict[str, Any]:
+    """This year's detected contributions against the published limits.
+
+    ``available: false`` when the current year is not in the limits map — the
+    reason names the year rather than reusing last year's figure.
+    """
+    return await tax.contribution_headroom()

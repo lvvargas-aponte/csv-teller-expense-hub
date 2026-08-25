@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Spin from '../ui/Spin';
 import { fmt$ } from '../../utils/formatting';
 import { getProjection } from '../../api/retirement';
+import { getContributionHeadroom } from '../../api/tax';
 import { updateProfile } from '../../api/profile';
 
 const MISSING_LABEL = {
@@ -70,6 +71,87 @@ function Assumption({ id, label, value, suffix, step, onCommit }) {
   );
 }
 
+const fmtMonths = (n) => {
+  const v = Math.round(parseFloat(n) || 0);
+  return `${v} ${v === 1 ? 'month' : 'months'} left`;
+};
+
+/**
+ * One limit, as a bar. "You've put $4,200 into your IRA this year; the limit
+ * is $7,000" needs no tax computation at all, which is exactly why it is the
+ * most actionable thing on this card — so it says the remaining room and the
+ * monthly amount that would use it, not just a percentage.
+ */
+function HeadroomPanel({ headroom }) {
+  if (!headroom) return null;
+  return (
+    <div className="ret-headroom">
+      <div className="ret-headroom-title">
+        {headroom.available ? `Contribution room, ${headroom.year}` : 'Contribution room'}
+        {headroom.catch_up_eligible && (
+          <span className="ret-headroom-catchup"> · catch-up limits apply</span>
+        )}
+      </div>
+      {/* A missing year is reported, never papered over with last year's
+          figure: a stale limit tells someone they have room they do not
+          have, and the over-contribution penalty is real money. */}
+      {!headroom.available ? (
+        <div className="ret-headroom-note">{headroom.reason}</div>
+      ) : headroom.groups.length === 0 ? (
+        <div className="ret-headroom-note">
+          No contributions detected into a tax-advantaged account this year.
+        </div>
+      ) : (
+        headroom.groups.map((g) => <HeadroomBar key={g.key} group={g} />)
+      )}
+    </div>
+  );
+}
+
+function HeadroomBar({ group }) {
+  const pct = group.limit
+    ? Math.min(100, Math.round((group.ytd / group.limit) * 100))
+    : null;
+
+  return (
+    <div className="ret-headroom-row">
+      <div className="ret-headroom-head">
+        <span className="ret-headroom-label">{group.label}</span>
+        <span className="ret-headroom-figures">
+          {fmtWhole(group.ytd)}
+          {group.limit ? ` of ${fmtWhole(group.limit)}` : ' in so far'}
+        </span>
+      </div>
+      {group.limit ? (
+        <>
+          <div
+            className="ret-headroom-track"
+            role="progressbar"
+            aria-label={`${group.label} contributions this year`}
+            aria-valuenow={group.ytd}
+            aria-valuemin={0}
+            aria-valuemax={group.limit}
+          >
+            <span className="ret-headroom-fill" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="ret-headroom-note">
+            <strong>{fmtWhole(group.headroom)} of room left</strong>
+            {group.monthly_to_use_remaining
+              ? ` — ${fmtWhole(group.monthly_to_use_remaining)}/month uses it`
+              : ''}
+            {` · ${fmtMonths(group.months_remaining)} in the year`}
+          </div>
+        </>
+      ) : (
+        <div className="ret-headroom-note">{group.limit_note}</div>
+      )}
+      {group.approximate && (
+        <div className="ret-headroom-note">{group.approximate_reason}</div>
+      )}
+    </div>
+  );
+}
+
 /**
  * RetirementSection — the projection, leading with the gap.
  *
@@ -95,6 +177,16 @@ export default function RetirementSection({ onOpenSettings }) {
   }, []);
 
   useEffect(() => { load(whatIf); }, [load, whatIf]);
+
+  // Independent of the projection: contribution room needs no birth year, no
+  // return assumption and no target, so it renders even when the projection
+  // cannot.
+  const [headroom, setHeadroom] = useState(null);
+  useEffect(() => {
+    getContributionHeadroom()
+      .then((r) => setHeadroom(r.data))
+      .catch(() => setHeadroom(null));
+  }, []);
 
   const saveToProfile = useCallback((patch) => (
     updateProfile(patch)
@@ -133,6 +225,7 @@ export default function RetirementSection({ onOpenSettings }) {
         >
           Add it in Profile &amp; settings
         </button>
+        <HeadroomPanel headroom={headroom} />
       </div>
     );
   }
@@ -220,6 +313,8 @@ export default function RetirementSection({ onOpenSettings }) {
           </div>
         )}
       </div>
+
+      <HeadroomPanel headroom={headroom} />
 
       {error && <div style={{ marginTop: 10, color: '#ef4444', fontSize: 13 }}>{error}</div>}
     </div>

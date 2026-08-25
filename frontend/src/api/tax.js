@@ -11,3 +11,6 @@ const API = process.env.REACT_APP_BACKEND_URL || '';
 
 export const getAfterTaxNetWorth = () =>
   axios.get(`${API}/api/tax/after-tax-net-worth`);
+
+export const getContributionHeadroom = () =>
+  axios.get(`${API}/api/tax/contribution-headroom`);

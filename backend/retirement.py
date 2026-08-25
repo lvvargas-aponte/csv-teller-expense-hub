@@ -36,7 +36,12 @@ VELOCITY_CAVEAT = (
 )
 
 
-async def _load_investment_accounts() -> List[Any]:
+async def load_investment_accounts() -> List[Any]:
+    """Every account the shared classifier calls an investment.
+
+    Public because contribution headroom needs the same list and the same
+    classifier — a second filter would eventually disagree with this one.
+    """
     import balances_service
     from analytics import classify_account_bucket
 
@@ -98,7 +103,7 @@ async def estimate_contributions() -> Dict[str, Any]:
     """
     from db.accounts_repo import get_repo
 
-    accounts = await _load_investment_accounts()
+    accounts = await load_investment_accounts()
     by_id = {a.id: a for a in accounts}
     if not by_id:
         return {
@@ -303,7 +308,7 @@ async def project(
     retirement_year = int(birth_year) + int(target_age)
     years = max(retirement_year - today.year, 0)
 
-    accounts = await _load_investment_accounts()
+    accounts = await load_investment_accounts()
     # A taxable brokerage is savings, not a retirement pot, and counting it
     # here quietly moves the retirement date. Once accounts carry a tax
     # treatment the projection runs on the retirement-labelled ones and
