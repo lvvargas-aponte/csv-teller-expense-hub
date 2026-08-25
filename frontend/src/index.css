@@ -4536,3 +4536,50 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 }
 .ret-headroom-fill { display: block; height: 100%; background: #059669; }
 .ret-headroom-note { font-size: 11.5px; color: var(--text-muted); }
+
+/* ── Accessibility scaffolding (Workstream F) ──────────────────────── */
+
+/* Off-screen until focused, then the first stop on the page. */
+.eh-skip-link {
+  position: absolute;
+  left: 8px;
+  top: -60px;
+  z-index: 2000;
+  padding: 8px 14px;
+  border-radius: 0 0 8px 8px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 2px solid var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s;
+}
+.eh-skip-link:focus { top: 0; }
+
+.eh-live-region {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The disclosure button carries the section name; the heading around it is
+   structure only and must not take the button's own box. */
+.acct-section-heading { margin: 0; font: inherit; }
+
+/* A focus ring that survives both themes — --accent is the light-on-dark
+   green in dark mode and the dark-on-light green in light mode, so the
+   offset ring reads against either ground. */
+.eh-app :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Money and percentages line up column-wise when the digits share a width. */
+.eh-table td,
+.eh-table th,
+.eh-num { font-variant-numeric: tabular-nums; }

@@ -75,7 +75,7 @@ export default function PortfolioQuality({ refreshKey = 0 }) {
 
   return (
     <div className="finances-section">
-      <h3 className="finances-section-title" style={{ marginTop: 0 }}>Portfolio quality</h3>
+      <h2 className="finances-section-title" style={{ marginTop: 0 }}>Portfolio quality</h2>
 
       <div style={{ display: 'grid', gap: 6, marginBottom: 16 }}>
         <div style={{ fontSize: 13, color: concentrated ? 'var(--status-warn-text)' : 'var(--status-good-text)', fontWeight: 600 }}>

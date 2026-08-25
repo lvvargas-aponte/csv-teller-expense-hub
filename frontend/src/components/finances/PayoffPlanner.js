@@ -12,7 +12,7 @@ export default function PayoffPlanner({ creditAccounts = [] }) {
     <div className="ov-card">
       <div className="ov-card-header">
         <div>
-          <div className="ov-card-title">Debt Payoff Planner</div>
+          <h2 className="ov-card-title">Debt Payoff Planner</h2>
           <div className="ov-card-subtitle">Enter APR and minimum payments to see your payoff timeline</div>
         </div>
         <button
@@ -22,7 +22,9 @@ export default function PayoffPlanner({ creditAccounts = [] }) {
           disabled={planner.adviceLoading || planner.rows.length === 0}
           title="Ask Fin for personalised advice on this plan"
         >
-          {planner.adviceLoading ? <><Spin /> Thinking…</> : '🤖 Ask Fin'}
+          {planner.adviceLoading
+            ? <><Spin /> Thinking…</>
+            : <><span aria-hidden="true">🤖</span> Ask Fin</>}
         </button>
       </div>
 

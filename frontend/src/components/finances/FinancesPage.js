@@ -54,12 +54,23 @@ export default function FinancesPage() {
   const [summaryError, setSummaryError] = useState(null);
   const [healthData, setHealthData] = useState(null);
 
+  // Refreshing swaps every number on the page with nothing to hear. One
+  // polite region carries the outcome.
+  const [announcement, setAnnouncement] = useState('');
+
   const loadBalances = useCallback((force = false) => {
     setSummaryLoading(true);
     setSummaryError(null);
+    setAnnouncement('');
     getBalancesSummary(force)
-      .then((r) => setSummary(r.data))
-      .catch(() => setSummaryError('Could not load balances — is the backend running?'))
+      .then((r) => {
+        setSummary(r.data);
+        setAnnouncement('Balances updated');
+      })
+      .catch(() => {
+        setSummaryError('Could not load balances — is the backend running?');
+        setAnnouncement('Could not update balances');
+      })
       .finally(() => setSummaryLoading(false));
   }, []);
 
@@ -104,6 +115,7 @@ export default function FinancesPage() {
 
   return (
     <div className="eh-app">
+      <a className="eh-skip-link" href="#eh-main">Skip to main content</a>
       <FinancesSidebar
         activeId={activeId}
         onNavigate={handleNavigate}
@@ -111,7 +123,10 @@ export default function FinancesPage() {
         healthSignals={healthData?.signals}
       />
 
-      <div className="eh-main">
+      <main className="eh-main" id="eh-main">
+        <div className="eh-live-region" role="status" aria-live="polite">
+          {announcement}
+        </div>
         {activeId === 'dashboard' && (
           <DashboardTab
             healthScore={healthScore}
@@ -210,7 +225,7 @@ export default function FinancesPage() {
             />
           </SimplePage>
         )}
-      </div>
+      </main>
     </div>
   );
 }
@@ -219,7 +234,7 @@ function SimplePage({ title, children }) {
   return (
     <>
       <div className="eh-topbar">
-        <div className="eh-topbar-title">{title}</div>
+        <h1 className="eh-topbar-title">{title}</h1>
       </div>
       <div className="eh-content">{children}</div>
     </>

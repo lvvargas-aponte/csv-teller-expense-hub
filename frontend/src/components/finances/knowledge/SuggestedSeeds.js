@@ -448,13 +448,14 @@ export default function SuggestedSeeds({ onImported }) {
                   <button
                     type="button"
                     onClick={() => removeSeed(s)}
+                    aria-label={s.is_custom ? `Remove ${s.title || 'this seed'}` : `Hide ${s.title || 'this seed'}`}
                     title={s.is_custom ? 'Remove this custom seed.' : 'Hide this default from the list (you can restore it later).'}
                     style={{
                       background: 'transparent', border: 'none',
                       color: 'var(--text-faint)', cursor: 'pointer', fontSize: 16,
                       padding: '0 4px',
                     }}>
-                    ×
+                    <span aria-hidden="true">×</span>
                   </button>
                 </li>
               );

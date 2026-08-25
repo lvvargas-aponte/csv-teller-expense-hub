@@ -16,30 +16,31 @@ export default function PayoffForm({
             type="button"
             className={`ov-strategy-tab${strategy === 'avalanche' ? ' ov-strategy-tab--active' : ''}`}
             onClick={() => onStrategyChange('avalanche')}
-          >🔥 Avalanche — High APR first</button>
+          ><span aria-hidden="true">🔥</span> Avalanche — High APR first</button>
           <button
             type="button"
             className={`ov-strategy-tab${strategy === 'snowball' ? ' ov-strategy-tab--active' : ''}`}
             onClick={() => onStrategyChange('snowball')}
-          >❄️ Snowball — Low balance first</button>
+          ><span aria-hidden="true">❄️</span> Snowball — Low balance first</button>
         </div>
       </div>
 
       <div className="ov-debt-table-wrap">
-        <table className="ov-debt-table">
+        <table className="ov-debt-table eh-table">
+          <caption className="sr-only">Debts in the payoff plan</caption>
           <thead>
             <tr>
-              <th style={{ width: 28 }}></th>
-              <th>Account</th>
-              <th style={{ width: 130 }}>Balance</th>
-              <th style={{ width: 120 }}>
+              <th scope="col" style={{ width: 28 }}><span className="sr-only">Include</span></th>
+              <th scope="col">Account</th>
+              <th scope="col" style={{ width: 130 }}>Balance</th>
+              <th scope="col" style={{ width: 120 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
                   APR %
                   <AprLegend />
                 </div>
               </th>
-              <th style={{ width: 140 }}>Min Payment</th>
-              <th style={{ width: 36 }}></th>
+              <th scope="col" style={{ width: 140 }}>Min Payment</th>
+              <th scope="col" style={{ width: 36 }}><span className="sr-only">Remove</span></th>
             </tr>
           </thead>
           <tbody>
@@ -104,7 +105,7 @@ export default function PayoffForm({
                       onClick={() => onRemoveRow(r._id)}
                       aria-label="Remove debt"
                       title="Remove"
-                    >✕</button>
+                    ><span aria-hidden="true">✕</span></button>
                   </td>
                 </tr>
               );

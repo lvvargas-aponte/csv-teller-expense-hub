@@ -370,11 +370,12 @@ export default function App() {
         <Route path="/finances" element={<FinancesPage />} />
         <Route path="/" element={
           <div className="eh-app">
+            <a className="eh-skip-link" href="#tx-main">Skip to main content</a>
             <TransactionsSidebar activeId={txnView} onNavigate={setTxnView} />
             <div className="eh-main">
               {txnView === 'current' ? (
                 <div className="tx-layout">
-                  <main className="tx-page-wrap">
+                  <main className="tx-page-wrap" id="tx-main">
                     <SyncPanel
                       onOpenAccounts={() => sync.setShowAccountsModal(true)}
                       onOpenSync={() => sync.setShowSyncModal(true)}

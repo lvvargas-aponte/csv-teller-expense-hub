@@ -293,12 +293,13 @@ export default function BudgetPresetModal({ categories, existingBudgets, onClose
                   No categories yet — categorize some transactions first.
                 </div>
               ) : (
-                <table className="txn-table" style={{ fontSize: 13 }}>
+                <table className="txn-table eh-table" style={{ fontSize: 13 }}>
+                  <caption className="sr-only">Suggested budgets by category</caption>
                   <thead>
                     <tr>
-                      <th>Category</th>
-                      <th style={{ width: 280 }}>Bucket</th>
-                      <th className="col-amount" style={{ width: 120 }}>Monthly $</th>
+                      <th scope="col">Category</th>
+                      <th scope="col" style={{ width: 280 }}>Bucket</th>
+                      <th scope="col" className="col-amount" style={{ width: 120 }}>Monthly $</th>
                     </tr>
                   </thead>
                   <tbody>

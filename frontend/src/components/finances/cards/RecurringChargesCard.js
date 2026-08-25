@@ -142,15 +142,16 @@ export default function RecurringChargesCard({ dashboard, loading, error, index,
         </div>
       )}
       {variant === 'detail' ? (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <table className="eh-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <caption className="sr-only">Recurring charges</caption>
           <thead>
             <tr style={{ textAlign: 'left', color: 'var(--text-muted)', fontSize: 11 }}>
-              <th style={{ padding: '6px 8px 6px 0' }}>Merchant</th>
-              <th style={{ padding: '6px 8px' }}>Category</th>
-              <th style={{ padding: '6px 8px' }}>Cadence</th>
-              <th style={{ padding: '6px 8px' }}>Last seen</th>
-              <th style={{ padding: '6px 8px' }}>Next due</th>
-              <th style={{ padding: '6px 0 6px 8px', textAlign: 'right' }}>Monthly</th>
+              <th scope="col" style={{ padding: '6px 8px 6px 0' }}>Merchant</th>
+              <th scope="col" style={{ padding: '6px 8px' }}>Category</th>
+              <th scope="col" style={{ padding: '6px 8px' }}>Cadence</th>
+              <th scope="col" style={{ padding: '6px 8px' }}>Last seen</th>
+              <th scope="col" style={{ padding: '6px 8px' }}>Next due</th>
+              <th scope="col" style={{ padding: '6px 0 6px 8px', textAlign: 'right' }}>Monthly</th>
             </tr>
           </thead>
           <tbody>
@@ -175,7 +176,7 @@ export default function RecurringChargesCard({ dashboard, loading, error, index,
                           width: 28, height: 28, borderRadius: 6,
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                           background: color, fontSize: 14, flexShrink: 0,
-                        }}>{icon}</span>
+                        }} aria-hidden="true">{icon}</span>
                         <span style={{ fontWeight: 600 }}>{name}</span>
                       </div>
                     </td>
@@ -212,7 +213,7 @@ export default function RecurringChargesCard({ dashboard, loading, error, index,
               : `${c.months_seen || 0} months · ${c.occurrences || 0} charges`;
             return (
               <div key={`${c.merchant_key}-${i}`} className="eh-recurring-row">
-                <div className="eh-recurring-icon" style={{ background: color }}>{icon}</div>
+                <div className="eh-recurring-icon" style={{ background: color }} aria-hidden="true">{icon}</div>
                 <div className="eh-recurring-info">
                   <div className="eh-recurring-name">{name}</div>
                   <div className="eh-recurring-detail">{detail}</div>

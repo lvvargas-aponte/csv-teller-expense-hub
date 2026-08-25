@@ -100,15 +100,15 @@ export default function BalancesSection({ summary, loading, error, onRefresh, on
       {/* Net Worth banner inline at the top of the card */}
       <div className="ov-nw-banner">
         <div className="ov-nw-left">
-          <div className="ov-nw-label">Net Worth</div>
+          <h2 className="ov-nw-label">Net Worth</h2>
           <div className={`ov-nw-value${netWorth < 0 ? ' ov-nw-value--neg' : ''}`}>
             {fmtSigned(netWorth)}
           </div>
           <div className="ov-nw-sub">
-            <span>🏦 Cash &amp; Savings: {fmt$(totalCash)}</span>
-            <span>💳 Credit Debt: {fmt$(totalCredit)}</span>
+            <span><span aria-hidden="true">🏦</span> Cash &amp; Savings: {fmt$(totalCash)}</span>
+            <span><span aria-hidden="true">💳</span> Credit Debt: {fmt$(totalCredit)}</span>
             {totalInvestments > 0 && (
-              <span>📈 Investments: {fmt$(totalInvestments)}</span>
+              <span><span aria-hidden="true">📈</span> Investments: {fmt$(totalInvestments)}</span>
             )}
           </div>
           {summary?.cache_fetched_at && (
@@ -193,7 +193,7 @@ export default function BalancesSection({ summary, loading, error, onRefresh, on
           <>
             {depository.length > 0 && (
               <AccountList
-                title="🏦 Cash & Savings"
+                title="Cash & Savings"
                 tagClass="ov-tag ov-tag-green"
                 tagAmount={fmt$(totalCash)}
                 accounts={depository}
@@ -203,7 +203,7 @@ export default function BalancesSection({ summary, loading, error, onRefresh, on
             )}
             {investments.length > 0 && (
               <AccountList
-                title="📈 Investments / Retirement"
+                title="Investments / Retirement"
                 tagClass="ov-tag ov-tag-blue"
                 tagAmount={fmt$(totalInvestments)}
                 accounts={investments}
@@ -213,7 +213,7 @@ export default function BalancesSection({ summary, loading, error, onRefresh, on
             )}
             {credit.length > 0 && (
               <AccountList
-                title="💳 Credit & Loans"
+                title="Credit & Loans"
                 tagClass="ov-tag ov-tag-red"
                 tagAmount={fmt$(totalCredit)}
                 accounts={credit}
@@ -245,7 +245,7 @@ function AccountList({ title, tagClass, tagAmount, accounts, onDelete, onEdit })
   return (
     <div style={{ marginBottom: 8 }}>
       <div className="ov-section-header">
-        <span>{title}</span>
+        <h3 style={{ margin: 0, font: 'inherit' }}>{title}</h3>
         <span className={tagClass} style={{ marginLeft: 'auto' }}>{tagAmount}</span>
       </div>
       {accounts.map((acct) => (
@@ -275,7 +275,7 @@ function AccountRow({ acct, onEdit, onDelete }) {
 
   return (
     <div className="ov-balance-row">
-      <div className="ov-acct-icon" style={{ background: bg }}>{icon}</div>
+      <div className="ov-acct-icon" style={{ background: bg }} aria-hidden="true">{icon}</div>
       <div className="ov-balance-info">
         <div className="ov-balance-name">
           {acct.name}
@@ -305,7 +305,7 @@ function AccountRow({ acct, onEdit, onDelete }) {
               onClick={() => onEdit(acct)}
               aria-label="Edit balance"
               title="Edit balance"
-            >✎</button>
+            ><span aria-hidden="true">✎</span></button>
           )}
           {acct.manual && (
             <button
@@ -314,7 +314,7 @@ function AccountRow({ acct, onEdit, onDelete }) {
               onClick={() => onDelete(acct.id)}
               aria-label="Remove account"
               title="Remove account"
-            >✕</button>
+            ><span aria-hidden="true">✕</span></button>
           )}
         </div>
       </div>

@@ -21,7 +21,7 @@ export default function DashboardCard({
           marginBottom: 8,
         }}
       >
-        <h3 className="finances-section-title" style={{ margin: 0 }}>{title}</h3>
+        <h2 className="finances-section-title" style={{ margin: 0 }}>{title}</h2>
         {headerExtra && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {headerExtra}

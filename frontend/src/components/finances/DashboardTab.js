@@ -174,7 +174,7 @@ export default function DashboardTab({
   return (
     <>
       <div className="eh-topbar">
-        <div className="eh-topbar-title">Dashboard</div>
+        <h1 className="eh-topbar-title">Dashboard</h1>
         <div className="eh-range-pill" role="tablist" aria-label="Date range">
           {RANGE_OPTIONS.map((r) => (
             <button
@@ -202,7 +202,8 @@ export default function DashboardTab({
             <div className="eh-banner-actions">
               <button type="button" className="eh-banner-btn"
                       onClick={() => setBlurSensitive((b) => !b)}>
-                {blurSensitive ? '👁 Show numbers' : '🙈 Hide numbers'}
+                <span aria-hidden="true">{blurSensitive ? '👁' : '🙈'}</span>
+                {blurSensitive ? ' Show numbers' : ' Hide numbers'}
               </button>
             </div>
           </div>
@@ -356,7 +357,8 @@ function KpiCard({ label, value, valueClass, delta, deltaInverse, barColor, blur
       )}
       {(delta !== null && delta !== undefined) && (
         <div className="eh-kpi-delta" style={{ color: deltaColor }}>
-          <span>{arrow}</span>
+          <span aria-hidden="true">{arrow}</span>
+          <span className="sr-only">{delta >= 0 ? 'up ' : 'down '}</span>
           <span className={blur ? 'eh-blur' : ''}>{fmt$(delta)}</span>
           <span className="eh-kpi-delta-suffix">vs prior</span>
         </div>

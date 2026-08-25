@@ -70,13 +70,14 @@ function FactRow({ fact, onConfirm, onReject, onDelete, onSave }) {
           <button
             type="button"
             onClick={() => setRevealed((v) => !v)}
+            aria-label={revealed ? 'Hide this fact' : 'Reveal this fact'}
             title={revealed ? 'Hide' : 'Reveal'}
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
               fontSize: 12, padding: 0, marginLeft: 'auto',
             }}
           >
-            {revealed ? '🔓' : '🔒'}
+            <span aria-hidden="true">{revealed ? '🔓' : '🔒'}</span>
           </button>
         )}
       </div>
@@ -155,9 +156,10 @@ function FactRow({ fact, onConfirm, onReject, onDelete, onSave }) {
               type="button"
               className="btn btn-sm"
               onClick={() => onDelete(fact.id)}
+              aria-label="Forget this fact"
               style={{ marginLeft: 'auto', color: 'var(--status-bad-text)' }}
             >
-              🗑️
+              <span aria-hidden="true">🗑️</span>
             </button>
           </>
         )}
@@ -223,7 +225,7 @@ export default function AdvisorMemory() {
           display: 'flex', alignItems: 'center', gap: 6, width: '100%',
         }}
       >
-        <span>{open ? '▼' : '▶'} Things Fin remembers</span>
+        <span><span aria-hidden="true">{open ? '▼' : '▶'}</span> Things Fin remembers</span>
         {!loading && facts.length > 0 && (
           <span style={{ opacity: 0.6 }}>
             ({confirmed.length}{proposed.length > 0 ? ` · ${proposed.length} pending` : ''})

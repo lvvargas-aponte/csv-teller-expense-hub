@@ -62,7 +62,13 @@ jest.mock('../../../api/profile');
 // F3 touched was axe-detectable; the contrast work it did is invisible to
 // axe in jsdom and was verified by computing the ratios by hand.
 //
-// What each one is:
+// After F4 (landmarks, heading order, table semantics, nav state):
+//   dashboard    violations: none      needs review: none
+//   accounts     violations: none      needs review: none
+//   investments  violations: none      needs review: none
+// The queue is empty. Nothing survived that had to be carried forward.
+//
+// What each one was:
 //   region               — .eh-main is a plain div, so nothing on the page
 //                          sits inside a landmark.
 //   landmark-unique      — FinancesSidebar emits one <nav> per section with
@@ -304,4 +310,23 @@ test('the accounts surface has no axe violations', async () => {
 test('the investments surface has no axe violations', async () => {
   await renderTab('investments');
   expect(await axe(document.body)).toHaveNoViolations();
+});
+
+// Landmarks, a skip link and an announcement for content that swaps under
+// the reader's feet — the three things a keyboard-only user needs before the
+// page is navigable at all.
+test('the shell has a main landmark reachable by a skip link', async () => {
+  await renderTab('dashboard');
+
+  const main = screen.getByRole('main');
+  const skip = screen.getByRole('link', { name: /skip to main content/i });
+  expect(skip).toHaveAttribute('href', `#${main.id}`);
+});
+
+test('a balance refresh is announced politely', async () => {
+  await renderTab('accounts');
+
+  const live = screen.getByRole('status');
+  expect(live).toHaveAttribute('aria-live', 'polite');
+  await waitFor(() => expect(live).toHaveTextContent(/balances updated/i));
 });

@@ -62,7 +62,8 @@ export default function WeeklyDigestCard({ onHide, index, kicker }) {
       {p && (
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            {p.week_start} → {p.week_end}
+            {p.week_start} <span aria-hidden="true">→</span>
+            <span className="sr-only">to</span> {p.week_end}
           </div>
 
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
@@ -71,7 +72,8 @@ export default function WeeklyDigestCard({ onHide, index, kicker }) {
             {changePct !== null && changePct !== undefined && (
               <Stat label="Change">
                 <span style={{ color: changePct > 0 ? 'var(--status-bad-text)' : 'var(--status-good-text)' }}>
-                  {changePct > 0 ? '▲' : '▼'} {Math.abs(changePct).toFixed(0)}%
+                  <span aria-hidden="true">{changePct > 0 ? '▲' : '▼'}</span>{' '}
+                  {changePct > 0 ? 'up' : 'down'} {Math.abs(changePct).toFixed(0)}%
                 </span>
               </Stat>
             )}
@@ -90,16 +92,16 @@ export default function WeeklyDigestCard({ onHide, index, kicker }) {
             || subs.needs_review_count > 0 || p.upcoming_bills.length > 0) && (
             <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'grid', gap: 3 }}>
               {p.alert_counts.error + p.alert_counts.warn > 0 && (
-                <div>⚠ {p.alert_counts.error + p.alert_counts.warn} alerts need attention</div>
+                <div><span aria-hidden="true">⚠</span> {p.alert_counts.error + p.alert_counts.warn} alerts need attention</div>
               )}
               {subs.needs_review_count > 0 && (
-                <div>🔁 {subs.needs_review_count} subscriptions waiting for review</div>
+                <div><span aria-hidden="true">🔁</span> {subs.needs_review_count} subscriptions waiting for review</div>
               )}
               {subs.price_increases.length > 0 && (
-                <div>▲ {subs.price_increases.length} recurring charges went up in price</div>
+                <div><span aria-hidden="true">▲</span> {subs.price_increases.length} recurring charges went up in price</div>
               )}
               {p.upcoming_bills.length > 0 && (
-                <div>📅 {p.upcoming_bills.length} bills due in the next 7 days</div>
+                <div><span aria-hidden="true">📅</span> {p.upcoming_bills.length} bills due in the next 7 days</div>
               )}
             </div>
           )}

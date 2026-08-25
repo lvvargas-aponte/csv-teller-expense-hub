@@ -293,7 +293,7 @@ export default function AdvisorChat() {
                         opacity: rated === 1 ? 1 : 0.5,
                       }}
                     >
-                      👍
+                      <span aria-hidden="true">👍</span>
                     </button>
                     <button
                       type="button"
@@ -308,7 +308,7 @@ export default function AdvisorChat() {
                         opacity: rated === -1 ? 1 : 0.5,
                       }}
                     >
-                      👎
+                      <span aria-hidden="true">👎</span>
                     </button>
                   </div>
                 )}
@@ -348,7 +348,7 @@ export default function AdvisorChat() {
               fontSize: 12, color: 'var(--text-muted)', padding: 0,
             }}
           >
-            {styleOpen ? '▼' : '▶'} Fin's read on you
+            <span aria-hidden="true">{styleOpen ? '▼' : '▶'}</span> Fin&apos;s read on you
             {styleProfile?.updated_at && (
               <span style={{ marginLeft: 8, opacity: 0.6 }}>
                 · updated {new Date(styleProfile.updated_at).toLocaleString()}

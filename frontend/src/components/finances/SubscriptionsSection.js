@@ -78,7 +78,7 @@ export default function SubscriptionsSection() {
   return (
     <div className="eh-card" style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <h3 style={{ margin: 0 }}>Subscriptions &amp; recurring charges</h3>
+        <h2 style={{ margin: 0, fontSize: 16 }}>Subscriptions &amp; recurring charges</h2>
         {summary.needs_review_count > 0 && (
           <Badge tone="warn">{summary.needs_review_count} to review</Badge>
         )}
@@ -124,7 +124,8 @@ export default function SubscriptionsSection() {
                   {s.needs_review && <Badge tone="warn">Review</Badge>}
                   {priceUp && (
                     <Badge tone="danger">
-                      ▲ {Math.abs(s.price_change_since_review_pct ?? s.price_change_pct).toFixed(0)}%
+                      <span aria-hidden="true">▲</span> up{' '}
+                {Math.abs(s.price_change_since_review_pct ?? s.price_change_pct).toFixed(0)}%
                     </Badge>
                   )}
                   {s.overlap_group && <Badge tone="warn">Overlaps</Badge>}

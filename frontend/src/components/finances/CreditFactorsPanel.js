@@ -69,7 +69,7 @@ export default function CreditFactorsPanel() {
     <div className="ov-card">
       <div className="ov-card-header">
         <div>
-          <div className="ov-card-title">Credit factors</div>
+          <h2 className="ov-card-title">Credit factors</h2>
           <div className="ov-card-subtitle">{data.coverage_note}</div>
         </div>
       </div>

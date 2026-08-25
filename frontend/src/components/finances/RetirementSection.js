@@ -214,7 +214,7 @@ export default function RetirementSection({ onOpenSettings }) {
     const named = (data.missing || []).map((m) => MISSING_LABEL[m] || m);
     return (
       <div className="finances-section">
-        <h3 className="finances-section-title" style={{ marginTop: 0 }}>Retirement</h3>
+        <h2 className="finances-section-title" style={{ marginTop: 0 }}>Retirement</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
           A projection needs {named.join(', ')}. Nothing here is guessed for you.
         </p>
@@ -237,9 +237,9 @@ export default function RetirementSection({ onOpenSettings }) {
 
   return (
     <div className="finances-section">
-      <h3 className="finances-section-title" style={{ marginTop: 0 }}>
+      <h2 className="finances-section-title" style={{ marginTop: 0 }}>
         Retirement in {data.years_to_retirement} years
-      </h3>
+      </h2>
 
       <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.3 }}>{headline}</div>
       {short ? (

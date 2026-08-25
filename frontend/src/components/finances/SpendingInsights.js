@@ -75,7 +75,7 @@ export default function SpendingInsights({
           <div>
             {cards.map((c) => (
               <div key={c.id} className="ov-insight-card">
-                <div className="ov-insight-icon" style={{ background: c.iconBg }}>{c.icon}</div>
+                <div className="ov-insight-icon" style={{ background: c.iconBg }} aria-hidden="true">{c.icon}</div>
                 <div className="ov-insight-body-col">
                   <div className="ov-insight-title-row">
                     <div className="ov-insight-title">{c.title}</div>
@@ -104,7 +104,7 @@ export default function SpendingInsights({
 function EmptyState({ icon, title, sub }) {
   return (
     <div className="ov-insights-empty">
-      <div className="ov-insights-empty-icon">{icon}</div>
+      <div className="ov-insights-empty-icon" aria-hidden="true">{icon}</div>
       <div className="ov-insights-empty-title">{title}</div>
       <div className="ov-insights-empty-sub">{sub}</div>
     </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import axios from 'axios';
 import InvestmentsTab from '../InvestmentsTab';
 
@@ -96,4 +96,16 @@ test('a winning holding keeps its plus sign and says gain', async () => {
   const row = await screen.findByRole('row', { name: /AAPL/ });
   expect(row).toHaveTextContent('+$500.00');
   expect(row).toHaveTextContent(/gain/i);
+});
+
+// A data table with unnamed, unscoped headers is unnavigable by screen
+// reader: the columns never announce alongside the cells.
+test('the holdings table names itself and scopes its column headers', async () => {
+  mockGet({ configured: true, connected: true }, portfolioWithHoldings);
+  render(<InvestmentsTab />);
+
+  const table = await screen.findByRole('table', { name: /holdings/i });
+  const headers = within(table).getAllByRole('columnheader');
+  expect(headers.length).toBeGreaterThan(0);
+  headers.forEach((h) => expect(h).toHaveAttribute('scope', 'col'));
 });

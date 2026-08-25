@@ -56,17 +56,19 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore, hea
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         aria-expanded={!collapsed}
-      >{collapsed ? '›' : '‹'}</button>
+      ><span aria-hidden="true">{collapsed ? '›' : '‹'}</span></button>
 
       <div className="eh-sidebar-logo">
-        <div className="eh-sidebar-logo-icon">💰</div>
+        <div className="eh-sidebar-logo-icon" aria-hidden="true">💰</div>
         <div className="eh-sidebar-logo-text">ExpensesHub</div>
       </div>
 
       {NAV_SECTIONS.map((section) => (
         <React.Fragment key={section.label}>
-          <div className="eh-sidebar-section-label">{section.label}</div>
-          <nav className="eh-sidebar-nav">
+          <div className="eh-sidebar-section-label" id={`nav-${section.label}`}>
+            {section.label}
+          </div>
+          <nav className="eh-sidebar-nav" aria-labelledby={`nav-${section.label}`}>
             {section.items.map((item) => (
               <button
                 key={item.id}
@@ -75,8 +77,9 @@ export default function FinancesSidebar({ activeId, onNavigate, healthScore, hea
                 onClick={() => onNavigate(item.id)}
                 title={collapsed ? item.label : undefined}
                 aria-label={item.label}
+                aria-current={activeId === item.id ? 'page' : undefined}
               >
-                <span className="eh-nav-icon">{item.icon}</span>
+                <span className="eh-nav-icon" aria-hidden="true">{item.icon}</span>
                 <span className="eh-nav-text">{item.label}</span>
               </button>
             ))}

@@ -43,3 +43,36 @@ test('Overview is retired — the dashboard is the landing view', () => {
   // No view: 'due' — that is a Commitments view and means nothing here.
   expect(resolveStoredTab('overview')).toEqual({ tab: 'dashboard' });
 });
+
+// A list of buttons that swaps the main region has to say which one is
+// current; aria-label with no state is neither a tab pattern nor a nav.
+test('the active nav entry says it is the current page', () => {
+  renderSidebar();
+
+  expect(screen.getByRole('button', { name: 'Dashboard' }))
+    .toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('button', { name: 'Accounts' }))
+    .not.toHaveAttribute('aria-current');
+});
+
+// "money bag ExpensesHub" and "bar chart Dashboard" are noise; the glyphs
+// decorate a label that already reads correctly.
+const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+
+test('nav glyphs are hidden from assistive technology', () => {
+  renderSidebar();
+
+  screen.getAllByRole('button').forEach((btn) => {
+    expect(btn).toHaveAccessibleName();
+    expect(btn.getAttribute('aria-label') ?? btn.textContent).not.toMatch(EMOJI);
+  });
+  expect(screen.queryByText('💰', { ignore: '[aria-hidden="true"]' })).toBeNull();
+});
+
+test('the nav sections are distinguishable landmarks', () => {
+  renderSidebar();
+
+  expect(screen.getByRole('navigation', { name: 'Overview' })).toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: 'Plan' })).toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: 'Tools' })).toBeInTheDocument();
+});

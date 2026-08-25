@@ -82,7 +82,7 @@ export function AprLegend() {
             { cls: 'ov-apr-badge--high', label: '≥ 25% — High' },
           ].map((row) => (
             <div key={row.label} className="ov-apr-tooltip-row">
-              <span className={`ov-apr-tooltip-swatch ${row.cls}`}>●</span>
+              <span className={`ov-apr-tooltip-swatch ${row.cls}`} aria-hidden="true">●</span>
               <span>{row.label}</span>
             </div>
           ))}

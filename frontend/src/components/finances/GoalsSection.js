@@ -226,8 +226,8 @@ function GoalRow({ goal, onDelete }) {
             </div>
           </div>
           <button type="button" className="btn btn-ghost btn-sm"
-                  onClick={onDelete} aria-label="Remove goal"
-                  style={{ padding: '1px 6px' }}>✕</button>
+                  onClick={onDelete} aria-label={`Remove the ${goal.name} goal`}
+                  style={{ padding: '1px 6px' }}><span aria-hidden="true">✕</span></button>
         </div>
       </div>
       <div

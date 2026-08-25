@@ -14,19 +14,21 @@ export default function AccountSection({
 
   return (
     <section className="acct-section">
-      <button
-        type="button"
-        className="acct-section-head"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
+      <h2 className="acct-section-heading">
+        <button
+          type="button"
+          className="acct-section-head"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+        >
         <span className={`acct-chevron${open ? ' is-open' : ''}`} aria-hidden="true">▶</span>
         <span className="acct-section-title">{title}</span>
         <span className="acct-section-count">{count}</span>
         {(total !== null && total !== undefined) && (
           <span className="acct-section-total">{fmt$(total)}</span>
         )}
-      </button>
+        </button>
+      </h2>
       {open && <div className="acct-list">{children}</div>}
     </section>
   );

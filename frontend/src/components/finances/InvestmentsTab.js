@@ -390,7 +390,7 @@ export default function InvestmentsTab({ onOpenSettings }) {
       {/* Allocation */}
       {hasHoldings && portfolio.allocation.length > 0 && (
         <div className="finances-section">
-          <h3 className="finances-section-title" style={{ marginTop: 0 }}>Allocation</h3>
+          <h2 className="finances-section-title" style={{ marginTop: 0 }}>Allocation</h2>
           <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: 10 }}>
             {portfolio.allocation.map((a) => (
               <div
@@ -430,10 +430,10 @@ export default function InvestmentsTab({ onOpenSettings }) {
       {groups.map((g) => (
         <div className="finances-section" key={g.account_id}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h3 className="finances-section-title" style={{ margin: 0 }}>
+            <h2 className="finances-section-title" style={{ margin: 0 }}>
               {g.account_name}
               {g.institution ? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> · {g.institution}</span> : null}
-            </h3>
+            </h2>
             {/* Per-account sync is a SnapTrade endpoint — a bank-synced
                 brokerage refreshes with the rest of the balances instead. */}
             {g.source === 'snaptrade' ? (
@@ -469,14 +469,15 @@ export default function InvestmentsTab({ onOpenSettings }) {
             )
           ) : (
           <table className="eh-table" style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <caption className="sr-only">{`Holdings in ${g.account_name}`}</caption>
             <thead>
               <tr style={{ textAlign: 'right', color: 'var(--text-muted)', fontSize: 11 }}>
-                <th style={{ textAlign: 'left' }}>Symbol</th>
-                <th>Qty</th>
-                <th>Avg cost</th>
-                <th>Price</th>
-                <th>Value</th>
-                <th>Gain / loss</th>
+                <th scope="col" style={{ textAlign: 'left' }}>Symbol</th>
+                <th scope="col">Qty</th>
+                <th scope="col">Avg cost</th>
+                <th scope="col">Price</th>
+                <th scope="col">Value</th>
+                <th scope="col">Gain / loss</th>
               </tr>
             </thead>
             <tbody>

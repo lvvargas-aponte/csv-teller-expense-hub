@@ -178,8 +178,8 @@ function BudgetRow({ budget, onDelete }) {
             </div>
           </div>
           <button type="button" className="btn btn-ghost btn-sm"
-                  onClick={onDelete} aria-label="Remove budget"
-                  style={{ padding: '1px 6px' }}>✕</button>
+                  onClick={onDelete} aria-label={`Remove the ${budget.category} budget`}
+                  style={{ padding: '1px 6px' }}><span aria-hidden="true">✕</span></button>
         </div>
       </div>
       <div
