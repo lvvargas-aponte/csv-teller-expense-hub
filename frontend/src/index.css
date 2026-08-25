@@ -3579,6 +3579,7 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   font-size: 11.5px;
 }
 .acct-row-secured select.ifield { max-width: 220px; }
+.acct-row-assumed { color: var(--text-muted); font-style: italic; }
 .acct-meta-warn { color: #a4622a; font-weight: 600; }
 [data-theme="dark"] .acct-meta-warn { color: #fbbf24; }
 .acct-row-amount { text-align: right; }

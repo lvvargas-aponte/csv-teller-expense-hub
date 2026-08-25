@@ -380,6 +380,26 @@ def _attach_equity(accounts: List[AccountBalance]) -> None:
         acct.equity = round(float(acct.available or 0.0) - acct.secured_debt, 2)
 
 
+def _attach_tax_treatment(accounts: List[AccountBalance]) -> None:
+    """Label investment rows with their tax treatment, in place.
+
+    Carried on the summary rather than fetched separately so every consumer —
+    the accounts list, the net-worth card, contribution headroom — reads one
+    answer. ``tax_treatment_set_by_user`` is what stops the inference from
+    being presented as a fact.
+    """
+    import tax
+    from analytics import classify_account_bucket
+
+    for acct in accounts:
+        if classify_account_bucket(acct.type, acct.subtype) != "investment":
+            continue
+        described = tax.describe(acct)
+        acct.tax_treatment = described["treatment"]
+        acct.tax_treatment_inferred = described["inferred"]
+        acct.tax_treatment_set_by_user = described["set_by_user"]
+
+
 def _summary(
     accounts: List[AccountBalance],
     total_cash: float,
@@ -390,6 +410,7 @@ def _summary(
     total_investments = _compute_investments(accounts)
     total_real_assets = _compute_real_assets(accounts)
     _attach_equity(accounts)
+    _attach_tax_treatment(accounts)
     return BalancesSummary(
         net_worth=round(
             total_cash + total_investments + total_real_assets - total_credit_debt, 2

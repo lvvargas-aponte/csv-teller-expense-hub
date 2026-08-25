@@ -131,6 +131,7 @@ export default function AccountsTab({
       opened_on:       next.opened_on || null,
       valuation_updated_on: next.valuation_updated_on || null,
       secured_by_account_id: next.secured_by_account_id || null,
+      tax_treatment:   next.tax_treatment || null,
       notes:           next.notes ?? '',
     };
     try {
@@ -273,6 +274,13 @@ export default function AccountsTab({
             glyph="📈"
             needsReconnect={!row.manual && brokenNames.has(row.institution)}
             cacheFetchedAt={cacheFetchedAt}
+            taxTreatment={{
+              treatment: detailsMap[row.id]?.tax_treatment ?? row.account.tax_treatment ?? '',
+              inferred: row.account.tax_treatment_inferred ?? null,
+              setByUser: !!(detailsMap[row.id]?.tax_treatment
+                || row.account.tax_treatment_set_by_user),
+            }}
+            onTaxTreatmentChange={(v) => handleFieldUpdate(row.id, 'tax_treatment', v)}
           />
         ))}
       </AccountSection>

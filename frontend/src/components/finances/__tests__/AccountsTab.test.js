@@ -319,3 +319,50 @@ test('an asset row shows its equity and lets a loan be linked to it', async () =
     expect.objectContaining({ secured_by_account_id: 'm1' }),
   ));
 });
+
+const investmentAccount = (over = {}) => ({
+  id: 'i1',
+  institution: 'Fidelity',
+  name: 'Employer 401(k)',
+  type: 'investment',
+  subtype: '401k',
+  available: 100000,
+  ledger: 100000,
+  source: 'simplefin',
+  manual: false,
+  tax_treatment: 'traditional',
+  tax_treatment_inferred: 'traditional',
+  tax_treatment_set_by_user: false,
+  ...over,
+});
+
+test('an unconfirmed tax treatment is shown as an assumption, not a fact', async () => {
+  renderTab([investmentAccount()]);
+
+  const picker = await screen.findByLabelText(/tax treatment, for Employer 401\(k\)/i);
+  expect(picker).toHaveValue('traditional');
+  const investments = await sectionNamed('Investments');
+  expect(within(investments).getByText(/assumed/i)).toBeInTheDocument();
+});
+
+test('a confirmed treatment drops the assumption marker', async () => {
+  renderTab([investmentAccount({
+    tax_treatment: 'roth', tax_treatment_set_by_user: true,
+  })]);
+
+  const investments = await sectionNamed('Investments');
+  expect(within(investments).queryByText(/assumed/i)).not.toBeInTheDocument();
+});
+
+test('choosing a treatment saves it against the account', async () => {
+  const user = userEvent.setup();
+  renderTab([investmentAccount()]);
+
+  const picker = await screen.findByLabelText(/tax treatment, for Employer 401\(k\)/i);
+  await user.selectOptions(picker, 'roth');
+
+  await waitFor(() => expect(axios.put).toHaveBeenCalledWith(
+    expect.stringContaining('/api/accounts/i1/details'),
+    expect.objectContaining({ tax_treatment: 'roth' }),
+  ));
+});

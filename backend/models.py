@@ -113,6 +113,13 @@ class AccountBalance(BaseModel):
     # total_credit_debt. None means "unknown", never "no debt".
     secured_debt: Optional[float] = None
     equity: Optional[float] = None
+    # Investment accounts only. All three travel together on purpose: with
+    # only the resolved value the UI would present an inference as a fact,
+    # and a Roth 401(k) is indistinguishable from a traditional one until the
+    # user says which it is.
+    tax_treatment: Optional[str] = None
+    tax_treatment_inferred: Optional[str] = None
+    tax_treatment_set_by_user: bool = False
 
 
 class AccountDetailsIn(BaseModel):
@@ -125,6 +132,11 @@ class AccountDetailsIn(BaseModel):
     opened_on: Optional[str] = None       # YYYY-MM-DD, user-entered
     valuation_updated_on: Optional[str] = None  # YYYY-MM-DD, real assets only
     secured_by_account_id: Optional[str] = None  # real assets: the loan behind it
+    # How the balance is taxed. None means unanswered — the app shows an
+    # inference beside it rather than storing one on the user's behalf.
+    tax_treatment: Optional[
+        Literal["taxable", "traditional", "roth", "hsa", "education", "other"]
+    ] = None
     notes: str = ""
 
 

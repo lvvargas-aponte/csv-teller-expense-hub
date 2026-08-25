@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 
 import config
 import health_service
+import tax
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,10 @@ def _transfer_monthly_by_account(account_ids: set) -> Dict[str, float]:
             out.get(account_id, 0.0) + float(stream["monthly_estimate"]), 2
         )
     return out
+
+
+def _account_balance(account: Any) -> float:
+    return float(account.available or 0.0) or float(account.ledger or 0.0)
 
 
 def _velocity_monthly(account_id: str, snapshots: List[Dict[str, Any]]) -> Optional[float]:
@@ -224,6 +229,7 @@ def _unavailable(missing: List[str], assumptions: Dict[str, Any]) -> Dict[str, A
         "years_to_retirement": None,
         "retirement_age": None,
         "current_balance": None,
+        "balance_split": None,
         "monthly_contribution": None,
         "contribution_confidence": None,
         "contribution_caveat": None,
@@ -302,9 +308,23 @@ async def project(
     years = max(retirement_year - today.year, 0)
 
     accounts = await _load_investment_accounts()
-    current_balance = round(
-        sum(float(a.available or 0.0) or float(a.ledger or 0.0) for a in accounts), 2
-    )
+    # A taxable brokerage is savings, not a retirement pot, and counting it
+    # here quietly moves the retirement date. Once accounts carry a tax
+    # treatment the projection runs on the retirement-labelled ones and
+    # reports what it left out; with no labels at all it falls back to every
+    # investment account rather than projecting from zero.
+    retirement_ids = {a.id for a in accounts if tax.is_retirement(a)}
+    pool = [a for a in accounts if a.id in retirement_ids] or accounts
+    current_balance = round(sum(_account_balance(a) for a in pool), 2)
+    balance_split = {
+        "retirement": round(
+            sum(_account_balance(a) for a in accounts if a.id in retirement_ids), 2
+        ),
+        "other": round(
+            sum(_account_balance(a) for a in accounts if a.id not in retirement_ids), 2
+        ),
+        "basis": "tax_treatment" if retirement_ids else "all_investments",
+    }
 
     contributions = await estimate_contributions()
     monthly = float(contributions["monthly_total"])
@@ -333,6 +353,7 @@ async def project(
         "years_to_retirement": years,
         "retirement_age": int(target_age),
         "current_balance": current_balance,
+        "balance_split": balance_split,
         "monthly_contribution": round(monthly, 2),
         "contribution_confidence": contributions["confidence"],
         "contribution_caveat": contributions["caveat"],

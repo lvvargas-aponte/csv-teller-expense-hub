@@ -158,6 +158,9 @@ class AccountDetails(Base):
     # Set on the ASSET row, pointing at the credit account it is secured
     # against. Deliberately not a foreign key — see migration 0024.
     secured_by_account_id: Mapped[Optional[str]] = mapped_column(Text)
+    # taxable | traditional | roth | hsa | education | other. Null means the
+    # user hasn't answered, which is not the same as "taxable".
+    tax_treatment: Mapped[Optional[str]] = mapped_column(Text)
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 

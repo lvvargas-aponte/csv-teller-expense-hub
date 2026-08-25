@@ -300,6 +300,7 @@ async def upsert_account_details(account_id: str, req: AccountDetailsIn):
         "opened_on":       req.opened_on,
         "valuation_updated_on": req.valuation_updated_on,
         "secured_by_account_id": req.secured_by_account_id,
+        "tax_treatment":   req.tax_treatment,
         "notes":           req.notes,
         "created":         existing.get("created", _now_iso()) if existing else _now_iso(),
         "updated":         _now_iso(),
