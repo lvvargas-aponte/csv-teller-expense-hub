@@ -1,0 +1,157 @@
+/* Design tokens. Blue leads; violet is the gradient tail. Semantic hues
+   (green/red/amber) are reserved for financial meaning and are never the
+   brand — that separation is why a positive delta now reads.
+
+   Fills vs text: --good/--bad/--warn are fills (bars, dots, stripes) and sit
+   below 4.5:1 on the white card. Text uses the --*-text siblings. */
+
+:root {
+  color-scheme: light;
+
+  --brand:            #2563eb;
+  --brand-deep:       #1d4ed8;
+  --brand-alt:        #7c3aed;
+  --brand-wash:       #eff5ff;
+  --brand-alt-wash:   #f3f0fd;
+  --brand-gradient:   linear-gradient(135deg, var(--brand) 0%, var(--brand-alt) 100%);
+
+  --surface-ground:   #f8fafc;
+  --surface-card:     #ffffff;
+  --surface-sidebar:  #ffffff;
+  --surface-muted:    #f1f5f9;
+
+  --border:           #e2e8f0;
+  --border-mid:       #cbd5e1;
+  --border-soft:      #e2e8f0;
+  --rule:             #eef2f7;
+
+  --text:             #0f172a;
+  --text-secondary:   #475569;
+  --text-muted:       #64748b;
+  --text-faint:       #94a3b8;
+  --text-disabled:    #b3bdca;
+
+  --good:             #059669;
+  --bad:              #dc2626;
+  --warn:             #d97706;
+  --good-text:        #047857;
+  --bad-text:         #b91c1c;
+  --warn-text:        #b45309;
+  --good-wash:        #ecfdf5;
+  --bad-wash:         #fef2f2;
+  --warn-wash:        #fef3c7;
+
+  --chart-1: #2563eb;
+  --chart-2: #7c3aed;
+  --chart-3: #ea580c;
+  --chart-4: #0891b2;
+  --chart-5: #db2777;
+  --chart-6: #65a30d;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 13px;
+  --text-md:   14px;
+  --text-lg:   16px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  32px;
+
+  --radius:    14px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+  --shadow:    0 4px 16px rgba(15,23,42,0.08), 0 1px 4px rgba(15,23,42,0.04);
+
+  /* ── Legacy aliases ──────────────────────────────────────────────────
+     Every pre-existing rule reads these names. Aliasing them repaints the
+     app without touching ~80 call sites. Phase 8 removes them. Because
+     they resolve through var(), the dark block below only needs to
+     redefine primitives. */
+  --bg-root:            var(--surface-ground);
+  --bg-card:            var(--surface-card);
+  --bg-sidebar:         var(--surface-sidebar);
+  --bg-input:           var(--surface-ground);
+  --bg-secondary:       var(--brand-wash);
+  --bg-selected:        var(--brand-wash);
+  --text-primary:       var(--text);
+  --text-subtle:        var(--text-muted);
+  --accent:             var(--brand);
+  --accent-light:       var(--brand-wash);
+  --accent-mid:         var(--brand);
+  --accent-strong:      var(--brand-deep);
+  --accent-solid:       var(--brand);
+  --accent-solid-hover: var(--brand-deep);
+  --accent-wash:        var(--brand-wash);
+  --red:                var(--bad);
+  --red-light:          var(--bad-wash);
+  --red-wash:           var(--bad-wash);
+  --red-text:           var(--bad-text);
+  --amber:              var(--warn);
+  --amber-light:        var(--warn-wash);
+  --amber-wash:         var(--warn-wash);
+  --amber-text:         var(--warn-text);
+  --amber-strong:       var(--warn-text);
+  --blue:               var(--chart-1);
+  --blue-light:         var(--brand-wash);
+  --purple:             var(--chart-2);
+  --status-good-text:   var(--good-text);
+  --status-warn-text:   var(--warn-text);
+  --status-bad-text:    var(--bad-text);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --brand:            #60a5fa;
+  --brand-deep:       #3b82f6;
+  --brand-alt:        #a78bfa;
+  --brand-wash:       #16233b;
+  --brand-alt-wash:   #241f33;
+
+  --surface-ground:   #0f172a;
+  --surface-card:     #1a2436;
+  --surface-sidebar:  #172030;
+  --surface-muted:    #1e293b;
+
+  --border:           #2c3a51;
+  --border-mid:       #3b4d69;
+  --border-soft:      #2c3a51;
+  --rule:             #26334a;
+
+  /* Neutral text in dark mode. Previously every level below headings was
+     mint (#a7f3d0 / #6ee7b7 / #34d399), which made body copy glow. */
+  --text:             #f8fafc;
+  --text-secondary:   #cbd5e1;
+  --text-muted:       #94a3b8;
+  --text-faint:       #7c8ba1;
+  --text-disabled:    #64748b;
+
+  --good:             #34d399;
+  --bad:              #f87171;
+  --warn:             #fbbf24;
+  --good-text:        #6ee7b7;
+  --bad-text:         #fca5a5;
+  --warn-text:        #fcd34d;
+  --good-wash:        #10251d;
+  --bad-wash:         #2a1414;
+  --warn-wash:        #2b2109;
+
+  --chart-1: #60a5fa;
+  --chart-2: #a78bfa;
+  --chart-3: #fb923c;
+  --chart-4: #22d3ee;
+  --chart-5: #f472b6;
+  --chart-6: #a3e635;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow:    0 4px 16px rgba(0,0,0,0.5);
+}

@@ -1,3 +1,5 @@
+@import './styles/tokens.css';
+
 /* ── Reset ─────────────────────────────────────────────────────────────── */
 html, body { margin: 0; padding: 0; }
 
@@ -5,105 +7,6 @@ html, body { margin: 0; padding: 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cursor: pointer; }
-
-/* ── Theme Variables (Emerald palette) ─────────────────────────────────── */
-:root {
-  color-scheme: light;
-  /* Default = light/emerald per design handoff */
-  --bg-root:        #f0fdf4;
-  --bg-card:        #ffffff;
-  --bg-sidebar:     #ffffff;
-  --bg-input:       #f0fdf4;
-  --bg-secondary:   #d1fae5;
-  --bg-selected:    #d1fae5;
-  --border:         #d1fae5;
-  --border-mid:     #a7f3d0;
-  --text-primary:   #0f2417;
-  --text-secondary: #374151;
-  --text-muted:     #6b7280;
-  --text-subtle:    #6b7280;
-  --text-faint:     #9ca3af;
-  --accent:         #059669;
-  --accent-light:   #d1fae5;
-  --accent-mid:     #34d399;
-  --red:            #ef4444;
-  --red-light:      #fee2e2;
-  --amber:          #f59e0b;
-  --amber-light:    #fef3c7;
-  --blue:           #3b82f6;
-  --blue-light:     #dbeafe;
-  --purple:         #8b5cf6;
-  --accent-strong:  #047857;
-  /* Fills that carry white text. Held at the dark green in BOTH themes —
-     the dark palette's #34d399 accent under white is about 1.9:1. */
-  --accent-solid:       #059669;
-  --accent-solid-hover: #047857;
-  --accent-wash:    #f8fdfb;
-  --amber-strong:   #d97706;
-  --rule:           #e8f5ee;
-  --red-wash:       #fef2f2;
-  --red-text:       #991b1b;
-  --amber-wash:     #fffbeb;
-  --amber-text:     #92400e;
-  /* Status *as text*. The fill colours (--accent #059669, --red #ef4444,
-     --amber #f59e0b) sit at 3.75:1, 3.76:1 and 2.15:1 on the white card —
-     all below 4.5:1 — so text uses these darker siblings instead and the
-     fills stay for bars and stripes. */
-  --status-good-text: #047857;
-  --status-warn-text: #92400e;
-  --status-bad-text:  #991b1b;
-  --surface-muted:  #f3f4f6;
-  --border-soft:    #e5e7eb;
-  --text-disabled:  #b6bec7;
-  --shadow-sm:      0 1px 3px rgba(5,150,105,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow:         0 4px 16px rgba(5,150,105,0.08), 0 1px 4px rgba(0,0,0,0.04);
-  --radius:         14px;
-  --radius-sm:      8px;
-}
-
-[data-theme="dark"] {
-  color-scheme: dark;
-  --bg-root:        #0b1a12;
-  --bg-card:        #0e2218;
-  --bg-sidebar:     #0e2218;
-  --bg-input:       #0b1a12;
-  --bg-secondary:   #163d26;
-  --bg-selected:    #1f5c3a;
-  --border:         #163d26;
-  --border-mid:     #1f5c3a;
-  --text-primary:   #ecfdf5;
-  --text-secondary: #a7f3d0;
-  --text-muted:     #6ee7b7;
-  --text-subtle:    #a7f3d0;
-  --text-faint:     #34d399;
-  --accent:         #34d399;
-  --accent-light:   #163d26;
-  --accent-mid:     #34d399;
-  --accent-strong:  #6ee7b7;
-  --accent-wash:    #102a1c;
-  --amber-strong:   #fbbf24;
-  --rule:           #12301f;
-  /* The light block's pale tints are unreadable on a dark card. Redefining
-     them here is what stops disputed and blocked rows painting light. */
-  --red:            #f87171;
-  --amber:          #fbbf24;
-  --red-light:      #3a1616;
-  --red-wash:       #2a1212;
-  --red-text:       #fca5a5;
-  --amber-light:    #3a2c0d;
-  --amber-wash:     #2b2109;
-  --amber-text:     #fcd34d;
-  /* On the dark card the light-theme values invert: the bright siblings are
-     the ones that clear 4.5:1. */
-  --status-good-text: #6ee7b7;
-  --status-warn-text: #fcd34d;
-  --status-bad-text:  #fca5a5;
-  --surface-muted:  #163d26;
-  --border-soft:    #1f5c3a;
-  --text-disabled:  #3f7a5a;
-  --shadow-sm:      0 1px 3px rgba(0,0,0,0.4);
-  --shadow:         0 4px 16px rgba(0,0,0,0.5);
-}
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 .app-root {
