@@ -1153,6 +1153,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 }
 .eh-nav-item:hover { background: var(--accent-light); }
 .eh-nav-item--active { background: var(--brand-gradient); color: #ffffff; font-weight: 600; }
+.eh-nav-item--active:hover { background: var(--brand-gradient); }
 .eh-nav-icon { font-size: 16px; width: 20px; display: inline-flex; justify-content: center; }
 .eh-nav-badge {
   margin-left: auto;
@@ -1678,7 +1679,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 
 /* Header — a deliberately dark bar on a light page; its literals must stay
    inverted in both themes, so they are not tokenised. Same for .tx-sync-btn,
-   .tx-bulk-bar, .tx-rail-card--dark, .ov-nw-banner and .ov-apr-tooltip. */
+   .tx-bulk-bar, .tx-rail-card--dark and .ov-apr-tooltip. */
 .tx-header {
   background: #0f2417;
   border-bottom: 1px solid #1a3a27;
@@ -1717,7 +1718,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   font-size: 15px; font-weight: 700;
   color: #ecfdf5; letter-spacing: -0.3px;
 }
-.tx-brand-name span { color: #34d399; }
 .tx-tabs { display: flex; align-items: center; gap: 2px; flex: 1; }
 .tx-tab {
   display: flex; align-items: center; gap: 7px;
@@ -2753,7 +2753,7 @@ tr.tx-detail-row > td {
   letter-spacing: 0.06em; text-transform: uppercase;
   padding: 3px 8px; border-radius: 99px;
 }
-.ov-tag-green { background: var(--accent-light); color: var(--accent); }
+.ov-tag-green { background: var(--good-wash); color: var(--good-text); }
 .ov-tag-red   { background: var(--red-light); color: var(--red); }
 .ov-tag-amber { background: var(--amber-light); color: var(--amber); }
 .ov-tag-blue  { background: var(--blue-light); color: var(--blue); }
@@ -3889,7 +3889,6 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 [data-theme='dark'] .ov-btn-ghost { color: var(--text-muted); }
 [data-theme='dark'] .ov-btn-ghost:hover:not(:disabled) { background: var(--bg-secondary); color: var(--text-primary); }
 
-[data-theme='dark'] .ov-tag-green { background: var(--accent-light); color: var(--accent); }
 [data-theme='dark'] .ov-tag-red   { background: #3b1414; color: #fca5a5; }
 [data-theme='dark'] .ov-tag-amber { background: #3b2a08; color: #fbbf24; }
 [data-theme='dark'] .ov-tag-blue  { background: #14233b; color: #93c5fd; }

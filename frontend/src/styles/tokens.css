@@ -45,6 +45,9 @@
   --good-wash:        #ecfdf5;
   --bad-wash:         #fef2f2;
   --warn-wash:        #fef3c7;
+  --good-tint:        #a7f3d0;
+  --bad-tint:         #fecaca;
+  --warn-tint:        #fde68a;
 
   --chart-1: #2563eb;
   --chart-2: #7c3aed;
@@ -93,15 +96,17 @@
   --accent-light:       var(--brand-wash);
   --accent-mid:         var(--brand);
   --accent-strong:      var(--brand-deep);
-  --accent-solid:       var(--brand);
-  --accent-solid-hover: var(--brand-deep);
+  /* Fills that carry white text — theme-invariant, for the same reason as
+     --brand-grad-*: the dark palette's #60a5fa under white is 2.54:1. */
+  --accent-solid:       #2563eb;
+  --accent-solid-hover: #1d4ed8;
   --accent-wash:        var(--brand-wash);
   --red:                var(--bad);
-  --red-light:          var(--bad-wash);
+  --red-light:          var(--bad-tint);
   --red-wash:           var(--bad-wash);
   --red-text:           var(--bad-text);
   --amber:              var(--warn);
-  --amber-light:        var(--warn-wash);
+  --amber-light:        var(--warn-tint);
   --amber-wash:         var(--warn-wash);
   --amber-text:         var(--warn-text);
   --amber-strong:       var(--warn-text);
@@ -149,6 +154,9 @@
   --good-wash:        #10251d;
   --bad-wash:         #2a1414;
   --warn-wash:        #2b2109;
+  --good-tint:        #1c4b3a;
+  --bad-tint:         #4a1c1c;
+  --warn-tint:        #4a3a10;
 
   --chart-1: #60a5fa;
   --chart-2: #a78bfa;
