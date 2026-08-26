@@ -15,7 +15,7 @@ import AddAccountModal from './accounts/AddAccountModal';
 import AssetRow from './accounts/AssetRow';
 import useConnectionHealth from './accounts/useConnectionHealth';
 import { buildCreditRow, buildCashRow, buildAssetRow, summarize } from './accounts/accountMath';
-import { toYMD, fmt$ } from '../../utils/formatting';
+import { toYMD } from '../../utils/formatting';
 import { classifyAccountBucket, loadInvestmentSubtypes } from '../../utils/accountBucket';
 
 // AccountsTab — one summary bar, a connection-health strip, then collapsible
@@ -292,7 +292,7 @@ export default function AccountsTab({
         ) : (
           <Link to="/invest" className="acct-add-row">
             <span>
-              {countLabel(investmentRows.length)} · {fmt$(stats.totalInvestments)} — view in Invest
+              {countLabel(investmentRows.length)} — view in Invest
             </span>
           </Link>
         )}

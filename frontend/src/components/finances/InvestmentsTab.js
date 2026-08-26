@@ -13,7 +13,26 @@ import { getBalancesSummary } from '../../api/balances';
 import { getAllAccountDetails, upsertAccountDetails } from '../../api/accountDetails';
 import RetirementSection from './RetirementSection';
 import PortfolioQuality from './PortfolioQuality';
-import { TAX_TREATMENT_OPTIONS, TREATMENT_LABEL } from './accounts/SimpleAccountRow';
+
+// Tax treatment (taxable / traditional / Roth / …) has exactly one live
+// consumer — the per-account picker below. It used to live on AccountsTab's
+// SimpleAccountRow before Phase 3 Task 3 collapsed that page's Investments
+// group to a summary; this is where it landed, so the vocabulary lives here
+// with it rather than in a shared file with no other reader.
+const TAX_TREATMENT_OPTIONS = [
+  { value: '',            label: 'Not set' },
+  { value: 'taxable',     label: 'Taxable — already-taxed money' },
+  { value: 'traditional', label: 'Traditional — taxed on withdrawal' },
+  { value: 'roth',        label: 'Roth — tax-free on withdrawal' },
+  { value: 'hsa',         label: 'HSA' },
+  { value: 'education',   label: 'Education (529)' },
+  { value: 'other',       label: 'Other' },
+];
+
+const TREATMENT_LABEL = {
+  taxable: 'taxable', traditional: 'traditional', roth: 'Roth',
+  hsa: 'HSA', education: 'education', other: 'other',
+};
 
 const ASSET_LABEL = {
   stock: 'Stock',
@@ -522,7 +541,6 @@ export default function InvestmentsTab({ onOpenSettings }) {
           </div>
           {tt && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12 }}>
-              {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
               <label style={{ color: 'var(--text-muted)' }} htmlFor={`tax-treatment-${g.account_id}`}>
                 Tax treatment
               </label>

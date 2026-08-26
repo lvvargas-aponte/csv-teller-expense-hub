@@ -3,21 +3,6 @@ import { MetaLine } from './AccountListRow';
 import { fmt$, formatRelativeTime } from '../../../utils/formatting';
 import { chipColorFor } from '../../../utils/institutionColor';
 
-export const TAX_TREATMENT_OPTIONS = [
-  { value: '',            label: 'Not set' },
-  { value: 'taxable',     label: 'Taxable — already-taxed money' },
-  { value: 'traditional', label: 'Traditional — taxed on withdrawal' },
-  { value: 'roth',        label: 'Roth — tax-free on withdrawal' },
-  { value: 'hsa',         label: 'HSA' },
-  { value: 'education',   label: 'Education (529)' },
-  { value: 'other',       label: 'Other' },
-];
-
-export const TREATMENT_LABEL = {
-  taxable: 'taxable', traditional: 'traditional', roth: 'Roth',
-  hsa: 'HSA', education: 'education', other: 'other',
-};
-
 function toNum(v) {
   if (v === '' || v === null || v === undefined) return null;
   const n = parseFloat(v);
@@ -33,17 +18,11 @@ function toNum(v) {
 // corresponding handler. The row also passes `row.manual` on every call, and
 // AccountsTab's handlers bail if it's false — a second, independent check
 // that doesn't rely on this component alone getting the gating right.
-//
-// Investment rows also carry one editable field: how the balance is taxed. It
-// is prefilled from the subtype and says so until the user confirms it,
-// because a Roth 401(k) and a traditional one look identical in every feed.
 export default function SimpleAccountRow({
   row,
   glyph = '🏦',
   needsReconnect = false,
   cacheFetchedAt,
-  taxTreatment = null,
-  onTaxTreatmentChange,
   onEditBalance,
   onDelete,
 }) {
@@ -88,26 +67,6 @@ export default function SimpleAccountRow({
         <div className="acct-row-body">
           <div className="acct-row-title">{row.name}</div>
           <MetaLine items={meta} />
-          {taxTreatment && (
-            <div className="acct-row-secured">
-              <select
-                className="ifield"
-                aria-label={`Tax treatment, for ${row.name}`}
-                value={taxTreatment.treatment || ''}
-                onChange={(e) => onTaxTreatmentChange?.(e.target.value || null)}
-              >
-                {TAX_TREATMENT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-              {!taxTreatment.setByUser && taxTreatment.inferred && (
-                <span className="acct-row-assumed">
-                  assumed {TREATMENT_LABEL[taxTreatment.inferred] || taxTreatment.inferred}
-                  {' '}— is that right?
-                </span>
-              )}
-            </div>
-          )}
         </div>
         <div className="acct-row-amount">
           <div className="acct-row-balance is-positive">{fmt$(row.available)}</div>

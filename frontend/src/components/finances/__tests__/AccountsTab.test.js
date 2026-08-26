@@ -451,7 +451,8 @@ test('investments are summarised, not listed twice', async () => {
 
   const link = await screen.findByRole('link', { name: /invest/i });
   expect(link).toHaveAttribute('href', '/invest');
-  // The holdings themselves belong to /invest; this page shows the total.
+  // The holdings themselves belong to /invest; the section header above
+  // still shows the total, so the link doesn't repeat it.
   expect(screen.queryByText(/employer 401\(k\)/i)).toBeNull();
 });
 
