@@ -1154,6 +1154,22 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 .eh-nav-item:hover { background: var(--accent-light); }
 .eh-nav-item--active { background: var(--brand-gradient); color: #ffffff; font-weight: 600; }
 .eh-nav-item--active:hover { background: var(--brand-gradient); }
+.eh-sidebar-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 6px 30px;
+}
+.eh-subnav-item {
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.eh-subnav-item:hover { background: var(--brand-wash); color: var(--text-secondary); }
+.eh-subnav-item--active { color: var(--brand); font-weight: 600; }
 .eh-nav-icon { font-size: 16px; width: 20px; display: inline-flex; justify-content: center; }
 .eh-nav-badge {
   margin-left: auto;

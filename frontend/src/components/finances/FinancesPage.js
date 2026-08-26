@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import FinancesSidebar from './FinancesSidebar';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
 import InvestmentsTab from './InvestmentsTab';
@@ -17,11 +16,10 @@ import useConnectionHealth from './accounts/useConnectionHealth';
 import { useCategories } from '../../hooks/useCategories';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
-import { getHealthScore } from '../../api/health';
 import { getBalancesSummary } from '../../api/balances';
 import { pathForTab } from '../../legacyRoutes';
 
-export default function FinancesPage({ section, view }) {
+export default function FinancesPage({ section, view, healthScore, healthSignals }) {
   const navigate = useNavigate();
   const { pane } = useParams();
 
@@ -36,11 +34,9 @@ export default function FinancesPage({ section, view }) {
     [navigate],
   );
 
-  // Shared signals used by the sidebar's Financial Health footer.
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState(null);
-  const [healthData, setHealthData] = useState(null);
 
   // Refreshing swaps every number on the page with nothing to hear. One
   // polite region carries the outcome.
@@ -64,10 +60,7 @@ export default function FinancesPage({ section, view }) {
 
   useEffect(() => {
     loadBalances(false);
-    getHealthScore().then((r) => setHealthData(r.data)).catch(() => {});
   }, [loadBalances]);
-
-  const healthScore = healthData?.score ?? null;
 
   const creditAccounts = useMemo(
     () => summary?.accounts?.filter(
@@ -93,25 +86,9 @@ export default function FinancesPage({ section, view }) {
     navigate(pathForTab(tabId));
   }, [navigate, section]);
 
-  // FinancesSidebar still speaks the pre-Phase-2 tab ids (Task 4 replaces
-  // it with a NAV-driven sidebar); translate the route back for its
-  // highlight only.
-  const sidebarActiveId = section === 'home' ? 'dashboard'
-    : section === 'invest' ? 'investments'
-    : section === 'plan' ? view
-    : section === 'ask' ? 'advisor'
-    : section;
-
   return (
-    <div className="eh-app">
+    <>
       <a className="eh-skip-link" href="#eh-main">Skip to main content</a>
-      <FinancesSidebar
-        activeId={sidebarActiveId}
-        onNavigate={handleTabNavigate}
-        healthScore={healthScore}
-        healthSignals={healthData?.signals}
-      />
-
       <main className="eh-main" id="eh-main">
         <div className="eh-live-region" role="status" aria-live="polite">
           {announcement}
@@ -119,7 +96,7 @@ export default function FinancesPage({ section, view }) {
         {section === 'home' && (
           <DashboardTab
             healthScore={healthScore}
-            healthSignals={healthData?.signals}
+            healthSignals={healthSignals}
             summary={summary}
             summaryLoading={summaryLoading}
             summaryError={summaryError}
@@ -197,7 +174,7 @@ export default function FinancesPage({ section, view }) {
           </SimplePage>
         )}
       </main>
-    </div>
+    </>
   );
 }
 

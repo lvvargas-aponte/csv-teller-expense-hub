@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
 
 import { calculateHalf, API_BASE } from '../../utils/formatting';
 import SyncPanel        from './SyncPanel';
@@ -17,7 +16,6 @@ import SyncToast        from '../ui/SyncToast';
 import AccountsModal    from '../accounts/AccountsModal';
 import HistoryPage      from './HistoryPage';
 import SharedPage       from '../shared/SharedPage';
-import TransactionsSidebar from './TransactionsSidebar';
 import { useTransactions } from '../../hooks/useTransactions';
 import { useFilters } from '../../hooks/useFilters';
 import { useSelection } from '../../hooks/useSelection';
@@ -30,11 +28,6 @@ const API = API_BASE;
 
 // view: 'current' | 'shared' | 'history'
 export default function TransactionsPage({ view }) {
-  const navigate = useNavigate();
-  const handleNavigate = useCallback((id) => {
-    navigate(id === 'current' ? '/transactions' : `/transactions/${id}`);
-  }, [navigate]);
-
   const {
     transactions, personNames, loading, error, setError, setTransactions, reload,
   } = useTransactions();
@@ -356,9 +349,8 @@ export default function TransactionsPage({ view }) {
   const unreviewedVisible = unreviewedVisibleEarly;
 
   return (
-    <div className="eh-app">
+    <>
       <a className="eh-skip-link" href="#tx-main">Skip to main content</a>
-      <TransactionsSidebar activeId={view} onNavigate={handleNavigate} />
       <div className="eh-main">
         {view === 'current' ? (
           <div className="tx-layout">
@@ -518,6 +510,6 @@ export default function TransactionsPage({ view }) {
         />
       )}
       {sync.syncToast && <SyncToast result={sync.syncToast} onClose={() => sync.setSyncToast(null)} />}
-    </div>
+    </>
   );
 }
