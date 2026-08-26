@@ -36,6 +36,14 @@ export function buildCreditRow(account, details = {}) {
     openedOn: details.opened_on ?? null,
     utilPct: limit && limit > 0 ? (owed / limit) * 100 : null,
     dueInDays: daysUntilNextDue(details.due_day),
+    // The "starting" figure a manual account's edit is stored against — not
+    // the live computed owed/available above, which already has linked-txn
+    // delta folded in. Seeding the balance editor from the computed value
+    // instead of this would make every unchanged save walk the balance by
+    // the delta again. See PUT /api/balances/{id} and balances_service.py.
+    startingBalance: num(account.starting_balance),
+    linkedTxnCount: account.linked_txn_count ?? 0,
+    linkedLastDate: account.linked_last_date ?? null,
   };
 }
 
@@ -51,6 +59,9 @@ export function buildCashRow(account) {
     available,
     ledger,
     showLedger: Math.abs(available - ledger) > 0.005,
+    startingBalance: num(account.starting_balance),
+    linkedTxnCount: account.linked_txn_count ?? 0,
+    linkedLastDate: account.linked_last_date ?? null,
   };
 }
 

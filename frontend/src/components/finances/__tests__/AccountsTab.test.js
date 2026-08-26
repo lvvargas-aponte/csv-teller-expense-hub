@@ -43,6 +43,7 @@ const mockApis = ({ details = {}, investmentSubtypes } = {}) => {
     return Promise.reject(new Error(`Unexpected GET ${url}`));
   });
   axios.put.mockResolvedValue({ data: {} });
+  axios.post.mockResolvedValue({ data: {} });
 };
 
 const renderTab = (accounts, opts = {}) => {
@@ -409,6 +410,68 @@ test('a manual account can have its balance edited', async () => {
     expect.any(String),
     expect.objectContaining({ available: 250 }),
   );
+});
+
+// FIX 1 — the editor must pre-fill the *starting* balance (what the PUT
+// writes back into), not the live computed one (starting - linked-txn
+// delta). Seeding from the computed value made an unchanged save walk the
+// stored balance down by the delta on every save.
+test("a manual account's balance editor pre-fills the starting balance, not the live computed one", async () => {
+  const user = userEvent.setup();
+  renderAccountsTab({
+    accounts: [manualCashAccount({
+      available: 950, ledger: 950, starting_balance: 1000, txn_delta: -50, linked_txn_count: 3,
+    })],
+  });
+
+  const row = await screen.findByRole('group', { name: /manual cash/i });
+  // The row itself still shows the live, computed number.
+  expect(within(row).getByText('$950.00')).toBeInTheDocument();
+
+  await user.click(within(row).getByRole('button', { name: /edit balance/i }));
+  expect(within(row).getByLabelText(/available/i)).toHaveValue(1000);
+  expect(within(row).getByText(/from 3 linked txns/i)).toBeInTheDocument();
+
+  await user.click(within(row).getByRole('button', { name: /save/i }));
+
+  expect(updateAccountBalance).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({ available: 1000 }),
+  );
+});
+
+// FIX 5 — a failing save must keep the editor open and show the error,
+// rather than closing (losing the edit) and failing silently.
+test('a failed balance save keeps the editor open and shows an error', async () => {
+  const user = userEvent.setup();
+  updateAccountBalance.mockRejectedValueOnce({ response: { data: { detail: 'Simulated failure' } } });
+  renderAccountsTab();
+
+  const row = await screen.findByRole('group', { name: /manual cash/i });
+  await user.click(within(row).getByRole('button', { name: /edit balance/i }));
+  await user.click(within(row).getByRole('button', { name: /save/i }));
+
+  expect(await within(row).findByText(/simulated failure/i)).toBeInTheDocument();
+  expect(within(row).getByLabelText(/available/i)).toBeInTheDocument();
+});
+
+// FIX 2(a) — most users are SimpleFIN-only. SnapTrade must not even be
+// called (POST /api/snaptrade/sync answers 503/409 for such a user), or a
+// fully successful sync would report an error every time.
+test('Sync all does not call SnapTrade when there are no investment accounts', async () => {
+  const user = userEvent.setup();
+  renderAccountsTab({ accounts: [manualCashAccount(), syncedCashAccount()] });
+
+  await screen.findByRole('group', { name: /manual cash/i });
+  await user.click(screen.getByRole('button', { name: /sync all/i }));
+
+  await waitFor(() => expect(axios.post).toHaveBeenCalledWith(
+    expect.stringContaining('/api/simplefin/sync'),
+    expect.anything(),
+  ));
+  const urls = axios.post.mock.calls.map(([url]) => url);
+  expect(urls.some((u) => u.includes('/api/snaptrade/sync'))).toBe(false);
+  expect(screen.queryByText(/sync failed/i)).toBeNull();
 });
 
 test('a synced account offers no balance editing', async () => {

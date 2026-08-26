@@ -109,6 +109,15 @@ const summary = {
       id: 'r1', institution: 'Manual', name: 'Home', type: 'real_asset',
       subtype: 'home', available: 450000, ledger: 450000, source: 'manual', manual: true,
     },
+    // FIX 3 — the only prior `manual: true` fixture was a real_asset, which
+    // renders via AssetRow and never exercises AccountListRow's edit/remove
+    // buttons. A manual credit account is the surface that had the
+    // nested-interactive violation (buttons nested inside a role="button"
+    // row), so the axe pass needs one to actually render that markup.
+    {
+      id: 'mc1', institution: '', name: 'Manual Card', type: 'credit',
+      available: 200, ledger: 300, source: 'manual', manual: true,
+    },
   ],
 };
 

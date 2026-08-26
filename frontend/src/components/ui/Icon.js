@@ -20,6 +20,7 @@ const PATHS = {
   chevron: <><path d="M7.5 5l5 5-5 5" /></>,
   chevronDown: <><path d="M5 7.5l5 5 5-5" /></>,
   close: <><path d="M5.5 5.5l9 9M14.5 5.5l-9 9" /></>,
+  edit: <><path d="M12.6 3.4a1.7 1.7 0 0 1 2.4 2.4l-8.6 8.6-3.2.8.8-3.2z" /><path d="M11.2 4.8l2.4 2.4" /></>,
   plus: <><path d="M10 4.5v11M4.5 10h11" /></>,
   search: <><circle cx="8.8" cy="8.8" r="5" /><path d="M12.5 12.5 16.5 16.5" /></>,
   refresh: <><path d="M16.4 8.4a6.6 6.6 0 1 0-.6 4.4" /><path d="M16.8 4.4v4h-4" /></>,

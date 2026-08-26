@@ -71,6 +71,28 @@ test('removing an institution warns that history is kept, and detaches on confir
   expect(disconnectAccount).toHaveBeenCalledWith('a2');
 });
 
+// FIX 2(b) — syncError is rendered verbatim, with no "Sync failed — " prefix
+// stitched on. useSyncAll emits full sentences; the old prefix produced
+// doubled-up text like "Sync failed — Sync failed — is the backend running?"
+// and mislabelled a partial success ("Brokerages did not sync, but bank
+// balances are up to date.") as a total failure.
+test('a successful SimpleFIN-only sync shows no error text', () => {
+  renderStrip({ syncError: null });
+  expect(screen.queryByText(/sync failed/i)).not.toBeInTheDocument();
+});
+
+test('a partial (brokerage-only) failure reads as partial, not total', () => {
+  renderStrip({ syncError: 'Brokerages did not sync, but bank balances are up to date.' });
+  expect(screen.getByText('Brokerages did not sync, but bank balances are up to date.')).toBeInTheDocument();
+  expect(screen.queryByText(/sync failed — /i)).not.toBeInTheDocument();
+});
+
+test('a total failure message renders without a doubled prefix', () => {
+  renderStrip({ syncError: 'Sync failed — is the backend running?' });
+  expect(screen.getByText('Sync failed — is the backend running?')).toBeInTheDocument();
+  expect(screen.queryByText(/sync failed — sync failed/i)).not.toBeInTheDocument();
+});
+
 test('declining the removal dialog detaches nothing', async () => {
   const user = userEvent.setup();
   renderStrip();

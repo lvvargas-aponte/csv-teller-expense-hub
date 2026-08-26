@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { MetaLine } from './AccountListRow';
 import { fmt$, formatRelativeTime } from '../../../utils/formatting';
 import { chipColorFor } from '../../../utils/institutionColor';
+import { userMessage } from '../../../utils/errorMessage';
+import Icon from '../../ui/Icon';
 
 function toNum(v) {
   if (v === '' || v === null || v === undefined) return null;
@@ -30,20 +32,31 @@ export default function SimpleAccountRow({
   const [editingBalance, setEditingBalance] = useState(false);
   const [available, setAvailable] = useState('');
   const [ledger, setLedger] = useState('');
+  const [saveError, setSaveError] = useState(null);
 
   const canEditBalance = !!(row.manual && onEditBalance);
   const canDelete = !!(row.manual && onDelete);
   const hasActions = canEditBalance || canDelete;
 
   const openEditor = () => {
-    setAvailable(row.available === null || row.available === undefined ? '' : String(row.available));
+    // Seed from the starting balance, not row.available — that's the live
+    // computed value (starting minus linked-txn delta), and re-saving it
+    // unchanged would walk the stored balance down by the delta every time.
+    const starting = row.startingBalance ?? row.available;
+    setAvailable(starting === null || starting === undefined ? '' : String(starting));
     setLedger(row.ledger === null || row.ledger === undefined ? '' : String(row.ledger));
+    setSaveError(null);
     setEditingBalance(true);
   };
 
-  const saveBalance = () => {
-    onEditBalance?.(row.id, row.manual, { available: toNum(available), ledger: toNum(ledger) });
-    setEditingBalance(false);
+  const saveBalance = async () => {
+    setSaveError(null);
+    try {
+      await onEditBalance?.(row.id, row.manual, { available: toNum(available), ledger: toNum(ledger) });
+      setEditingBalance(false);
+    } catch (e) {
+      setSaveError(userMessage(e, 'Could not save balance'));
+    }
   };
 
   const meta = [];
@@ -84,7 +97,7 @@ export default function SimpleAccountRow({
                 aria-label="Edit balance"
                 title="Edit balance"
               >
-                <span aria-hidden="true">✎</span>
+                <Icon name="edit" size={16} />
               </button>
             )}
             {canDelete && (
@@ -95,7 +108,7 @@ export default function SimpleAccountRow({
                 aria-label="Remove"
                 title="Remove"
               >
-                <span aria-hidden="true">✕</span>
+                <Icon name="close" size={16} />
               </button>
             )}
           </div>
@@ -127,6 +140,15 @@ export default function SimpleAccountRow({
                 onChange={(e) => setLedger(e.target.value)}
               />
             </label>
+          )}
+          <div className="acct-drawer-note">
+            {row.linkedTxnCount > 0
+              ? `Computed from ${row.linkedTxnCount} linked txn${row.linkedTxnCount === 1 ? '' : 's'}. `
+              : ''}
+            Saving records a new balance snapshot.
+          </div>
+          {saveError && (
+            <div className="acct-drawer-note acct-meta-warn">{saveError}</div>
           )}
           <div className="acct-drawer-note acct-drawer-actions">
             <button type="button" className="btn btn-secondary" onClick={() => setEditingBalance(false)}>

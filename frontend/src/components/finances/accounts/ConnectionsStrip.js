@@ -129,7 +129,7 @@ export default function ConnectionsStrip({
           {syncing ? (
             <>Syncing…</>
           ) : syncError ? (
-            <>Sync failed — {syncError}</>
+            <>{syncError}</>
           ) : broken.length > 0 ? (
             <>
               <strong>{broken[0].institution}</strong>

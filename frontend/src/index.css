@@ -3383,9 +3383,6 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   cursor: pointer;
   transition: background 0.12s;
 }
-/* Opt-in: only a row that actually renders the edit/remove cluster gets the
-   extra grid track. A row with no actions (a synced row, or AssetRow, which
-   doesn't use this class at all) keeps the original four-track geometry. */
 .acct-row--actions {
   grid-template-columns: 40px minmax(0, 1fr) auto auto 24px;
 }
@@ -3399,6 +3396,39 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 .acct-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .acct-row--static { cursor: default; }
 .acct-row--static:hover { background: transparent; }
+/* AccountListRow's two-tier row: the row itself becomes a flex shell, and
+   the expand affordance (a real <button>) takes over the grid layout that
+   used to live on the row div directly — keeping the edit/remove buttons as
+   its siblings rather than descendants, which is what lets assistive tech
+   reach them (previously an axe nested-interactive violation: buttons
+   nested inside a role="button" row are unreachable). */
+.acct-row--expandable {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  cursor: default;
+}
+.acct-row--expandable:hover { background: transparent; }
+.acct-row--expandable .acct-row-actions { padding-right: 18px; }
+.acct-row-hit {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto 24px;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  padding: 15px 18px;
+  background: transparent;
+  border: none;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.acct-row-hit:hover { background: var(--bg-input); }
+.acct-row-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .acct-row-avatar {
   width: 40px; height: 40px;
   border-radius: 11px;
@@ -3546,6 +3576,7 @@ input[type="number"]:focus::-webkit-inner-spin-button {
 @media (max-width: 620px) {
   .acct-drawer { padding-left: 18px; }
   .acct-row { gap: 10px; padding: 14px; }
+  .acct-row-hit { gap: 10px; padding: 14px; }
 }
 
 /* Add-account footer row inside the credit and cash tables. */

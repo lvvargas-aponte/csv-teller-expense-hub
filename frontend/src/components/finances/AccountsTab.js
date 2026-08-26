@@ -17,6 +17,7 @@ import useConnectionHealth from './accounts/useConnectionHealth';
 import { buildCreditRow, buildCashRow, buildAssetRow, summarize } from './accounts/accountMath';
 import { toYMD } from '../../utils/formatting';
 import { classifyAccountBucket, loadInvestmentSubtypes } from '../../utils/accountBucket';
+import { userMessage } from '../../utils/errorMessage';
 
 // AccountsTab — one summary bar, a connection-health strip, then collapsible
 // account groups whose rows expand into an inline editor. Receives the cached
@@ -163,25 +164,34 @@ export default function AccountsTab({
   // bail check lives in a standalone factory (below) so it can be exercised
   // directly in a test, independent of any row's rendering.
   const handleBalanceEdit = useCallback(
-    createBalanceEditHandler(updateAccountBalance, onRefresh),
+    (accountId, manual, payload) =>
+      createBalanceEditHandler(updateAccountBalance, onRefresh, setLocalError)(accountId, manual, payload),
     [onRefresh],
   );
 
   const handleDeleteManual = useCallback(
-    createDeleteManualHandler(deleteManualAccount, onRefresh, setLocalError),
+    (accountId, manual, label) =>
+      createDeleteManualHandler(deleteManualAccount, onRefresh, setLocalError)(accountId, manual, label),
     [onRefresh],
   );
 
   // "Sync all" — the one hook shared with Settings' former connections pane,
   // so a bank pull and a brokerage pull always mean the same thing everywhere.
-  const { syncAll, syncing, syncError } = useSyncAll({ onRefresh });
+  // hasBrokerages tells the hook whether SnapTrade is worth calling at all —
+  // most users are SimpleFIN-only, and calling an unconfigured/unconnected
+  // brokerage provider on every sync would otherwise report failure on every
+  // successful bank-only sync.
+  const { syncAll, syncing, syncError } = useSyncAll({
+    onRefresh,
+    hasBrokerages: investmentAccounts.length > 0,
+  });
 
   // syncAll() lets onRefresh's rejection propagate uncaught (see useSyncAll) —
   // catch it here so a failing refresh still lands as a visible message
   // instead of an unhandled rejection.
   const handleSyncAllClick = useCallback(() => {
     setLocalError(null);
-    syncAll().catch(() => setLocalError('could not reach the backend.'));
+    syncAll().catch(() => setLocalError('Sync failed — could not reach the backend.'));
   }, [syncAll]);
 
   if (loading || !detailsLoaded) {
@@ -351,11 +361,16 @@ function toInt(v) {
 // Exported so the manual-only bail check can be exercised directly in a test
 // (called with `manual: false`) without needing to render a row and click
 // through it — the row's own gating is a separate, independent check.
-export function createBalanceEditHandler(updateBalance, onRefresh) {
+export function createBalanceEditHandler(updateBalance, onRefresh, onError) {
   return async (accountId, manual, { available, ledger }) => {
     if (!manual) return;
-    await updateBalance(accountId, { available, ledger });
-    await onRefresh?.();
+    try {
+      await updateBalance(accountId, { available, ledger });
+      await onRefresh?.();
+    } catch (e) {
+      onError?.(userMessage(e, 'Could not save balance'));
+      throw e;
+    }
   };
 }
 

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import InlineField from './InlineField';
 import { fmt$, formatRelativeTime } from '../../../utils/formatting';
 import { chipColorFor } from '../../../utils/institutionColor';
+import { userMessage } from '../../../utils/errorMessage';
+import Icon from '../../ui/Icon';
 
 function toNum(v) {
   if (v === '' || v === null || v === undefined) return null;
@@ -34,6 +36,7 @@ export default function AccountListRow({
   const [editingBalance, setEditingBalance] = useState(false);
   const [owed, setOwed] = useState('');
   const [available, setAvailable] = useState('');
+  const [saveError, setSaveError] = useState(null);
   const palette = chipColorFor(row.institution);
   const meta = buildMeta(row, needsReconnect, cacheFetchedAt);
 
@@ -41,59 +44,64 @@ export default function AccountListRow({
   const canDelete = !!(row.manual && onDelete);
   const hasActions = canEditBalance || canDelete;
 
-  const openBalanceEditor = (e) => {
-    e.stopPropagation();
-    setOwed(row.owed === null || row.owed === undefined ? '' : String(row.owed));
+  const openBalanceEditor = () => {
+    // Seed "owed" from the starting balance, not row.owed — that's the live
+    // computed value (starting plus linked-txn delta), and re-saving it
+    // unchanged would walk the stored balance by the delta every time.
+    const startingOwed = row.startingBalance ?? row.owed;
+    setOwed(startingOwed === null || startingOwed === undefined ? '' : String(startingOwed));
     setAvailable(row.available === null || row.available === undefined ? '' : String(row.available));
+    setSaveError(null);
     setEditingBalance(true);
     setOpen(false);
   };
 
-  const saveBalance = (e) => {
-    e.stopPropagation();
-    // The row displays owed/available, but updateAccountBalance's contract is
-    // { available, ledger } — owed is the credit account's ledger.
-    onEditBalance?.(row.id, row.manual, { available: toNum(available), ledger: toNum(owed) });
-    setEditingBalance(false);
+  const saveBalance = async () => {
+    setSaveError(null);
+    try {
+      // The row displays owed/available, but updateAccountBalance's contract is
+      // { available, ledger } — owed is the credit account's ledger.
+      await onEditBalance?.(row.id, row.manual, { available: toNum(available), ledger: toNum(owed) });
+      setEditingBalance(false);
+    } catch (e) {
+      setSaveError(userMessage(e, 'Could not save balance'));
+    }
   };
 
   return (
     <div className="acct-row-group" role="group" aria-label={row.name}>
-      <div
-        className={`acct-row${hasActions ? ' acct-row--actions' : ''}`}
-        role="button"
-        tabIndex={0}
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setOpen((o) => !o);
-          }
-        }}
-      >
-        <div
-          className="acct-row-avatar"
-          style={{ background: palette.bg, color: palette.color }}
-          aria-hidden="true"
+      <div className={`acct-row acct-row--expandable${hasActions ? ' acct-row--actions' : ''}`}>
+        <button
+          type="button"
+          className="acct-row-hit"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
         >
-          💳
-        </div>
-
-        <div className="acct-row-body">
-          <div className="acct-row-title">
-            {row.name}
-            {row.owed === 0 && <span className="ov-tag-paid">Paid off</span>}
+          <div
+            className="acct-row-avatar"
+            style={{ background: palette.bg, color: palette.color }}
+            aria-hidden="true"
+          >
+            💳
           </div>
-          <MetaLine items={meta} />
-        </div>
 
-        <div className="acct-row-amount">
-          <div className={`acct-row-balance${row.owed === 0 ? ' is-zero' : ''}`}>
-            {fmt$(row.owed)}
+          <div className="acct-row-body">
+            <div className="acct-row-title">
+              {row.name}
+              {row.owed === 0 && <span className="ov-tag-paid">Paid off</span>}
+            </div>
+            <MetaLine items={meta} />
           </div>
-          <div className="acct-row-subamount">{fmt$(row.available)} available</div>
-        </div>
+
+          <div className="acct-row-amount">
+            <div className={`acct-row-balance${row.owed === 0 ? ' is-zero' : ''}`}>
+              {fmt$(row.owed)}
+            </div>
+            <div className="acct-row-subamount">{fmt$(row.available)} available</div>
+          </div>
+
+          <div className={`acct-row-chevron${open ? ' is-open' : ''}`} aria-hidden="true">›</div>
+        </button>
 
         {hasActions && (
           <div className="acct-row-actions">
@@ -105,24 +113,22 @@ export default function AccountListRow({
                 aria-label="Edit balance"
                 title="Edit balance"
               >
-                <span aria-hidden="true">✎</span>
+                <Icon name="edit" size={16} />
               </button>
             )}
             {canDelete && (
               <button
                 type="button"
                 className="ov-icon-btn ov-icon-btn--danger"
-                onClick={(e) => { e.stopPropagation(); onDelete(row.id, row.manual, row.name); }}
+                onClick={() => onDelete(row.id, row.manual, row.name)}
                 aria-label="Remove"
                 title="Remove"
               >
-                <span aria-hidden="true">✕</span>
+                <Icon name="close" size={16} />
               </button>
             )}
           </div>
         )}
-
-        <div className={`acct-row-chevron${open ? ' is-open' : ''}`} aria-hidden="true">›</div>
       </div>
 
       {editingBalance && (
@@ -147,6 +153,15 @@ export default function AccountListRow({
               onChange={(e) => setAvailable(e.target.value)}
             />
           </DrawerField>
+          <div className="acct-drawer-note">
+            {row.linkedTxnCount > 0
+              ? `Computed from ${row.linkedTxnCount} linked txn${row.linkedTxnCount === 1 ? '' : 's'}. `
+              : ''}
+            Saving records a new balance snapshot.
+          </div>
+          {saveError && (
+            <div className="acct-drawer-note acct-meta-warn">{saveError}</div>
+          )}
           <div className="acct-drawer-note acct-drawer-actions">
             <button type="button" className="btn btn-secondary" onClick={() => setEditingBalance(false)}>
               Cancel

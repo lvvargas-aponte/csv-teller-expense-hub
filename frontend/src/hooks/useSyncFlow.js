@@ -30,7 +30,13 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
       setAccountsRefreshKey((k) => k + 1);
       await reload();
     } catch (e) {
-      setError(userMessage(e, 'Bank sync failed — please try again.'));
+      const message = userMessage(e, 'Bank sync failed — please try again.');
+      setError(message);
+      // setError is a page-registered no-op once its page unmounts (see
+      // SyncContext), which silently swallowed a failure on navigate-away.
+      // setSyncToast lives here, at the shell level, and survives — so the
+      // failure still surfaces even with no page listening.
+      setSyncToast({ error: message });
     } finally {
       setSyncing(false);
     }
@@ -75,6 +81,15 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
       `? Your local records are kept.`
     )) return;
 
+    // setError is a page-registered no-op once its page unmounts (see
+    // SyncContext), which used to swallow a failure silently on navigate-away.
+    // setSyncToast lives here, at the shell level, and survives — so every
+    // failure below also lands there, not just in the page's inline error.
+    const reportError = (message) => {
+      setError(message);
+      setSyncToast({ error: message });
+    };
+
     setSendingSheet(true);
     try {
       const res = await postSharedSync({ period });
@@ -82,7 +97,7 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
 
       if (res.data.status === 'refused') {
         const refused = results.find((r) => r.refusal_message);
-        setError(refused ? refused.refusal_message : 'Sync was refused.');
+        reportError(refused ? refused.refusal_message : 'Sync was refused.');
         return;
       }
 
@@ -90,7 +105,7 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
       // a success toast counting rows that were never written.
       if (res.data.status === 'error') {
         const failed = results.find((r) => r.error_detail);
-        setError(failed
+        reportError(failed
           ? `Sync failed: ${failed.error_detail}`
           : 'Sync failed — please try again.');
         return;
@@ -104,7 +119,7 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
         details: [{ account: `Google Sheet ✓ (${pushed} sent, ${pulled} received)`, new: pushed, fetched: pushed + pulled }],
       });
     } catch (e) {
-      setError(userMessage(e, 'Sync with Google Sheet failed — please try again.'));
+      reportError(userMessage(e, 'Sync with Google Sheet failed — please try again.'));
     } finally {
       setSendingSheet(false);
     }
