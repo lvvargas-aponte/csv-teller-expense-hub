@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import Spin from '../ui/Spin';
 import { getBalancesSummary, updateAccountBalance, deleteManualAccount } from '../../api/balances';
 import {
@@ -14,7 +15,7 @@ import AddAccountModal from './accounts/AddAccountModal';
 import AssetRow from './accounts/AssetRow';
 import useConnectionHealth from './accounts/useConnectionHealth';
 import { buildCreditRow, buildCashRow, buildAssetRow, summarize } from './accounts/accountMath';
-import { toYMD } from '../../utils/formatting';
+import { toYMD, fmt$ } from '../../utils/formatting';
 import { classifyAccountBucket, loadInvestmentSubtypes } from '../../utils/accountBucket';
 
 // AccountsTab — one summary bar, a connection-health strip, then collapsible
@@ -288,24 +289,13 @@ export default function AccountsTab({
           <div className="acct-empty-note">
             Connect a brokerage or retirement account to track it here.
           </div>
-        ) : investmentRows.map((row) => (
-          <SimpleAccountRow
-            key={row.id}
-            row={row}
-            glyph="📈"
-            needsReconnect={!row.manual && brokenNames.has(row.institution)}
-            cacheFetchedAt={cacheFetchedAt}
-            taxTreatment={{
-              treatment: detailsMap[row.id]?.tax_treatment ?? row.account.tax_treatment ?? '',
-              inferred: row.account.tax_treatment_inferred ?? null,
-              setByUser: !!(detailsMap[row.id]?.tax_treatment
-                || row.account.tax_treatment_set_by_user),
-            }}
-            onTaxTreatmentChange={(v) => handleFieldUpdate(row.id, 'tax_treatment', v)}
-            onEditBalance={handleBalanceEdit}
-            onDelete={handleDeleteManual}
-          />
-        ))}
+        ) : (
+          <Link to="/invest" className="acct-add-row">
+            <span>
+              {countLabel(investmentRows.length)} · {fmt$(stats.totalInvestments)} — view in Invest
+            </span>
+          </Link>
+        )}
       </AccountSection>
 
       <AccountSection

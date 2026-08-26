@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
 import InvestmentsTab from './InvestmentsTab';
-import BalancesSection from './BalancesSection';
 import PayoffPlanner from './PayoffPlanner';
 import CreditFactorsPanel from './CreditFactorsPanel';
 import BudgetsSection from './BudgetsSection';
@@ -104,15 +103,8 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
               onRefresh={() => loadBalances(true)}
               onManageConnections={() => openSettings('connections')}
             />
-            {/* Manual balances and the payoff planner belong beside the
-                accounts they act on, not on a separate Overview page. */}
-            <BalancesSection
-              summary={summary}
-              loading={summaryLoading}
-              error={summaryError}
-              onRefresh={() => loadBalances(true)}
-              onMutate={() => loadBalances(false)}
-            />
+            {/* The payoff planner belongs beside the accounts it acts on,
+                not on a separate Overview page. */}
             <PayoffPlanner creditAccounts={creditAccounts} />
             <CreditFactorsPanel />
           </SimplePage>

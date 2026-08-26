@@ -48,11 +48,13 @@ const mockApis = ({ details = {}, investmentSubtypes } = {}) => {
 const renderTab = (accounts, opts = {}) => {
   mockApis(opts);
   return render(
-    <AccountsTab
-      summary={summaryOf(accounts, opts.connections)}
-      summaryLoading={false}
-      onRefresh={jest.fn()}
-    />,
+    <MemoryRouter>
+      <AccountsTab
+        summary={summaryOf(accounts, opts.connections)}
+        summaryLoading={false}
+        onRefresh={jest.fn()}
+      />
+    </MemoryRouter>,
   );
 };
 
@@ -196,7 +198,8 @@ test('a depository account with a retirement subtype groups under Investments', 
     }),
   ]);
 
-  await screen.findByText('Roth IRA');
+  // The account itself now shows only on /invest; this page just totals it.
+  await screen.findByRole('link', { name: /invest/i });
 
   const investments = section(/Investments/);
   expect(investments).toHaveTextContent('1 account');
@@ -339,36 +342,13 @@ const investmentAccount = (over = {}) => ({
   ...over,
 });
 
-test('an unconfirmed tax treatment is shown as an assumption, not a fact', async () => {
-  renderTab([investmentAccount()]);
-
-  const picker = await screen.findByLabelText(/tax treatment, for Employer 401\(k\)/i);
-  expect(picker).toHaveValue('traditional');
-  const investments = await sectionNamed('Investments');
-  expect(within(investments).getByText(/assumed/i)).toBeInTheDocument();
-});
-
-test('a confirmed treatment drops the assumption marker', async () => {
-  renderTab([investmentAccount({
-    tax_treatment: 'roth', tax_treatment_set_by_user: true,
-  })]);
-
-  const investments = await sectionNamed('Investments');
-  expect(within(investments).queryByText(/assumed/i)).not.toBeInTheDocument();
-});
-
-test('choosing a treatment saves it against the account', async () => {
-  const user = userEvent.setup();
-  renderTab([investmentAccount()]);
-
-  const picker = await screen.findByLabelText(/tax treatment, for Employer 401\(k\)/i);
-  await user.selectOptions(picker, 'roth');
-
-  await waitFor(() => expect(axios.put).toHaveBeenCalledWith(
-    expect.stringContaining('/api/accounts/i1/details'),
-    expect.objectContaining({ tax_treatment: 'roth' }),
-  ));
-});
+// Per-row investment rendering — including the tax-treatment picker and its
+// "assumed" marker — was retired in Phase 3 Task 3 when the Investments
+// group collapsed to a summary linking to /invest. The three tests that used
+// to cover that picker here (unconfirmed treatment shown as an assumption,
+// confirmed treatment drops the marker, choosing a treatment saves it) are
+// obsolete on this page; the holdings and their editable fields now live
+// only on /invest, which has no equivalent test today.
 
 // --- Manual-balance editing / removal --------------------------------------
 // AccountsTab absorbs the two things BalancesSection alone used to offer: a
@@ -464,6 +444,26 @@ test('the balance-edit handler refuses a non-manual account, even called directl
 
   expect(update).not.toHaveBeenCalled();
   expect(refresh).not.toHaveBeenCalled();
+});
+
+test('investments are summarised, not listed twice', async () => {
+  renderAccountsTab({ accounts: [investmentAccount(), manualCashAccount()] });
+
+  const link = await screen.findByRole('link', { name: /invest/i });
+  expect(link).toHaveAttribute('href', '/invest');
+  // The holdings themselves belong to /invest; this page shows the total.
+  expect(screen.queryByText(/employer 401\(k\)/i)).toBeNull();
+});
+
+// --- Coverage carried over from the deleted BalancesSection.test.js -------
+// A card just paid off must stay listed rather than vanish from the page
+// where it would be closed or edited (accountMath/buildCreditRow does not
+// filter zero-balance cards out).
+test('a card you just paid off stays listed', async () => {
+  renderAccountsTab({ accounts: [creditAccount({ id: 'pc1', name: 'Paid Off Card', ledger: 0 })] });
+
+  const row = await findRow('Paid Off Card');
+  expect(row).toBeInTheDocument();
 });
 
 test('the delete handler refuses a non-manual account, even called directly', async () => {
