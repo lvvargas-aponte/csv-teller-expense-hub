@@ -63,3 +63,19 @@ test('every link has an accessible name', () => {
     expect(link).toHaveAccessibleName();
   }
 });
+
+test('exposes exactly one navigation landmark, distinctly labelled', () => {
+  const { container } = renderAt('/');
+
+  const navs = container.querySelectorAll('nav');
+  expect(navs).toHaveLength(1);
+  expect(navs[0]).toHaveAttribute('aria-label', 'Main');
+});
+
+test('the collapse control is reachable and states what it does', () => {
+  // The old sidebars rendered bare chevron glyphs, one of them without
+  // aria-hidden, so the control announced as a stray character.
+  renderAt('/');
+  const toggle = screen.getByRole('button', { name: /collapse sidebar/i });
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});

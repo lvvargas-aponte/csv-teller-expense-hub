@@ -1075,7 +1075,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 .eh-sidebar--collapsed { width: 64px; min-width: 64px; }
 .eh-sidebar--collapsed .eh-sidebar-logo { padding: 0 0 24px; justify-content: center; }
 .eh-sidebar--collapsed .eh-sidebar-logo-text,
-.eh-sidebar--collapsed .eh-sidebar-section-label,
 .eh-sidebar--collapsed .eh-nav-text,
 .eh-sidebar--collapsed .eh-sidebar-footer { display: none; }
 .eh-sidebar--collapsed .eh-sidebar-nav { padding: 0 8px; }
@@ -1124,15 +1123,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   font-size: 16px;
   color: var(--text-primary);
   letter-spacing: -0.3px;
-}
-.eh-sidebar-section-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  padding: 0 20px;
-  margin: 16px 0 6px;
 }
 .eh-sidebar-nav { display: flex; flex-direction: column; padding: 0 12px; gap: 2px; }
 .eh-nav-item {
