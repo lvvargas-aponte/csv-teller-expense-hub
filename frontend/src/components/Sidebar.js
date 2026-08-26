@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 
 import { NAV, findSection } from '../navConfig';
 import { useSidebarCollapsed } from '../hooks/useSidebarCollapsed';
+import { useUnsavedChanges } from '../contexts/UnsavedChangesContext';
 import Icon from './ui/Icon';
 import InfoPopover from './ui/InfoPopover';
 
@@ -10,6 +11,14 @@ export default function Sidebar({ healthScore, healthSignals }) {
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const { pathname } = useLocation();
   const active = findSection(pathname);
+  const { unsaved } = useUnsavedChanges();
+
+  const confirmLeave = (e) => {
+    // eslint-disable-next-line no-alert
+    if (unsaved && !window.confirm('You have unsaved settings. Leave without saving?')) {
+      e.preventDefault();
+    }
+  };
 
   return (
     <aside className={`eh-sidebar${collapsed ? ' eh-sidebar--collapsed' : ''}`}>
@@ -40,6 +49,7 @@ export default function Sidebar({ healthScore, healthSignals }) {
               className={({ isActive }) => `eh-nav-item${isActive ? ' eh-nav-item--active' : ''}`}
               title={collapsed ? section.label : undefined}
               aria-label={section.label}
+              onClick={confirmLeave}
             >
               <span className="eh-nav-icon" aria-hidden="true">
                 <Icon name={section.icon} size={18} />
@@ -55,6 +65,7 @@ export default function Sidebar({ healthScore, healthSignals }) {
                     to={child.path}
                     end={child.end}
                     className={({ isActive }) => `eh-subnav-item${isActive ? ' eh-subnav-item--active' : ''}`}
+                    onClick={confirmLeave}
                   >
                     {child.label}
                   </NavLink>

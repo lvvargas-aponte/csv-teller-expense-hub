@@ -4,6 +4,7 @@ import useSettingsDraft from './useSettingsDraft';
 import FinancialProfilePane from './panes/FinancialProfilePane';
 import ConnectionsPane from './panes/ConnectionsPane';
 import CategoriesPane from './panes/CategoriesPane';
+import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext';
 
 const PANES = [
   { id: 'profile',     icon: '🧭', label: 'Financial profile' },
@@ -38,6 +39,10 @@ export default function SettingsPage({
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
+
+  const { setUnsaved } = useUnsavedChanges();
+  useEffect(() => { setUnsaved(dirty); }, [dirty, setUnsaved]);
+  useEffect(() => () => setUnsaved(false), [setUnsaved]);
 
   useEffect(() => {
     if (!toast) return undefined;

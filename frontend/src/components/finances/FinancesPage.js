@@ -78,7 +78,6 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
 
   return (
     <>
-      <a className="eh-skip-link" href="#eh-main">Skip to main content</a>
       <main className="eh-main" id="eh-main">
         <div className="eh-live-region" role="status" aria-live="polite">
           {announcement}

@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
 import { axe } from 'jest-axe';
 
+import App from '../../../App';
 import FinancesPage from '../FinancesPage';
 import { getHealthScore, getRatios } from '../../../api/health';
 import { getBalancesSummary } from '../../../api/balances';
@@ -71,8 +72,8 @@ jest.mock('../../../api/profile');
 // What each one was:
 //   region               — .eh-main is a plain div, so nothing on the page
 //                          sits inside a landmark.
-//   landmark-unique      — FinancesSidebar emits one <nav> per section with
-//                          no distinguishing name, so all three collide.
+//   landmark-unique      — Sidebar's per-section <nav> elements had no
+//                          distinguishing name, so all three collided.
 //   empty-table-header   — PayoffForm's checkbox and remove columns are
 //                          <th></th>; no data table names itself either.
 //   aria-prohibited-attr — the .eh-info-wrap tooltip triggers are bare
@@ -313,13 +314,26 @@ test('the investments surface has no axe violations', async () => {
 
 // Landmarks, a skip link and an announcement for content that swaps under
 // the reader's feet — the three things a keyboard-only user needs before the
-// page is navigable at all.
+// page is navigable at all. The skip link lives in App.js (a sibling of
+// Sidebar), not inside FinancesPage, so this renders the assembled shell.
 test('the shell has a main landmark reachable by a skip link', async () => {
-  await renderTab('home');
+  render(<MemoryRouter><App /></MemoryRouter>);
+  await waitFor(() => expect(screen.queryAllByText(/Loading/)).toHaveLength(0));
 
   const main = screen.getByRole('main');
   const skip = screen.getByRole('link', { name: /skip to main content/i });
   expect(skip).toHaveAttribute('href', `#${main.id}`);
+});
+
+// Sidebar became a sibling of FinancesPage in App.js rather than living
+// inside it, so it needs its own axe pass over the assembled shell — the
+// per-tab renders above never touch it.
+test('the assembled shell (sidebar + main) has no axe violations', async () => {
+  const { container } = render(
+    <MemoryRouter initialEntries={['/accounts']}><App /></MemoryRouter>,
+  );
+  await waitFor(() => expect(screen.queryAllByText(/Loading/)).toHaveLength(0));
+  expect(await axe(container)).toHaveNoViolations();
 });
 
 test('a balance refresh is announced politely', async () => {

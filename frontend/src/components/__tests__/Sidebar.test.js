@@ -1,8 +1,10 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from '../Sidebar';
 import { NAV } from '../../navConfig';
+import { UnsavedChangesContext } from '../../contexts/UnsavedChangesContext';
 
 const renderAt = (path) => render(
   <MemoryRouter initialEntries={[path]}><Sidebar healthScore={72} /></MemoryRouter>,
@@ -78,4 +80,51 @@ test('the collapse control is reachable and states what it does', () => {
   renderAt('/');
   const toggle = screen.getByRole('button', { name: /collapse sidebar/i });
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});
+
+// The in-app unsaved-settings guard: SettingsPage flags `unsaved` via
+// context; Sidebar must confirm before letting a nav click through.
+function renderWithRoutes(unsaved) {
+  return render(
+    <MemoryRouter initialEntries={['/accounts']}>
+      <UnsavedChangesContext.Provider value={{ unsaved, setUnsaved: () => {} }}>
+        <Sidebar healthScore={72} />
+        <Routes>
+          <Route path="/accounts" element={<div>Accounts page</div>} />
+          <Route path="/" element={<div>Home page</div>} />
+        </Routes>
+      </UnsavedChangesContext.Provider>
+    </MemoryRouter>,
+  );
+}
+
+test('a declined confirm cancels in-app navigation away from unsaved settings', async () => {
+  window.confirm = jest.fn(() => false);
+  renderWithRoutes(true);
+
+  await userEvent.click(screen.getByRole('link', { name: 'Home' }));
+
+  expect(window.confirm).toHaveBeenCalled();
+  expect(screen.getByText('Accounts page')).toBeInTheDocument();
+  expect(screen.queryByText('Home page')).toBeNull();
+});
+
+test('an accepted confirm allows in-app navigation away from unsaved settings', async () => {
+  window.confirm = jest.fn(() => true);
+  renderWithRoutes(true);
+
+  await userEvent.click(screen.getByRole('link', { name: 'Home' }));
+
+  expect(window.confirm).toHaveBeenCalled();
+  expect(screen.getByText('Home page')).toBeInTheDocument();
+});
+
+test('no confirm is asked when there is nothing unsaved', async () => {
+  window.confirm = jest.fn(() => false);
+  renderWithRoutes(false);
+
+  await userEvent.click(screen.getByRole('link', { name: 'Home' }));
+
+  expect(window.confirm).not.toHaveBeenCalled();
+  expect(screen.getByText('Home page')).toBeInTheDocument();
 });

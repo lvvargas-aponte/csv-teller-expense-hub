@@ -350,11 +350,10 @@ export default function TransactionsPage({ view }) {
 
   return (
     <>
-      <a className="eh-skip-link" href="#tx-main">Skip to main content</a>
-      <div className="eh-main">
+      <div className="eh-main" id="eh-main">
         {view === 'current' ? (
           <div className="tx-layout">
-            <main className="tx-page-wrap" id="tx-main">
+            <main className="tx-page-wrap">
               <SyncPanel
                 onOpenAccounts={() => sync.setShowAccountsModal(true)}
                 onOpenSync={() => sync.setShowSyncModal(true)}
