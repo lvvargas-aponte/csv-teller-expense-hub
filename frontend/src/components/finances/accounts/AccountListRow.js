@@ -81,7 +81,10 @@ export default function AccountListRow({
         </div>
 
         <div className="acct-row-body">
-          <div className="acct-row-title">{row.name}</div>
+          <div className="acct-row-title">
+            {row.name}
+            {row.owed === 0 && <span className="ov-tag-paid">Paid off</span>}
+          </div>
           <MetaLine items={meta} />
         </div>
 

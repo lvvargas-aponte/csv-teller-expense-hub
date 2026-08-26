@@ -458,12 +458,21 @@ test('investments are summarised, not listed twice', async () => {
 // --- Coverage carried over from the deleted BalancesSection.test.js -------
 // A card just paid off must stay listed rather than vanish from the page
 // where it would be closed or edited (accountMath/buildCreditRow does not
-// filter zero-balance cards out).
-test('a card you just paid off stays listed', async () => {
-  renderAccountsTab({ accounts: [creditAccount({ id: 'pc1', name: 'Paid Off Card', ledger: 0 })] });
+// filter zero-balance cards out), and the zero balance must be called out in
+// text, not just the faint colour the row already applies to it — a
+// colour-blind user can't otherwise tell "paid off" from any other card.
+test('a card you just paid off stays listed and is marked paid off', async () => {
+  renderAccountsTab({ accounts: [creditAccount({ id: 'pc1', name: 'Cleared Visa', ledger: 0 })] });
 
-  const row = await findRow('Paid Off Card');
-  expect(row).toBeInTheDocument();
+  const row = await findRow('Cleared Visa');
+  expect(within(row).getByText('Paid off')).toBeInTheDocument();
+});
+
+test('a card carrying a balance is not marked paid off', async () => {
+  renderAccountsTab({ accounts: [creditAccount({ id: 'bc1', name: 'Carrying Balance Card', ledger: 500 })] });
+
+  const row = await findRow('Carrying Balance Card');
+  expect(within(row).queryByText('Paid off')).toBeNull();
 });
 
 test('the delete handler refuses a non-manual account, even called directly', async () => {

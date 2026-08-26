@@ -13,7 +13,7 @@ export const TAX_TREATMENT_OPTIONS = [
   { value: 'other',       label: 'Other' },
 ];
 
-const TREATMENT_LABEL = {
+export const TREATMENT_LABEL = {
   taxable: 'taxable', traditional: 'traditional', roth: 'Roth',
   hsa: 'HSA', education: 'education', other: 'other',
 };

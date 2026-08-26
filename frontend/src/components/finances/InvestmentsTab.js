@@ -9,8 +9,11 @@ import {
   listSnapTradeConnections,
 } from '../../api/snaptrade';
 import { getPortfolio, setCostBasis, clearCostBasis } from '../../api/investments';
+import { getBalancesSummary } from '../../api/balances';
+import { getAllAccountDetails, upsertAccountDetails } from '../../api/accountDetails';
 import RetirementSection from './RetirementSection';
 import PortfolioQuality from './PortfolioQuality';
+import { TAX_TREATMENT_OPTIONS, TREATMENT_LABEL } from './accounts/SimpleAccountRow';
 
 const ASSET_LABEL = {
   stock: 'Stock',
@@ -163,6 +166,69 @@ export default function InvestmentsTab({ onOpenSettings }) {
   // the rest of the page after a sync or a cost-basis edit.
   const [dataVersion, setDataVersion] = useState(0);
   const pollRef = useRef(null);
+
+  // Tax treatment (taxable / traditional / Roth / …) rode along on the
+  // balances summary's investment accounts and was edited from AccountsTab
+  // before Phase 3 Task 3 collapsed that page's Investments group to a
+  // summary. It feeds the after-tax net-worth calculation, so it needs a
+  // home here instead — this is the only place investment accounts still
+  // render individually. `accountsById` supplies the server-computed
+  // inference (`tax_treatment_inferred` / `tax_treatment_set_by_user`);
+  // `detailsMap` layers the user's own override on top, exactly as
+  // AccountsTab did.
+  const [accountsById, setAccountsById] = useState({});
+  const [detailsMap, setDetailsMap] = useState({});
+  const detailsRef = useRef({});
+
+  useEffect(() => {
+    getBalancesSummary(false)
+      .then((r) => {
+        const map = {};
+        (r.data?.accounts || []).forEach((a) => { map[a.id] = a; });
+        setAccountsById(map);
+      })
+      .catch(() => setAccountsById({}));
+    getAllAccountDetails()
+      .then((r) => { detailsRef.current = r.data || {}; setDetailsMap(detailsRef.current); })
+      .catch(() => { detailsRef.current = {}; setDetailsMap({}); });
+  }, []);
+
+  const taxTreatmentFor = useCallback((accountId) => {
+    const acct = accountsById[accountId];
+    if (!acct) return null;
+    return {
+      treatment: detailsMap[accountId]?.tax_treatment ?? acct.tax_treatment ?? '',
+      inferred: acct.tax_treatment_inferred ?? null,
+      setByUser: !!(detailsMap[accountId]?.tax_treatment || acct.tax_treatment_set_by_user),
+    };
+  }, [accountsById, detailsMap]);
+
+  // Same full-record payload AccountsTab's handleFieldUpdate sent — the PUT
+  // replaces the side-car record wholesale, so any field not carried over
+  // from what's already on file would be silently cleared.
+  const handleTaxTreatmentChange = useCallback(async (accountId, value) => {
+    const prev = detailsRef.current[accountId] || {};
+    const next = { ...prev, tax_treatment: value };
+    detailsRef.current = { ...detailsRef.current, [accountId]: next };
+    setDetailsMap(detailsRef.current);
+    try {
+      await upsertAccountDetails(accountId, {
+        apr: prev.apr ?? null,
+        credit_limit: prev.credit_limit ?? null,
+        minimum_payment: prev.minimum_payment ?? null,
+        statement_day: prev.statement_day ?? null,
+        due_day: prev.due_day ?? null,
+        opened_on: prev.opened_on || null,
+        valuation_updated_on: prev.valuation_updated_on || null,
+        secured_by_account_id: prev.secured_by_account_id || null,
+        tax_treatment: value || null,
+        notes: prev.notes ?? '',
+      });
+    } catch {
+      detailsRef.current = { ...detailsRef.current, [accountId]: prev };
+      setDetailsMap(detailsRef.current);
+    }
+  }, []);
 
   const reload = useCallback(() => {
     setDataVersion((v) => v + 1);
@@ -427,7 +493,9 @@ export default function InvestmentsTab({ onOpenSettings }) {
         </div>
       )}
 
-      {groups.map((g) => (
+      {groups.map((g) => {
+        const tt = taxTreatmentFor(g.account_id);
+        return (
         <div className="finances-section" key={g.account_id}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h2 className="finances-section-title" style={{ margin: 0 }}>
@@ -452,6 +520,31 @@ export default function InvestmentsTab({ onOpenSettings }) {
               </span>
             )}
           </div>
+          {tt && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12 }}>
+              {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+              <label style={{ color: 'var(--text-muted)' }} htmlFor={`tax-treatment-${g.account_id}`}>
+                Tax treatment
+              </label>
+              <select
+                id={`tax-treatment-${g.account_id}`}
+                className="ifield"
+                aria-label={`Tax treatment, for ${g.account_name}`}
+                value={tt.treatment}
+                onChange={(e) => handleTaxTreatmentChange(g.account_id, e.target.value || null)}
+                style={{ fontSize: 12 }}
+              >
+                {TAX_TREATMENT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              {!tt.setByUser && tt.inferred && (
+                <span style={{ color: 'var(--text-muted)' }}>
+                  assumed {TREATMENT_LABEL[tt.inferred] || tt.inferred} — is that right?
+                </span>
+              )}
+            </div>
+          )}
           {g.holdings.length === 0 ? (
             g.source === 'snaptrade' ? (
               <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>
@@ -526,7 +619,8 @@ export default function InvestmentsTab({ onOpenSettings }) {
           </table>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

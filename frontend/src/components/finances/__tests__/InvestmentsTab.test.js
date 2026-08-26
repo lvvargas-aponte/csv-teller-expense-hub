@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import axios from 'axios';
 import InvestmentsTab from '../InvestmentsTab';
 
@@ -34,15 +35,18 @@ const portfolioWithHoldings = {
   ],
 };
 
-function mockGet(config, portfolio) {
+function mockGet(config, portfolio, { accounts = [], details = {} } = {}) {
   axios.get.mockImplementation((url) => {
     if (url.includes('/api/config/snaptrade')) return Promise.resolve({ data: config });
     if (url.includes('/api/investments/portfolio')) return Promise.resolve({ data: portfolio });
     if (url.includes('/api/snaptrade/connections')) {
       return Promise.resolve({ data: { connections: [] } });
     }
+    if (url.includes('/api/balances/summary')) return Promise.resolve({ data: { accounts } });
+    if (url.includes('/api/accounts/details')) return Promise.resolve({ data: details });
     return Promise.reject(new Error(`Unexpected GET: ${url}`));
   });
+  axios.put.mockResolvedValue({ data: {} });
 }
 
 beforeEach(() => jest.clearAllMocks());
@@ -108,4 +112,49 @@ test('the holdings table names itself and scopes its column headers', async () =
   const headers = within(table).getAllByRole('columnheader');
   expect(headers.length).toBeGreaterThan(0);
   headers.forEach((h) => expect(h).toHaveAttribute('scope', 'col'));
+});
+
+// --- Tax treatment ----------------------------------------------------------
+// Retired from AccountsTab when Phase 3 Task 3 collapsed the Investments
+// group to a summary. It feeds the after-tax net-worth calculation, so it
+// needed a new home rather than disappearing — this is it.
+const investmentAccount = (over = {}) => ({
+  id: 'a1',
+  institution: 'Robinhood',
+  name: 'Robinhood Individual',
+  type: 'investment',
+  subtype: 'brokerage',
+  tax_treatment: 'taxable',
+  tax_treatment_inferred: 'taxable',
+  tax_treatment_set_by_user: false,
+  ...over,
+});
+
+test('a tax-treatment control renders for an investment account, marked as assumed', async () => {
+  mockGet({ configured: true, connected: true }, portfolioWithHoldings, {
+    accounts: [investmentAccount()],
+  });
+  render(<InvestmentsTab />);
+
+  const picker = await screen.findByLabelText(/tax treatment, for robinhood individual/i);
+  expect(picker).toHaveValue('taxable');
+  expect(screen.getByText(/assumed taxable/i)).toBeInTheDocument();
+});
+
+test('choosing a treatment persists it against the account', async () => {
+  const user = userEvent.setup();
+  mockGet({ configured: true, connected: true }, portfolioWithHoldings, {
+    accounts: [investmentAccount()],
+  });
+  render(<InvestmentsTab />);
+
+  const picker = await screen.findByLabelText(/tax treatment, for robinhood individual/i);
+  await user.selectOptions(picker, 'roth');
+
+  await waitFor(() => expect(axios.put).toHaveBeenCalledWith(
+    expect.stringContaining('/api/accounts/a1/details'),
+    expect.objectContaining({ tax_treatment: 'roth' }),
+  ));
+  // A confirmed choice drops the "assumed" marker.
+  expect(screen.queryByText(/assumed/i)).not.toBeInTheDocument();
 });
