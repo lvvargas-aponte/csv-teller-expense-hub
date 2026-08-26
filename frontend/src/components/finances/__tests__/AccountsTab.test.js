@@ -455,6 +455,28 @@ test('a failed balance save keeps the editor open and shows an error', async () 
   expect(within(row).getByLabelText(/available/i)).toBeInTheDocument();
 });
 
+// A follow-up finding: routing this failure into localError (which also
+// feeds ConnectionsStrip's syncError prop) mislabelled a balance-entry
+// mistake as a bank-connection problem. The row's own saveError is the
+// only place this belongs — the connections strip must show no error and
+// no attention state.
+test('a failed balance save does not mark the connections strip as needing attention', async () => {
+  const user = userEvent.setup();
+  updateAccountBalance.mockRejectedValueOnce({ response: { data: { detail: 'Simulated failure' } } });
+  renderAccountsTab();
+
+  const row = await screen.findByRole('group', { name: /manual cash/i });
+  await user.click(within(row).getByRole('button', { name: /edit balance/i }));
+  await user.click(within(row).getByRole('button', { name: /save/i }));
+  await within(row).findByText(/simulated failure/i);
+
+  // The error appears exactly once — inside the row — not a second time in
+  // the connections strip.
+  expect(screen.getAllByText(/simulated failure/i)).toHaveLength(1);
+  expect(screen.getByText(/no banks connected yet/i)).toBeInTheDocument();
+  expect(screen.queryByText(/sync failed/i)).toBeNull();
+});
+
 // FIX 2(a) — most users are SimpleFIN-only. SnapTrade must not even be
 // called (POST /api/snaptrade/sync answers 503/409 for such a user), or a
 // fully successful sync would report an error every time.

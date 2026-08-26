@@ -163,9 +163,15 @@ export default function AccountsTab({
   // future caller) is a no-op even if the control were somehow shown. The
   // bail check lives in a standalone factory (below) so it can be exercised
   // directly in a test, independent of any row's rendering.
+  // No onError here, unlike handleDeleteManual below: a failed balance save
+  // is a manual-entry mistake, not a connection problem, and localError
+  // feeds ConnectionsStrip's syncError prop — routing this there would mark
+  // bank connections as needing attention over a typo in a balance field.
+  // The row already renders its own saveError inline, which is the only
+  // place this belongs.
   const handleBalanceEdit = useCallback(
     (accountId, manual, payload) =>
-      createBalanceEditHandler(updateAccountBalance, onRefresh, setLocalError)(accountId, manual, payload),
+      createBalanceEditHandler(updateAccountBalance, onRefresh)(accountId, manual, payload),
     [onRefresh],
   );
 
