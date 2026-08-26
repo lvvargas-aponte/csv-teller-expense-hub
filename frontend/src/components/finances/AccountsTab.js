@@ -154,23 +154,21 @@ export default function AccountsTab({
   }, [handleFieldUpdate, onRefresh]);
 
   // A synced balance comes from the bank; only manual accounts are editable
-  // here. The row hides the control, and the row is only ever wired up with
-  // this handler for a manual account — the second line of defence.
-  const handleBalanceEdit = useCallback(async (accountId, { available, ledger }) => {
-    await updateAccountBalance(accountId, { available, ledger });
-    await onRefresh?.();
-  }, [onRefresh]);
+  // here. The row hides the control (first line of defence), and each row
+  // reports its own `manual` flag on every call — the handler bails if it is
+  // not manual, so a stray call for a synced account (a bypassed row, a
+  // future caller) is a no-op even if the control were somehow shown. The
+  // bail check lives in a standalone factory (below) so it can be exercised
+  // directly in a test, independent of any row's rendering.
+  const handleBalanceEdit = useCallback(
+    createBalanceEditHandler(updateAccountBalance, onRefresh),
+    [onRefresh],
+  );
 
-  const handleDeleteManual = useCallback(async (accountId, label) => {
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(`Remove ${label}? Its transaction history is kept.`)) return;
-    try {
-      await deleteManualAccount(accountId);
-      await onRefresh?.();
-    } catch {
-      setSyncError('Could not remove the account — please try again.');
-    }
-  }, [onRefresh]);
+  const handleDeleteManual = useCallback(
+    createDeleteManualHandler(deleteManualAccount, onRefresh, setSyncError),
+    [onRefresh],
+  );
 
   // "Sync all" — force a balances refresh and, when brokerages are connected,
   // a SnapTrade pull. Failures surface in the connections strip, not per row.
@@ -249,8 +247,8 @@ export default function AccountsTab({
             needsReconnect={!row.manual && brokenNames.has(row.institution)}
             cacheFetchedAt={cacheFetchedAt}
             onUpdate={(field, value) => handleFieldUpdate(row.id, field, value)}
-            onEditBalance={row.manual ? handleBalanceEdit : undefined}
-            onDelete={row.manual ? handleDeleteManual : undefined}
+            onEditBalance={handleBalanceEdit}
+            onDelete={handleDeleteManual}
           />
         ))}
         <button type="button" className="acct-add-row" onClick={() => setAddingKind('credit')}>
@@ -270,8 +268,8 @@ export default function AccountsTab({
             row={row}
             needsReconnect={!row.manual && brokenNames.has(row.institution)}
             cacheFetchedAt={cacheFetchedAt}
-            onEditBalance={row.manual ? handleBalanceEdit : undefined}
-            onDelete={row.manual ? handleDeleteManual : undefined}
+            onEditBalance={handleBalanceEdit}
+            onDelete={handleDeleteManual}
           />
         ))}
         <button type="button" className="acct-add-row" onClick={() => setAddingKind('depository')}>
@@ -304,8 +302,8 @@ export default function AccountsTab({
                 || row.account.tax_treatment_set_by_user),
             }}
             onTaxTreatmentChange={(v) => handleFieldUpdate(row.id, 'tax_treatment', v)}
-            onEditBalance={row.manual ? handleBalanceEdit : undefined}
-            onDelete={row.manual ? handleDeleteManual : undefined}
+            onEditBalance={handleBalanceEdit}
+            onDelete={handleDeleteManual}
           />
         ))}
       </AccountSection>
@@ -361,4 +359,29 @@ function toInt(v) {
   if (v === '' || (v === null || v === undefined)) return null;
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : null;
+}
+
+// Exported so the manual-only bail check can be exercised directly in a test
+// (called with `manual: false`) without needing to render a row and click
+// through it — the row's own gating is a separate, independent check.
+export function createBalanceEditHandler(updateBalance, onRefresh) {
+  return async (accountId, manual, { available, ledger }) => {
+    if (!manual) return;
+    await updateBalance(accountId, { available, ledger });
+    await onRefresh?.();
+  };
+}
+
+export function createDeleteManualHandler(deleteAccount, onRefresh, onError) {
+  return async (accountId, manual, label) => {
+    if (!manual) return;
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(`Remove ${label}? Its transaction history is kept.`)) return;
+    try {
+      await deleteAccount(accountId);
+      await onRefresh?.();
+    } catch {
+      onError?.('Could not remove the account — please try again.');
+    }
+  };
 }

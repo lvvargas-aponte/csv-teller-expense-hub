@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axios from 'axios';
 import { MemoryRouter } from 'react-router-dom';
-import AccountsTab from '../AccountsTab';
+import AccountsTab, { createBalanceEditHandler, createDeleteManualHandler } from '../AccountsTab';
 import { updateAccountBalance, deleteManualAccount } from '../../../api/balances';
 
 jest.mock('axios');
@@ -448,5 +448,38 @@ test('deleting a manual account asks first', async () => {
 
   expect(window.confirm).toHaveBeenCalled();
   expect(deleteManualAccount).not.toHaveBeenCalled();
+  window.confirm.mockRestore();
+});
+
+// The row hides the control for a synced account (covered above), but that's
+// only the first line of defence. This calls AccountsTab's real handlers
+// directly — bypassing the row and its button entirely — the way a bypassed
+// row or a future caller could, and proves the handler itself refuses.
+test('the balance-edit handler refuses a non-manual account, even called directly', async () => {
+  const update = jest.fn();
+  const refresh = jest.fn();
+  const handler = createBalanceEditHandler(update, refresh);
+
+  await handler('sc1', false, { available: 999, ledger: 999 });
+
+  expect(update).not.toHaveBeenCalled();
+  expect(refresh).not.toHaveBeenCalled();
+});
+
+test('the delete handler refuses a non-manual account, even called directly', async () => {
+  jest.spyOn(window, 'confirm');
+  const del = jest.fn();
+  const refresh = jest.fn();
+  const onError = jest.fn();
+  const handler = createDeleteManualHandler(del, refresh, onError);
+
+  await handler('sc1', false, 'Chase Checking');
+
+  // Bails before even asking — a synced account should never get as far as
+  // the confirmation prompt.
+  expect(window.confirm).not.toHaveBeenCalled();
+  expect(del).not.toHaveBeenCalled();
+  expect(refresh).not.toHaveBeenCalled();
+
   window.confirm.mockRestore();
 });

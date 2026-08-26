@@ -19,7 +19,9 @@ function toNum(v) {
 // A manual account additionally offers "Edit balance" and "Remove" — a
 // synced balance comes from the bank and must never be hand-edited, so those
 // controls exist only when `row.manual` is true AND the parent supplied the
-// corresponding handler.
+// corresponding handler. The row also passes `row.manual` on every call, and
+// AccountsTab's handlers bail if it's false — a second, independent check
+// that doesn't rely on this component alone getting the gating right.
 export default function AccountListRow({
   row,
   needsReconnect = false,
@@ -37,6 +39,7 @@ export default function AccountListRow({
 
   const canEditBalance = !!(row.manual && onEditBalance);
   const canDelete = !!(row.manual && onDelete);
+  const hasActions = canEditBalance || canDelete;
 
   const openBalanceEditor = (e) => {
     e.stopPropagation();
@@ -50,14 +53,14 @@ export default function AccountListRow({
     e.stopPropagation();
     // The row displays owed/available, but updateAccountBalance's contract is
     // { available, ledger } — owed is the credit account's ledger.
-    onEditBalance?.(row.id, { available: toNum(available), ledger: toNum(owed) });
+    onEditBalance?.(row.id, row.manual, { available: toNum(available), ledger: toNum(owed) });
     setEditingBalance(false);
   };
 
   return (
     <div className="acct-row-group" role="group" aria-label={row.name}>
       <div
-        className="acct-row"
+        className={`acct-row${hasActions ? ' acct-row--actions' : ''}`}
         role="button"
         tabIndex={0}
         aria-expanded={open}
@@ -89,30 +92,32 @@ export default function AccountListRow({
           <div className="acct-row-subamount">{fmt$(row.available)} available</div>
         </div>
 
-        <div className="acct-row-actions">
-          {canEditBalance && (
-            <button
-              type="button"
-              className="ov-icon-btn"
-              onClick={openBalanceEditor}
-              aria-label="Edit balance"
-              title="Edit balance"
-            >
-              <span aria-hidden="true">✎</span>
-            </button>
-          )}
-          {canDelete && (
-            <button
-              type="button"
-              className="ov-icon-btn ov-icon-btn--danger"
-              onClick={(e) => { e.stopPropagation(); onDelete(row.id, row.name); }}
-              aria-label="Remove"
-              title="Remove"
-            >
-              <span aria-hidden="true">✕</span>
-            </button>
-          )}
-        </div>
+        {hasActions && (
+          <div className="acct-row-actions">
+            {canEditBalance && (
+              <button
+                type="button"
+                className="ov-icon-btn"
+                onClick={openBalanceEditor}
+                aria-label="Edit balance"
+                title="Edit balance"
+              >
+                <span aria-hidden="true">✎</span>
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                className="ov-icon-btn ov-icon-btn--danger"
+                onClick={(e) => { e.stopPropagation(); onDelete(row.id, row.manual, row.name); }}
+                aria-label="Remove"
+                title="Remove"
+              >
+                <span aria-hidden="true">✕</span>
+              </button>
+            )}
+          </div>
+        )}
 
         <div className={`acct-row-chevron${open ? ' is-open' : ''}`} aria-hidden="true">›</div>
       </div>

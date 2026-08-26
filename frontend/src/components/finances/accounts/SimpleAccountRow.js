@@ -30,8 +30,9 @@ function toNum(v) {
 // A manual account additionally offers "Edit balance" and "Remove" — a
 // synced balance comes from the bank and must never be hand-edited, so those
 // controls exist only when `row.manual` is true AND the parent supplied the
-// corresponding handler (belt-and-suspenders: the row hides the control, the
-// parent withholds the handler for any non-manual row).
+// corresponding handler. The row also passes `row.manual` on every call, and
+// AccountsTab's handlers bail if it's false — a second, independent check
+// that doesn't rely on this component alone getting the gating right.
 //
 // Investment rows also carry one editable field: how the balance is taxed. It
 // is prefilled from the subtype and says so until the user confirms it,
@@ -53,6 +54,7 @@ export default function SimpleAccountRow({
 
   const canEditBalance = !!(row.manual && onEditBalance);
   const canDelete = !!(row.manual && onDelete);
+  const hasActions = canEditBalance || canDelete;
 
   const openEditor = () => {
     setAvailable(row.available === null || row.available === undefined ? '' : String(row.available));
@@ -61,7 +63,7 @@ export default function SimpleAccountRow({
   };
 
   const saveBalance = () => {
-    onEditBalance?.(row.id, { available: toNum(available), ledger: toNum(ledger) });
+    onEditBalance?.(row.id, row.manual, { available: toNum(available), ledger: toNum(ledger) });
     setEditingBalance(false);
   };
 
@@ -75,7 +77,7 @@ export default function SimpleAccountRow({
 
   return (
     <div className="acct-row-group" role="group" aria-label={row.name}>
-      <div className="acct-row acct-row--static">
+      <div className={`acct-row acct-row--static${hasActions ? ' acct-row--actions' : ''}`}>
         <div
           className="acct-row-avatar"
           style={{ background: palette.bg, color: palette.color }}
@@ -113,30 +115,32 @@ export default function SimpleAccountRow({
             <div className="acct-row-subamount">{fmt$(row.ledger)} ledger</div>
           )}
         </div>
-        <div className="acct-row-actions">
-          {canEditBalance && (
-            <button
-              type="button"
-              className="ov-icon-btn"
-              onClick={openEditor}
-              aria-label="Edit balance"
-              title="Edit balance"
-            >
-              <span aria-hidden="true">✎</span>
-            </button>
-          )}
-          {canDelete && (
-            <button
-              type="button"
-              className="ov-icon-btn ov-icon-btn--danger"
-              onClick={() => onDelete(row.id, row.name)}
-              aria-label="Remove"
-              title="Remove"
-            >
-              <span aria-hidden="true">✕</span>
-            </button>
-          )}
-        </div>
+        {hasActions && (
+          <div className="acct-row-actions">
+            {canEditBalance && (
+              <button
+                type="button"
+                className="ov-icon-btn"
+                onClick={openEditor}
+                aria-label="Edit balance"
+                title="Edit balance"
+              >
+                <span aria-hidden="true">✎</span>
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                className="ov-icon-btn ov-icon-btn--danger"
+                onClick={() => onDelete(row.id, row.manual, row.name)}
+                aria-label="Remove"
+                title="Remove"
+              >
+                <span aria-hidden="true">✕</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {editingBalance && (
