@@ -1,9 +1,9 @@
 import { NAV, ALL_PATHS, findSection } from '../navConfig';
 import { ICON_NAMES } from '../components/ui/Icon';
 
-test('ships the seven Phase 2 destinations in order', () => {
+test('ships the eight destinations in order', () => {
   expect(NAV.map((s) => s.id)).toEqual([
-    'home', 'transactions', 'accounts', 'invest', 'plan', 'ask', 'settings',
+    'home', 'transactions', 'accounts', 'debt', 'invest', 'plan', 'ask', 'settings',
   ]);
 });
 

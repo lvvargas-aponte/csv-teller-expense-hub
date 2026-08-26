@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
+import DebtPage from './DebtPage';
 import InvestmentsTab from './InvestmentsTab';
 import PayoffPlanner from './PayoffPlanner';
 import CreditFactorsPanel from './CreditFactorsPanel';
@@ -105,6 +106,15 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
             <PayoffPlanner creditAccounts={creditAccounts} />
             <CreditFactorsPanel />
           </SimplePage>
+        )}
+
+        {section === 'debt' && (
+          <DebtPage
+            summary={summary}
+            summaryLoading={summaryLoading}
+            summaryError={summaryError}
+            onRefresh={() => loadBalances(true)}
+          />
         )}
 
         {section === 'invest' && (

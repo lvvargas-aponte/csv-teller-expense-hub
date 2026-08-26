@@ -75,6 +75,7 @@ export default function App() {
             <Route path="/transactions/shared" element={<TransactionsPage view="shared" />} />
             <Route path="/transactions/history" element={<TransactionsPage view="history" />} />
             <Route path="/accounts" element={<FinancesPage section="accounts" healthScore={healthScore} healthSignals={healthSignals} />} />
+            <Route path="/debt" element={<FinancesPage section="debt" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/invest" element={<FinancesPage section="invest" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/plan" element={<Navigate to="/plan/budgets" replace />} />
             <Route path="/plan/budgets" element={<FinancesPage section="plan" view="budgets" healthScore={healthScore} healthSignals={healthSignals} />} />

@@ -1,8 +1,5 @@
 // The one definition of what exists and where it lives. Sidebar, header and
 // routes all read this — nothing hardcodes a path or a label.
-//
-// Debt is deliberately absent: its page arrives in Phase 4, and a nav entry
-// that leads to a placeholder is worse than one that arrives with content.
 export const NAV = [
   { id: 'home', path: '/', label: 'Home', icon: 'home', end: true },
   {
@@ -17,6 +14,7 @@ export const NAV = [
     ],
   },
   { id: 'accounts', path: '/accounts', label: 'Accounts', icon: 'accounts' },
+  { id: 'debt', path: '/debt', label: 'Debt', icon: 'debt' },
   { id: 'invest', path: '/invest', label: 'Invest', icon: 'invest' },
   {
     id: 'plan',
