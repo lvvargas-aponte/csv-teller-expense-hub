@@ -275,3 +275,26 @@ test('the after-tax toggle is off until the user turns it on', async () => {
 
   expect(screen.getByLabelText(/show after-tax net worth/i)).not.toBeChecked();
 });
+
+test('does not report dirty state upward any more', async () => {
+  const onDirtyChange = jest.fn();
+  const user = userEvent.setup();
+  renderPage({ onDirtyChange });
+
+  await user.type(await screen.findByLabelText('Dependents'), '3');
+  expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+
+  // The prop is gone; a stray caller must not silently keep working.
+  expect(onDirtyChange).not.toHaveBeenCalled();
+});
+
+test('still guards a browser-level exit while dirty', async () => {
+  const addSpy = jest.spyOn(window, 'addEventListener');
+  const user = userEvent.setup();
+  renderPage();
+
+  await user.type(await screen.findByLabelText('Dependents'), '3');
+
+  expect(addSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function));
+  addSpy.mockRestore();
+});

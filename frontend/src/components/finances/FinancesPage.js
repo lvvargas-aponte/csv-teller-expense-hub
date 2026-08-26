@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
@@ -72,19 +72,9 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
   const health = useConnectionHealth(summary?.connections);
   const { categories, counts: categoryCounts } = useCategories();
 
-  // The settings form saves page-wide, so leaving the tab mid-edit would
-  // silently drop every pane's changes. No router-level blocker exists on
-  // BrowserRouter, so the guard lives on the one nav that can leave.
-  const settingsDirtyRef = useRef(false);
-  const handleSettingsDirty = useCallback((d) => { settingsDirtyRef.current = d; }, []);
   const handleTabNavigate = useCallback((tabId) => {
-    if (
-      section === 'settings' && tabId !== 'settings' && settingsDirtyRef.current
-      // eslint-disable-next-line no-alert
-      && !window.confirm('You have unsaved settings. Leave without saving?')
-    ) return;
     navigate(pathForTab(tabId));
-  }, [navigate, section]);
+  }, [navigate]);
 
   return (
     <>
@@ -169,7 +159,6 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
               categories={categories}
               categoryCounts={categoryCounts}
               onRefreshBalances={() => loadBalances(true)}
-              onDirtyChange={handleSettingsDirty}
             />
           </SimplePage>
         )}

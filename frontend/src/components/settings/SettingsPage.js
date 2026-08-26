@@ -21,7 +21,7 @@ const TOAST_MS = 2200;
  * than inside the panes.
  */
 export default function SettingsPage({
-  initialPane = 'profile', health, summary, onRefreshBalances, onDirtyChange,
+  initialPane = 'profile', health, summary, onRefreshBalances,
   categories = [], categoryCounts = {},
 }) {
   const [pane, setPane] = useState(initialPane);
@@ -31,10 +31,6 @@ export default function SettingsPage({
 
   // Deep links from the Accounts page land on a specific pane.
   useEffect(() => { setPane(initialPane); }, [initialPane]);
-
-  // Lets the sidebar warn before navigating away mid-edit.
-  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
-  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useEffect(() => {
     if (!dirty) return undefined;
