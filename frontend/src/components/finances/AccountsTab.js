@@ -6,7 +6,7 @@ import {
   getAllAccountDetails,
   upsertAccountDetails,
 } from '../../api/accountDetails';
-import { syncSnapTrade } from '../../api/snaptrade';
+import useSyncAll from '../../hooks/useSyncAll';
 import ConnectionsStrip from './accounts/ConnectionsStrip';
 import AccountSection from './accounts/AccountSection';
 import AccountListRow from './accounts/AccountListRow';
@@ -23,7 +23,7 @@ import { classifyAccountBucket, loadInvestmentSubtypes } from '../../utils/accou
 // `summary` from FinancesPage so we don't double-fetch balances; account-detail
 // metadata is loaded locally and updated optimistically as the user edits.
 export default function AccountsTab({
-  summary, summaryLoading, summaryError, onRefresh, onManageConnections,
+  summary, summaryLoading, summaryError, onRefresh,
 }) {
   const [externalSummary, setExternalSummary] = useState(null);
   const [externalLoading, setExternalLoading] = useState(false);
@@ -34,8 +34,9 @@ export default function AccountsTab({
   const detailsRef = useRef({});
   const [detailsLoaded, setDetailsLoaded] = useState(false);
   const [addingKind, setAddingKind] = useState(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState(null);
+  // Surfaces errors the sync hook can't: a manual-account delete failure, or
+  // onRefresh itself rejecting (the hook lets that propagate — see useSyncAll).
+  const [localError, setLocalError] = useState(null);
 
   // If the parent didn't pass summary in (e.g. AccountsTab rendered standalone
   // in a test), fetch it ourselves. The normal path is through FinancesPage.
@@ -167,26 +168,21 @@ export default function AccountsTab({
   );
 
   const handleDeleteManual = useCallback(
-    createDeleteManualHandler(deleteManualAccount, onRefresh, setSyncError),
+    createDeleteManualHandler(deleteManualAccount, onRefresh, setLocalError),
     [onRefresh],
   );
 
-  // "Sync all" — force a balances refresh and, when brokerages are connected,
-  // a SnapTrade pull. Failures surface in the connections strip, not per row.
-  const handleSyncAll = useCallback(async () => {
-    setSyncing(true);
-    setSyncError(null);
-    try {
-      if (investmentAccounts.length > 0) {
-        await syncSnapTrade().catch(() => { /* brokerage sync is best-effort */ });
-      }
-      await onRefresh?.();
-    } catch {
-      setSyncError('could not reach the backend.');
-    } finally {
-      setSyncing(false);
-    }
-  }, [investmentAccounts.length, onRefresh]);
+  // "Sync all" — the one hook shared with Settings' former connections pane,
+  // so a bank pull and a brokerage pull always mean the same thing everywhere.
+  const { syncAll, syncing, syncError } = useSyncAll({ onRefresh });
+
+  // syncAll() lets onRefresh's rejection propagate uncaught (see useSyncAll) —
+  // catch it here so a failing refresh still lands as a visible message
+  // instead of an unhandled rejection.
+  const handleSyncAllClick = useCallback(() => {
+    setLocalError(null);
+    syncAll().catch(() => setLocalError('could not reach the backend.'));
+  }, [syncAll]);
 
   if (loading || !detailsLoaded) {
     return (
@@ -207,7 +203,7 @@ export default function AccountsTab({
         <button
           type="button"
           className="btn btn-secondary"
-          onClick={handleSyncAll}
+          onClick={handleSyncAllClick}
           disabled={syncing}
         >
           <span className={`acct-sync-glyph${syncing ? ' is-spinning' : ''}`} aria-hidden="true">↺</span>
@@ -224,10 +220,11 @@ export default function AccountsTab({
 
       <ConnectionsStrip
         health={health}
+        summary={effectiveSummary}
         cacheFetchedAt={cacheFetchedAt}
-        syncError={syncError}
+        syncing={syncing}
+        syncError={localError || syncError}
         onRefresh={onRefresh}
-        onManageConnections={onManageConnections}
       />
 
       {accounts.length === 0 && (

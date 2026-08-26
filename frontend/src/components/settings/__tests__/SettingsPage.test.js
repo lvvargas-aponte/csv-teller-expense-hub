@@ -7,8 +7,6 @@ import { getCategoryRules, replaceCategoryRules } from '../../../api/categoryRul
 
 jest.mock('../../../api/profile');
 jest.mock('../../../api/categoryRules');
-// The connections pane can open the accounts modal, which fetches on mount.
-jest.mock('../../accounts/AccountsModal', () => () => <div>accounts modal</div>);
 
 const EMPTY_PROFILE = {
   risk_tolerance: null, time_horizon_years: null, dependents: null,
@@ -16,29 +14,9 @@ const EMPTY_PROFILE = {
   notes: '', updated_at: null,
 };
 
-const health = {
-  institutions: [
-    { institution: 'Chase', status: 'connected', last_error: null },
-    { institution: 'Bank of America', status: 'disconnected', last_error: 'Login required' },
-    { institution: 'Discover', status: 'manual', last_error: null },
-  ],
-  broken: [{ institution: 'Bank of America', status: 'disconnected', last_error: 'Login required' }],
-  connected: [{ institution: 'Chase', status: 'connected', last_error: null }],
-};
-
-const summary = {
-  accounts: [
-    { id: 'a1', institution: 'Chase', name: 'Total Checking' },
-    { id: 'a2', institution: 'Chase', name: 'Prime Visa' },
-    { id: 'a3', institution: 'Bank of America', name: 'Cash Rewards' },
-  ],
-};
-
 function renderPage(props = {}) {
   return render(
     <SettingsPage
-      health={health}
-      summary={summary}
       categories={['Groceries', 'Transport']}
       categoryCounts={{ Groceries: 42, Transport: 18 }}
       {...props}
@@ -60,13 +38,6 @@ test('opens on the financial profile pane', async () => {
   renderPage();
   expect(await awaitLoad()).toBeInTheDocument();
   expect(screen.getByText(/shape the recommendations/i)).toBeInTheDocument();
-});
-
-test('deep-links straight to the connections pane', async () => {
-  renderPage({ initialPane: 'connections' });
-  expect(
-    await screen.findByRole('heading', { name: /connected institutions/i }),
-  ).toBeInTheDocument();
 });
 
 test('no save bar until something actually changes', async () => {
@@ -163,41 +134,6 @@ test('discard restores the last saved values', async () => {
 
   await waitFor(() => expect(dependents).toHaveValue(2));
   expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
-});
-
-test('the connections tab flags institutions needing attention', async () => {
-  renderPage();
-  await awaitLoad();
-  const item = screen.getByRole('tab', { name: /connected institutions/i });
-  expect(within(item).getByLabelText('needs attention')).toBeInTheDocument();
-});
-
-test('a broken connection points at SimpleFIN Bridge rather than a dead button', async () => {
-  renderPage({ initialPane: 'connections' });
-  await screen.findByRole('heading', { name: /connected institutions/i });
-
-  expect(screen.getByText(/reconnect needed/i)).toBeInTheDocument();
-  expect(screen.getByText(/SimpleFIN Bridge account/i)).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /^Reconnect$/ })).not.toBeInTheDocument();
-});
-
-test('removing an institution warns that history is kept, and detaches on confirm', async () => {
-  const user = userEvent.setup();
-  const axios = require('axios');
-  jest.spyOn(axios, 'delete').mockResolvedValue({ data: {} });
-
-  renderPage({ initialPane: 'connections' });
-  await screen.findByRole('heading', { name: /connected institutions/i });
-
-  const chaseRow = screen.getByRole('group', { name: 'Chase' });
-  await user.click(within(chaseRow).getByRole('button', { name: 'Remove' }));
-
-  const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getByText(/past transactions are kept/i)).toBeInTheDocument();
-
-  await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
-  // One call per account behind the institution.
-  await waitFor(() => expect(axios.delete).toHaveBeenCalledTimes(2));
 });
 
 test('category chips show live transaction counts', async () => {
@@ -297,4 +233,19 @@ test('still guards a browser-level exit while dirty', async () => {
 
   expect(addSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function));
   addSpy.mockRestore();
+});
+
+test('connections are managed on the Accounts page, not here', async () => {
+  renderPage();
+
+  expect(await screen.findByRole('tab', { name: /financial profile/i })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: /categories/i })).toBeInTheDocument();
+  expect(screen.queryByRole('tab', { name: /connected institutions/i })).toBeNull();
+});
+
+const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+
+test('the settings tabs carry no emoji', () => {
+  const { container } = renderPage();
+  expect(container.textContent).not.toMatch(EMOJI);
 });

@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Spin from '../ui/Spin';
+import Icon from '../ui/Icon';
 import useSettingsDraft from './useSettingsDraft';
 import FinancialProfilePane from './panes/FinancialProfilePane';
-import ConnectionsPane from './panes/ConnectionsPane';
 import CategoriesPane from './panes/CategoriesPane';
 import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext';
 
 const PANES = [
-  { id: 'profile',     icon: '🧭', label: 'Financial profile' },
-  { id: 'connections', icon: '🔗', label: 'Connected institutions' },
-  { id: 'categories',  icon: '🏷️', label: 'Categories & rules' },
+  { id: 'profile',    icon: 'settings', label: 'Financial profile' },
+  { id: 'categories', icon: 'tag',      label: 'Categories & rules' },
 ];
 
 const TOAST_MS = 2200;
@@ -22,7 +21,7 @@ const TOAST_MS = 2200;
  * than inside the panes.
  */
 export default function SettingsPage({
-  initialPane = 'profile', health, summary, onRefreshBalances,
+  initialPane = 'profile',
   categories = [], categoryCounts = {},
 }) {
   const [pane, setPane] = useState(initialPane);
@@ -53,8 +52,6 @@ export default function SettingsPage({
   const handleSave = useCallback(async () => {
     if (await save()) setToast(true);
   }, [save]);
-
-  const needsAttention = (health?.broken?.length ?? 0) > 0;
 
   if (loading) {
     return (
@@ -88,11 +85,10 @@ export default function SettingsPage({
             className={`set-tab${pane === p.id ? ' set-tab--active' : ''}`}
             onClick={() => setPane(p.id)}
           >
-            <span className="set-tab-icon" aria-hidden="true">{p.icon}</span>
+            <span className="set-tab-icon" aria-hidden="true">
+              <Icon name={p.icon} size={16} />
+            </span>
             <span>{p.label}</span>
-            {p.id === 'connections' && needsAttention && (
-              <span className="set-tab-dot" aria-label="needs attention" />
-            )}
           </button>
         ))}
       </div>
@@ -107,13 +103,6 @@ export default function SettingsPage({
           <FinancialProfilePane
             profile={draft.profile}
             onChange={draft.setProfileField}
-          />
-        )}
-        {pane === 'connections' && (
-          <ConnectionsPane
-            health={health}
-            summary={summary}
-            onRefresh={onRefreshBalances}
           />
         )}
         {pane === 'categories' && (

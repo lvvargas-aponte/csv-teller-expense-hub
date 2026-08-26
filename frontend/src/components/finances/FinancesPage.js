@@ -11,7 +11,6 @@ import AdvisorChat from './AdvisorChat';
 import KnowledgeSection from './KnowledgeSection';
 import SubscriptionsSection from './SubscriptionsSection';
 import SettingsPage from '../settings/SettingsPage';
-import useConnectionHealth from './accounts/useConnectionHealth';
 import { useCategories } from '../../hooks/useCategories';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
@@ -68,7 +67,6 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
     [summary],
   );
 
-  const health = useConnectionHealth(summary?.connections);
   const { categories, counts: categoryCounts } = useCategories();
 
   const handleTabNavigate = useCallback((tabId) => {
@@ -101,7 +99,6 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
               summaryLoading={summaryLoading}
               summaryError={summaryError}
               onRefresh={() => loadBalances(true)}
-              onManageConnections={() => openSettings('connections')}
             />
             {/* The payoff planner belongs beside the accounts it acts on,
                 not on a separate Overview page. */}
@@ -145,11 +142,8 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
           <SimplePage title="Profile & settings">
             <SettingsPage
               initialPane={pane || 'profile'}
-              health={health}
-              summary={summary}
               categories={categories}
               categoryCounts={categoryCounts}
-              onRefreshBalances={() => loadBalances(true)}
             />
           </SimplePage>
         )}
