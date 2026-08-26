@@ -162,3 +162,17 @@ test('clicking Sync Banks opens the sync modal', async () => {
   fireEvent.click(screen.getByRole('button', { name: /Sync Banks/ }));
   expect(screen.getByText(/Sync Bank Transactions/)).toBeInTheDocument();
 });
+
+// ── Regression guard: App.js shell isolation ──────────────────────────────────
+
+test('App.js holds no transaction logic', () => {
+  // The shell should route and theme, nothing else. Transaction handlers
+  // creeping back in is what made this file 539 lines before Phase 2.
+  const fs = require('fs');
+  const path = require('path');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'App.js'), 'utf8');
+
+  expect(source).not.toMatch(/person_1_owes/);
+  expect(source).not.toMatch(/bulkSuggestCategories/);
+  expect(source.split('\n').length).toBeLessThan(150);
+});
