@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { resolveLegacyRoute } from './legacyRoutes';
@@ -12,8 +12,7 @@ import UploadCsvModal   from './components/transactions/UploadCsvModal';
 import SyncToast        from './components/ui/SyncToast';
 import { getHealthScore } from './api/health';
 import { UnsavedChangesContext } from './contexts/UnsavedChangesContext';
-import { SyncContext } from './contexts/SyncContext';
-import { useSyncFlow } from './hooks/useSyncFlow';
+import { SyncContext, useSyncProvider } from './contexts/SyncContext';
 
 // A returning user's stored section becomes a URL exactly once, on first
 // mount. After that the key is gone and this is inert.
@@ -57,32 +56,8 @@ export default function App() {
 
   // Sync (bank pull / CSV upload / sheet send) is driven from here so its
   // modals and toast outlive whatever page started them — Transactions
-  // unmounts on navigation, but a sync in flight there shouldn't. The page
-  // is the only thing that knows how to refresh its own transaction list or
-  // surface an error, so it registers those plus the values `sendToSheet`
-  // needs (filterMonth, sharedCount) instead of that state living here.
-  const reloadRef = useRef(() => {});
-  const setErrorRef = useRef(() => {});
-  const [syncPageMeta, setSyncPageMeta] = useState({ filterMonth: 'all', sharedCount: 0 });
-  const reload = useCallback((...args) => reloadRef.current(...args), []);
-  const setError = useCallback((...args) => setErrorRef.current(...args), []);
-
-  const syncFlow = useSyncFlow({
-    reload, setError, filterMonth: syncPageMeta.filterMonth, sharedCount: syncPageMeta.sharedCount,
-  });
-
-  const registerSyncPage = useCallback(({ reload: pageReload, setError: pageSetError, filterMonth, sharedCount }) => {
-    reloadRef.current = pageReload || (() => {});
-    setErrorRef.current = pageSetError || (() => {});
-    setSyncPageMeta((prev) => (prev.filterMonth === filterMonth && prev.sharedCount === sharedCount)
-      ? prev
-      : { filterMonth: filterMonth ?? 'all', sharedCount: sharedCount ?? 0 });
-  }, []);
-
-  const syncValue = useMemo(
-    () => ({ ...syncFlow, registerSyncPage }),
-    [syncFlow, registerSyncPage],
-  );
+  // unmounts on navigation, but a sync in flight there shouldn't.
+  const { syncFlow, syncValue } = useSyncProvider();
 
   return (
     <div className="app-root">

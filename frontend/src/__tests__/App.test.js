@@ -176,3 +176,29 @@ test('App.js holds no transaction logic', () => {
   expect(source).not.toMatch(/bulkSuggestCategories/);
   expect(source.split('\n').length).toBeLessThan(150);
 });
+
+test('sync relays only the page metadata sendToSheet genuinely needs', () => {
+  // filterMonth/sharedCount are mirrored in SyncContext's useSyncProvider
+  // (not App.js — that wiring was extracted to keep the shell thin) because
+  // useSyncFlow's sendToSheet closes over them directly and useSyncFlow must
+  // stay a single call at the shell level. That is a deliberate, argued
+  // exception — not a licence to accumulate page state outside the page.
+  // If you are adding a third field, widen this test on purpose and say why.
+  const fs = require('fs');
+  const path = require('path');
+  const appSource = fs.readFileSync(path.join(__dirname, '..', 'App.js'), 'utf8');
+  const syncContextSource = fs.readFileSync(
+    path.join(__dirname, '..', 'contexts', 'SyncContext.js'), 'utf8'
+  );
+
+  const pageFields = ['filterMonth', 'sharedCount', 'search', 'filterCategory', 'filterInstitution', 'selected'];
+
+  // App.js should hold none of this directly — it all lives in useSyncProvider.
+  expect(pageFields.some((f) => appSource.includes(f))).toBe(false);
+
+  const meta = syncContextSource.match(/syncPageMeta[\s\S]*?\}\)/);
+  expect(meta).not.toBeNull();
+
+  const present = pageFields.filter((f) => syncContextSource.includes(f));
+  expect(present.sort()).toEqual(['filterMonth', 'sharedCount']);
+});
