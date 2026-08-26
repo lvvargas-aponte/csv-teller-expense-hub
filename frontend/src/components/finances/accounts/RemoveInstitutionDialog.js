@@ -1,6 +1,6 @@
 import React from 'react';
-import Spin from '../ui/Spin';
-import { Z_BACKDROP_PANEL } from '../../utils/zIndex';
+import Spin from '../../ui/Spin';
+import { Z_BACKDROP_PANEL } from '../../../utils/zIndex';
 
 /**
  * Confirms detaching every account behind one institution.

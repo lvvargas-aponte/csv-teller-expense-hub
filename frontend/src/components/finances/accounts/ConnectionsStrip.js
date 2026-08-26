@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import AccountsModal from '../../accounts/AccountsModal';
-import RemoveInstitutionDialog from '../../settings/RemoveInstitutionDialog';
+import RemoveInstitutionDialog from './RemoveInstitutionDialog';
 import { formatRelativeTime } from '../../../utils/formatting';
 import { disconnectAccount } from '../../../api/accounts';
 
