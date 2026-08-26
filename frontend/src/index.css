@@ -1683,12 +1683,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
    See design_handoff_transactions/ExpensesHub Transactions.html.
    ════════════════════════════════════════════════════════════════════════ */
 
-/* Header — a deliberately dark bar on a light page; its literals must stay
-   inverted in both themes, so they are not tokenised. Same for .tx-sync-btn,
-   .tx-bulk-bar, .tx-rail-card--dark and .ov-apr-tooltip. */
+/* Header — global controls only; navigation lives in the sidebar. Same
+   tokenisation exemption note applies to .tx-sync-btn, .tx-bulk-bar,
+   .tx-rail-card--dark and .ov-apr-tooltip. */
 .tx-header {
-  background: #0f2417;
-  border-bottom: 1px solid #1a3a27;
+  background: var(--surface-sidebar);
+  border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -1701,45 +1701,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   height: 56px;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0;
-}
-.tx-brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  text-decoration: none;
-  flex-shrink: 0;
-  margin-right: 28px;
-}
-.tx-brand-icon {
-  width: 30px; height: 30px;
-  background: var(--brand-gradient);
-  border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px;
-  color: #fff;
-  flex-shrink: 0;
-}
-.tx-brand-name {
-  font-size: 15px; font-weight: 700;
-  color: #ecfdf5; letter-spacing: -0.3px;
-}
-.tx-tabs { display: flex; align-items: center; gap: 2px; flex: 1; }
-.tx-tab {
-  display: flex; align-items: center; gap: 7px;
-  padding: 6px 14px; border-radius: 8px;
-  font-size: 13px; font-weight: 500;
-  color: rgba(255,255,255,0.45);
-  cursor: pointer; border: none; background: none;
-  font-family: inherit; transition: all 0.16s ease;
-  text-decoration: none; height: 36px; position: relative;
-}
-.tx-tab:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.06); }
-.tx-tab.tx-tab--active { color: #34d399; background: rgba(52,211,153,0.1); font-weight: 600; }
-.tx-tab.tx-tab--active::after {
-  content: ''; position: absolute; bottom: -10px; left: 50%;
-  transform: translateX(-50%); width: 20px; height: 2px;
-  background: #34d399; border-radius: 99px;
 }
 .tx-header-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .tx-header-icon-btn {
@@ -1747,15 +1710,15 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 7px;
   background: transparent;
-  color: rgba(255,255,255,0.55);
+  color: var(--text-secondary);
   border: 1px solid transparent;
   cursor: pointer;
   font-size: 14px;
   transition: all 0.14s;
 }
 .tx-header-icon-btn:hover {
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.9);
+  background: var(--brand-wash);
+  color: var(--brand);
 }
 
 /* Transactions screen shell: table column + supporting rail column. */
@@ -2701,8 +2664,6 @@ tr.tx-detail-row > td {
 @media (max-width: 640px) {
   .tx-page-wrap { padding: 12px 12px 60px; }
   .tx-header-inner { padding: 0 14px; }
-  .tx-brand-name { display: none; }
-  .tx-tab .tx-tab-label { display: none; }
   .tx-sync-panel { flex-wrap: wrap; }
   /* On phones, drop the Split column too — split/personal is editable from
      the row's action menu and the bulk bar. Keeps Date · Desc · Amount · Actions. */
