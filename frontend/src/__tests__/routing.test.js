@@ -56,7 +56,31 @@ test('a returning user holding a stored tab lands on its route', async () => {
 
 test('insight actions point at real routes, not the pre-Phase-2 ones', () => {
   const { buildInsights } = require('../utils/insightBuilder');
-  const routes = JSON.stringify(buildInsights({}, {}) ?? []);
+
+  // Fixtures crafted to actually trip both rules whose targets changed:
+  // ruleUncategorized needs >$500 uncategorized spend this month, and
+  // ruleSpendingHigh needs a >=10% jump over the prior month's total.
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const transactions = [
+    {
+      date: `${monthKey}-05`, amount: -600, transaction_type: 'debit', category: '',
+    },
+  ];
+  const dashboard = {
+    monthly_totals: [
+      { month: 'prior', total: 1000 },
+      { month: 'current', total: 1500 },
+    ],
+  };
+
+  const insights = buildInsights({ transactions, dashboard });
+  const routes = JSON.stringify(insights);
+
+  // Both rules must actually have fired, or the assertion below proves nothing.
+  expect(insights.length).toBeGreaterThanOrEqual(2);
+  expect(routes).toMatch(/"route":"\/transactions"/);
+
   // "/" meant the transactions page before Phase 2 and means Home after it.
   expect(routes).not.toMatch(/"route":"\/"/);
 });
