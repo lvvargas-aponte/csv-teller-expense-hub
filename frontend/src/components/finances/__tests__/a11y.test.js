@@ -280,10 +280,9 @@ function mockApis() {
   axios.put.mockResolvedValue({ data: {} });
 }
 
-async function renderTab(tab) {
-  localStorage.setItem('finances.activeTab', tab);
+async function renderTab(section) {
   const { container } = render(
-    <MemoryRouter><FinancesPage /></MemoryRouter>,
+    <MemoryRouter><FinancesPage section={section} /></MemoryRouter>,
   );
   // Every card fetches for itself; axe has to run on settled content, not on
   // a grid of loading spinners.
@@ -298,7 +297,7 @@ beforeEach(() => {
 });
 
 test('the dashboard has no axe violations', async () => {
-  await renderTab('dashboard');
+  await renderTab('home');
   expect(await axe(document.body)).toHaveNoViolations();
 });
 
@@ -308,7 +307,7 @@ test('the accounts surface has no axe violations', async () => {
 });
 
 test('the investments surface has no axe violations', async () => {
-  await renderTab('investments');
+  await renderTab('invest');
   expect(await axe(document.body)).toHaveNoViolations();
 });
 
@@ -316,7 +315,7 @@ test('the investments surface has no axe violations', async () => {
 // the reader's feet — the three things a keyboard-only user needs before the
 // page is navigable at all.
 test('the shell has a main landmark reachable by a skip link', async () => {
-  await renderTab('dashboard');
+  await renderTab('home');
 
   const main = screen.getByRole('main');
   const skip = screen.getByRole('link', { name: /skip to main content/i });

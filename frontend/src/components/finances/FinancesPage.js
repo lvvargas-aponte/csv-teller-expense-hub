@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import FinancesSidebar, { resolveStoredTab } from './FinancesSidebar';
+import { useNavigate, useParams } from 'react-router-dom';
+import FinancesSidebar from './FinancesSidebar';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
 import InvestmentsTab from './InvestmentsTab';
@@ -19,34 +19,22 @@ import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
 import { getHealthScore } from '../../api/health';
 import { getBalancesSummary } from '../../api/balances';
+import { pathForTab } from '../../legacyRoutes';
 
-const ACTIVE_TAB_KEY = 'finances.activeTab';
-
-const COMMITMENT_VIEWS = [
-  { id: 'due',       label: 'Due soon' },
-  { id: 'recurring', label: 'Recurring' },
-];
-
-export default function FinancesPage() {
-  // A user returning with 'bills' or 'subscriptions' in localStorage has to
-  // land on Commitments, not a blank page.
-  const restored = useMemo(
-    () => resolveStoredTab(localStorage.getItem(ACTIVE_TAB_KEY)),
-    [],
-  );
-  const [activeId, setActiveIdState] = useState(restored.tab);
-  const [commitmentView, setCommitmentView] = useState(restored.view || 'due');
-  const setActiveId = useCallback((id) => {
-    setActiveIdState(id);
-    try { localStorage.setItem(ACTIVE_TAB_KEY, id); } catch { /* quota / private mode */ }
-  }, []);
+export default function FinancesPage({ section, view }) {
   const navigate = useNavigate();
+  const { pane } = useParams();
 
   const handleInsightAction = useCallback((target) => {
     if (!target) return;
-    if (target.financesTab) setActiveId(target.financesTab);
-    if (target.route)       navigate(target.route);
-  }, [navigate, setActiveId]);
+    if (target.financesTab) navigate(pathForTab(target.financesTab));
+    else if (target.route)  navigate(target.route);
+  }, [navigate]);
+
+  const openSettings = useCallback(
+    (paneId = 'profile') => navigate(`/settings/${paneId}`),
+    [navigate],
+  );
 
   // Shared signals used by the sidebar's Financial Health footer.
   const [summary, setSummary] = useState(null);
@@ -91,34 +79,35 @@ export default function FinancesPage() {
   const health = useConnectionHealth(summary?.connections);
   const { categories, counts: categoryCounts } = useCategories();
 
-  // Which settings pane to open — Accounts' connection buttons deep-link
-  // straight to "Connected institutions".
-  const [settingsPane, setSettingsPane] = useState('profile');
-  const openSettings = useCallback((paneId = 'profile') => {
-    setSettingsPane(paneId);
-    setActiveId('settings');
-  }, [setActiveId]);
-
   // The settings form saves page-wide, so leaving the tab mid-edit would
   // silently drop every pane's changes. No router-level blocker exists on
   // BrowserRouter, so the guard lives on the one nav that can leave.
   const settingsDirtyRef = useRef(false);
   const handleSettingsDirty = useCallback((d) => { settingsDirtyRef.current = d; }, []);
-  const handleNavigate = useCallback((id) => {
+  const handleTabNavigate = useCallback((tabId) => {
     if (
-      activeId === 'settings' && id !== 'settings' && settingsDirtyRef.current
+      section === 'settings' && tabId !== 'settings' && settingsDirtyRef.current
       // eslint-disable-next-line no-alert
       && !window.confirm('You have unsaved settings. Leave without saving?')
     ) return;
-    setActiveId(id);
-  }, [activeId, setActiveId]);
+    navigate(pathForTab(tabId));
+  }, [navigate, section]);
+
+  // FinancesSidebar still speaks the pre-Phase-2 tab ids (Task 4 replaces
+  // it with a NAV-driven sidebar); translate the route back for its
+  // highlight only.
+  const sidebarActiveId = section === 'home' ? 'dashboard'
+    : section === 'invest' ? 'investments'
+    : section === 'plan' ? view
+    : section === 'ask' ? 'advisor'
+    : section;
 
   return (
     <div className="eh-app">
       <a className="eh-skip-link" href="#eh-main">Skip to main content</a>
       <FinancesSidebar
-        activeId={activeId}
-        onNavigate={handleNavigate}
+        activeId={sidebarActiveId}
+        onNavigate={handleTabNavigate}
         healthScore={healthScore}
         healthSignals={healthData?.signals}
       />
@@ -127,7 +116,7 @@ export default function FinancesPage() {
         <div className="eh-live-region" role="status" aria-live="polite">
           {announcement}
         </div>
-        {activeId === 'dashboard' && (
+        {section === 'home' && (
           <DashboardTab
             healthScore={healthScore}
             healthSignals={healthData?.signals}
@@ -135,12 +124,12 @@ export default function FinancesPage() {
             summaryLoading={summaryLoading}
             summaryError={summaryError}
             onOpenSettings={openSettings}
-            onNavigate={handleNavigate}
+            onNavigate={handleTabNavigate}
             onInsightAction={handleInsightAction}
           />
         )}
 
-        {activeId === 'accounts' && (
+        {section === 'accounts' && (
           <SimplePage title="Accounts">
             <AccountsTab
               summary={summary}
@@ -163,59 +152,41 @@ export default function FinancesPage() {
           </SimplePage>
         )}
 
-        {activeId === 'investments' && (
-          <SimplePage title="Investments">
+        {section === 'invest' && (
+          <SimplePage title="Invest">
             <InvestmentsTab onOpenSettings={openSettings} />
           </SimplePage>
         )}
 
-        {activeId === 'budgets' && (
+        {section === 'plan' && view === 'budgets' && (
           <SimplePage title="Budgets"><BudgetsSection /></SimplePage>
         )}
 
-        {activeId === 'goals' && (
+        {section === 'plan' && view === 'goals' && (
           <SimplePage title="Goals"><GoalsSection /></SimplePage>
         )}
 
-        {activeId === 'commitments' && (
+        {section === 'plan' && view === 'commitments' && (
           <SimplePage title="Commitments">
-            <div className="eh-subtabs" role="tablist" aria-label="Commitments views">
-              {COMMITMENT_VIEWS.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={commitmentView === v.id}
-                  className={commitmentView === v.id ? 'eh-subtab--active' : ''}
-                  onClick={() => setCommitmentView(v.id)}
-                >
-                  {v.label}
-                </button>
-              ))}
+            <div style={{ display: 'grid', gap: 16 }}>
+              <UpcomingBillsCard onNavigateToAccounts={() => navigate('/accounts')} />
+              <RecurringChargesCard variant="detail" />
             </div>
-            {commitmentView === 'due' ? (
-              <div style={{ display: 'grid', gap: 16 }}>
-                <UpcomingBillsCard onNavigateToAccounts={() => setActiveId('accounts')} />
-                <RecurringChargesCard variant="detail" />
-              </div>
-            ) : (
-              <SubscriptionsSection />
-            )}
+            <SubscriptionsSection />
           </SimplePage>
         )}
 
-        {activeId === 'knowledge' && (
-          <SimplePage title="Knowledge"><KnowledgeSection /></SimplePage>
+        {section === 'ask' && (
+          <SimplePage title="Ask">
+            <AdvisorChat />
+            <KnowledgeSection />
+          </SimplePage>
         )}
 
-        {activeId === 'advisor' && (
-          <SimplePage title="Ask"><AdvisorChat /></SimplePage>
-        )}
-
-        {activeId === 'settings' && (
+        {section === 'settings' && (
           <SimplePage title="Profile & settings">
             <SettingsPage
-              initialPane={settingsPane}
+              initialPane={pane || 'profile'}
               health={health}
               summary={summary}
               categories={categories}

@@ -4,7 +4,11 @@ import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
 import App from '../App';
 
-const renderApp = () => render(<MemoryRouter><App /></MemoryRouter>);
+// '/' is Home after Phase 2 routing; these tests exercise the transactions
+// review queue, which now lives at /transactions.
+const renderApp = () => render(
+  <MemoryRouter initialEntries={['/transactions']}><App /></MemoryRouter>,
+);
 
 jest.mock('axios');
 

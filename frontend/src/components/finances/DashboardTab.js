@@ -174,7 +174,7 @@ export default function DashboardTab({
   return (
     <>
       <div className="eh-topbar">
-        <h1 className="eh-topbar-title">Dashboard</h1>
+        <h1 className="eh-topbar-title">Home</h1>
         <div className="eh-range-pill" role="tablist" aria-label="Date range">
           {RANGE_OPTIONS.map((r) => (
             <button

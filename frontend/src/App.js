@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { calculateHalf, API_BASE } from './utils/formatting';
+import { resolveLegacyRoute } from './legacyRoutes';
 import AppHeader        from './components/AppHeader';
 import SyncPanel        from './components/transactions/SyncPanel';
 import ControlBar       from './components/transactions/ControlBar';
@@ -29,6 +30,19 @@ import { useTransactionDetail } from './hooks/useTransactionDetail';
 import { getBalancesSummary } from './api/balances';
 
 const API = API_BASE;
+
+// A returning user's stored section becomes a URL exactly once, on first
+// mount. After that the key is gone and this is inert.
+function LegacyTabRedirect() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (pathname !== '/') return;
+    const target = resolveLegacyRoute(window.localStorage);
+    if (target && target !== '/') navigate(target, { replace: true });
+  }, [navigate, pathname]);
+  return null;
+}
 
 export default function App() {
   const {
@@ -71,7 +85,6 @@ export default function App() {
   const [activeExpand, setActiveExpand] = useState(null);  // 'note-{id}' | 'adj-{id}' | null
   const [suggestionPreview, setSuggestionPreview] = useState(null);
   const [suggestingBulk, setSuggestingBulk] = useState(false);
-  const [txnView, setTxnView] = useState('current');  // 'current' | 'history'
   const [dedupingNow, setDedupingNow] = useState(false);
 
   const {
@@ -361,151 +374,177 @@ export default function App() {
   // Alias for readability at the render site.
   const unreviewedVisible = unreviewedVisibleEarly;
 
+  // Placeholder for Task 4: extracts this into its own file, taking these
+  // values as its own hooks rather than closing over App's. Until then it
+  // renders exactly what the old `txnView` state rendered.
+  function TransactionsPage({ view }) {
+    const navigate = useNavigate();
+    const handleNavigate = useCallback((id) => {
+      navigate(id === 'current' ? '/transactions' : `/transactions/${id}`);
+    }, [navigate]);
+
+    return (
+      <div className="eh-app">
+        <a className="eh-skip-link" href="#tx-main">Skip to main content</a>
+        <TransactionsSidebar activeId={view} onNavigate={handleNavigate} />
+        <div className="eh-main">
+          {view === 'current' ? (
+            <div className="tx-layout">
+              <main className="tx-page-wrap" id="tx-main">
+                <SyncPanel
+                  onOpenAccounts={() => sync.setShowAccountsModal(true)}
+                  onOpenSync={() => sync.setShowSyncModal(true)}
+                  syncing={sync.syncing}
+                  refreshKey={sync.accountsRefreshKey}
+                />
+
+                {error && (
+                  <div className="tx-error-banner">
+                    <span>⚠️ {error}</span>
+                    <button
+                      type="button"
+                      className="tx-error-close"
+                      aria-label="Dismiss error"
+                      onClick={() => setError(null)}
+                    >✕</button>
+                  </div>
+                )}
+
+                <ControlBar
+                  totalCount={stats.total}
+                  sharedCount={stats.shared}
+                  sharedAmt={stats.sharedAmt}
+                  unreviewedCount={stats.unreviewed}
+                  uploading={sync.uploading}
+                  dedupingNow={dedupingNow}
+                  onPickCsv={sync.handleCsvPicked}
+                  onFindDuplicates={handleFindDuplicates}
+                />
+
+                {selected.size > 0 && (
+                  <BulkBar
+                    selectedCount={selected.size}
+                    sharedSelectedAmt={sharedSelectedAmt}
+                    onMarkPersonal={() => bulkMark(false)}
+                    onMark5050={() => bulkMark(true)}
+                    onMarkReviewed={bulkMarkReviewed}
+                    onSuggest={bulkSuggest}
+                    onClear={clearSelection}
+                    suggesting={suggestingBulk}
+                  />
+                )}
+
+                <FilterBar
+                  banks={availableInstitutions}
+                  months={availableMonths}
+                  categories={categories}
+                  bank={filterInstitution}
+                  month={filterMonth}
+                  split={filterShared}
+                  category={filterCategory}
+                  search={search}
+                  onBankChange={setFilterInstitution}
+                  onMonthChange={setFilterMonth}
+                  onSplitChange={setFilterShared}
+                  onCategoryChange={setFilterCategory}
+                  onSearchChange={setSearch}
+                  visibleCount={visible.length}
+                  totalCount={transactions.length}
+                />
+
+                {!loading && transactions.length > 0 && unreviewedVisible.length === 0 ? (
+                  <div className="tx-empty-state">
+                    <div className="tx-empty-state-icon" aria-hidden="true">🎉</div>
+                    <div className="tx-empty-state-title">All caught up!</div>
+                    <div className="tx-empty-state-sub">
+                      Every transaction here has been reviewed.
+                      Add more via sync or CSV upload, or switch to History
+                      to revisit past transactions.
+                    </div>
+                  </div>
+                ) : (
+                  <TransactionTable
+                    txns={unreviewedVisible}
+                    loading={loading}
+                    selected={selected}
+                    allVisibleSelected={allVisibleSelected}
+                    otherPersonName={personNames.person_2}
+                    activeExpand={activeExpand}
+                    onToggle={toggleSelect}
+                    onToggleAll={toggleAll}
+                    onSplitChange={handleSplitChange}
+                    onToggleType={handleToggleType}
+                    onOpenNote={openNote}
+                    onOpenAdj={openAdj}
+                    onOpenTransfer={openTransfer}
+                    onSaveNote={saveNote}
+                    onSaveAdj={saveAdj}
+                    onSaveTransfer={saveTransfer}
+                    onCloseExpand={closeExpand}
+                    onToggleReviewed={handleToggleReviewed}
+                    onDelete={handleDeleteTransaction}
+                    manualAccountsById={manualAccountsById}
+                    editableCategory
+                    categories={categories}
+                    onCategoryChange={handleCategoryChange}
+                    onRemoveCategory={handleRemoveCategory}
+                    onOpenDetail={openDetail}
+                    detailId={detailId}
+                    personNames={personNames}
+                    onSaveDetail={saveDetail}
+                    onCloseDetail={closeDetail}
+                    onDetailDraftChange={setDetailDraft}
+                  />
+                )}
+              </main>
+
+              <TransactionsRail
+                txns={visible}
+                progress={{
+                  reviewed: visible.length - unreviewedVisible.length,
+                  total: visible.length,
+                }}
+                openTxn={detailTxn}
+                draft={detailDraft}
+                personName={personNames.person_2}
+                onOpenDetail={openDetail}
+                onApplyToSimilar={applyToSimilar}
+                onSendToSheet={sync.sendToSheet}
+                sendingSheet={sync.sendingSheet}
+              />
+            </div>
+          ) : view === 'shared' ? (
+            <SharedPage />
+          ) : (
+            <HistoryPage />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="app-root">
       <AppHeader isDark={isDark} onToggleTheme={() => setIsDark((d) => !d)} />
 
+      <LegacyTabRedirect />
       <Routes>
-        <Route path="/finances" element={<FinancesPage />} />
-        <Route path="/" element={
-          <div className="eh-app">
-            <a className="eh-skip-link" href="#tx-main">Skip to main content</a>
-            <TransactionsSidebar activeId={txnView} onNavigate={setTxnView} />
-            <div className="eh-main">
-              {txnView === 'current' ? (
-                <div className="tx-layout">
-                  <main className="tx-page-wrap" id="tx-main">
-                    <SyncPanel
-                      onOpenAccounts={() => sync.setShowAccountsModal(true)}
-                      onOpenSync={() => sync.setShowSyncModal(true)}
-                      syncing={sync.syncing}
-                      refreshKey={sync.accountsRefreshKey}
-                    />
-
-                    {error && (
-                      <div className="tx-error-banner">
-                        <span>⚠️ {error}</span>
-                        <button
-                          type="button"
-                          className="tx-error-close"
-                          aria-label="Dismiss error"
-                          onClick={() => setError(null)}
-                        >✕</button>
-                      </div>
-                    )}
-
-                    <ControlBar
-                      totalCount={stats.total}
-                      sharedCount={stats.shared}
-                      sharedAmt={stats.sharedAmt}
-                      unreviewedCount={stats.unreviewed}
-                      uploading={sync.uploading}
-                      dedupingNow={dedupingNow}
-                      onPickCsv={sync.handleCsvPicked}
-                      onFindDuplicates={handleFindDuplicates}
-                    />
-
-                    {selected.size > 0 && (
-                      <BulkBar
-                        selectedCount={selected.size}
-                        sharedSelectedAmt={sharedSelectedAmt}
-                        onMarkPersonal={() => bulkMark(false)}
-                        onMark5050={() => bulkMark(true)}
-                        onMarkReviewed={bulkMarkReviewed}
-                        onSuggest={bulkSuggest}
-                        onClear={clearSelection}
-                        suggesting={suggestingBulk}
-                      />
-                    )}
-
-                    <FilterBar
-                      banks={availableInstitutions}
-                      months={availableMonths}
-                      categories={categories}
-                      bank={filterInstitution}
-                      month={filterMonth}
-                      split={filterShared}
-                      category={filterCategory}
-                      search={search}
-                      onBankChange={setFilterInstitution}
-                      onMonthChange={setFilterMonth}
-                      onSplitChange={setFilterShared}
-                      onCategoryChange={setFilterCategory}
-                      onSearchChange={setSearch}
-                      visibleCount={visible.length}
-                      totalCount={transactions.length}
-                    />
-
-                    {!loading && transactions.length > 0 && unreviewedVisible.length === 0 ? (
-                      <div className="tx-empty-state">
-                        <div className="tx-empty-state-icon" aria-hidden="true">🎉</div>
-                        <div className="tx-empty-state-title">All caught up!</div>
-                        <div className="tx-empty-state-sub">
-                          Every transaction here has been reviewed.
-                          Add more via sync or CSV upload, or switch to History
-                          to revisit past transactions.
-                        </div>
-                      </div>
-                    ) : (
-                      <TransactionTable
-                        txns={unreviewedVisible}
-                        loading={loading}
-                        selected={selected}
-                        allVisibleSelected={allVisibleSelected}
-                        otherPersonName={personNames.person_2}
-                        activeExpand={activeExpand}
-                        onToggle={toggleSelect}
-                        onToggleAll={toggleAll}
-                        onSplitChange={handleSplitChange}
-                        onToggleType={handleToggleType}
-                        onOpenNote={openNote}
-                        onOpenAdj={openAdj}
-                        onOpenTransfer={openTransfer}
-                        onSaveNote={saveNote}
-                        onSaveAdj={saveAdj}
-                        onSaveTransfer={saveTransfer}
-                        onCloseExpand={closeExpand}
-                        onToggleReviewed={handleToggleReviewed}
-                        onDelete={handleDeleteTransaction}
-                        manualAccountsById={manualAccountsById}
-                        editableCategory
-                        categories={categories}
-                        onCategoryChange={handleCategoryChange}
-                        onRemoveCategory={handleRemoveCategory}
-                        onOpenDetail={openDetail}
-                        detailId={detailId}
-                        personNames={personNames}
-                        onSaveDetail={saveDetail}
-                        onCloseDetail={closeDetail}
-                        onDetailDraftChange={setDetailDraft}
-                      />
-                    )}
-                  </main>
-
-                  <TransactionsRail
-                    txns={visible}
-                    progress={{
-                      reviewed: visible.length - unreviewedVisible.length,
-                      total: visible.length,
-                    }}
-                    openTxn={detailTxn}
-                    draft={detailDraft}
-                    personName={personNames.person_2}
-                    onOpenDetail={openDetail}
-                    onApplyToSimilar={applyToSimilar}
-                    onSendToSheet={sync.sendToSheet}
-                    sendingSheet={sync.sendingSheet}
-                  />
-                </div>
-              ) : txnView === 'shared' ? (
-                <SharedPage />
-              ) : (
-                <HistoryPage />
-              )}
-            </div>
-          </div>
-        } />
+        <Route path="/" element={<FinancesPage section="home" />} />
+        <Route path="/transactions" element={<TransactionsPage view="current" />} />
+        <Route path="/transactions/shared" element={<TransactionsPage view="shared" />} />
+        <Route path="/transactions/history" element={<TransactionsPage view="history" />} />
+        <Route path="/accounts" element={<FinancesPage section="accounts" />} />
+        <Route path="/invest" element={<FinancesPage section="invest" />} />
+        <Route path="/plan" element={<Navigate to="/plan/budgets" replace />} />
+        <Route path="/plan/budgets" element={<FinancesPage section="plan" view="budgets" />} />
+        <Route path="/plan/goals" element={<FinancesPage section="plan" view="goals" />} />
+        <Route path="/plan/commitments" element={<FinancesPage section="plan" view="commitments" />} />
+        <Route path="/ask" element={<FinancesPage section="ask" />} />
+        <Route path="/settings" element={<FinancesPage section="settings" />} />
+        <Route path="/settings/:pane" element={<FinancesPage section="settings" />} />
+        <Route path="/finances" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
       {sync.showSyncModal && (

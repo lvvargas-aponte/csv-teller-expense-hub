@@ -13,9 +13,8 @@ const TAG_COLORS = {
 // { id, icon, iconBg, tag, tagClass, title, body, action }
 //
 // `action` is { label, target } where target is one of:
-//   { route: '/' }                          → navigate via react-router
-//   { financesTab: 'transactions' }         → switch active tab inside FinancesPage
-//   { route: '/finances', tab: 'accounts' } → both
+//   { route: '/transactions' }      → navigate via react-router to a real path
+//   { financesTab: 'accounts' }     → navigate via the legacy tab-id → path table
 //
 // FinancesPage owns the click handler and decides what to do.
 
@@ -76,7 +75,7 @@ function ruleUncategorized(transactions) {
     title: 'Large uncategorized spending',
     body: `${fmt$(uncat)} of your spending this month has no category. ` +
           `Tagging these transactions gives you a clearer picture of where your money goes.`,
-    action: { label: 'Categorize transactions →', target: { route: '/' } },
+    action: { label: 'Categorize transactions →', target: { route: '/transactions' } },
   };
 }
 
@@ -103,7 +102,7 @@ function ruleSpendingHigh(dashboard) {
     title: `Spending up ${fmt$(delta)} vs. prior month`,
     body: `${last.month || 'This month'} spend (${fmt$(lastTotal)}) is higher than ` +
           `${prev.month || 'last month'} (${fmt$(prevTotal)}). Worth a look at what changed.`,
-    action: { label: 'Review spending →', target: { route: '/' } },
+    action: { label: 'Review spending →', target: { route: '/transactions' } },
   };
 }
 

@@ -9,3 +9,9 @@ expect.extend(toHaveNoViolations);
 if (!global.crypto?.randomUUID) {
   Object.defineProperty(global, 'crypto', { value: webcrypto, configurable: true });
 }
+
+// jsdom implements no scroll methods; components that auto-scroll a
+// container (e.g. AdvisorChat) would throw on render.
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => {};
+}
