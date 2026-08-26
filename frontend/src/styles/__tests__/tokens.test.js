@@ -61,6 +61,13 @@ describe.each([['light', LIGHT], ['dark', DARK]])('%s theme', (name, t) => {
       expect(t[`--chart-${i}`]).toMatch(/^#[0-9a-f]{6}$/i);
     }
   });
+
+  // Restored specifically because a text badge on this pairing (AccountListRow's
+  // "Paid off" tag) once fell back to a retired, undercontrast emerald hex
+  // instead of these tokens. Locks the pairing itself, not just the badge.
+  test('--good-text clears AA on --good-wash', () => {
+    expect(contrast(t['--good-text'], t['--good-wash'])).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 test.each(['--brand-grad-from', '--brand-grad-to'])(

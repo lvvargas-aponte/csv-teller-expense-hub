@@ -2700,7 +2700,7 @@ tr.tx-detail-row > td {
   padding: 2px 6px; border-radius: 4px; margin-left: 6px;
   font-weight: 600; vertical-align: middle;
 }
-.ov-tag-paid { background: var(--green-light, #d1fae5); color: #059669; }
+.ov-tag-paid { background: var(--good-wash); color: var(--good-text); }
 
 /* Credit factors — five rows, each a measured value and its lever. There is
    deliberately no composite score, gauge or grade anywhere in this block. */
