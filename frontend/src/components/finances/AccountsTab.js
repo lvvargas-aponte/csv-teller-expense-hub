@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Spin from '../ui/Spin';
-import { getBalancesSummary, updateAccountBalance } from '../../api/balances';
+import { getBalancesSummary, updateAccountBalance, deleteManualAccount } from '../../api/balances';
 import {
   getAllAccountDetails,
   upsertAccountDetails,
@@ -153,6 +153,25 @@ export default function AccountsTab({
     await onRefresh?.();
   }, [handleFieldUpdate, onRefresh]);
 
+  // A synced balance comes from the bank; only manual accounts are editable
+  // here. The row hides the control, and the row is only ever wired up with
+  // this handler for a manual account — the second line of defence.
+  const handleBalanceEdit = useCallback(async (accountId, { available, ledger }) => {
+    await updateAccountBalance(accountId, { available, ledger });
+    await onRefresh?.();
+  }, [onRefresh]);
+
+  const handleDeleteManual = useCallback(async (accountId, label) => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(`Remove ${label}? Its transaction history is kept.`)) return;
+    try {
+      await deleteManualAccount(accountId);
+      await onRefresh?.();
+    } catch {
+      setSyncError('Could not remove the account — please try again.');
+    }
+  }, [onRefresh]);
+
   // "Sync all" — force a balances refresh and, when brokerages are connected,
   // a SnapTrade pull. Failures surface in the connections strip, not per row.
   const handleSyncAll = useCallback(async () => {
@@ -230,6 +249,8 @@ export default function AccountsTab({
             needsReconnect={!row.manual && brokenNames.has(row.institution)}
             cacheFetchedAt={cacheFetchedAt}
             onUpdate={(field, value) => handleFieldUpdate(row.id, field, value)}
+            onEditBalance={row.manual ? handleBalanceEdit : undefined}
+            onDelete={row.manual ? handleDeleteManual : undefined}
           />
         ))}
         <button type="button" className="acct-add-row" onClick={() => setAddingKind('credit')}>
@@ -249,6 +270,8 @@ export default function AccountsTab({
             row={row}
             needsReconnect={!row.manual && brokenNames.has(row.institution)}
             cacheFetchedAt={cacheFetchedAt}
+            onEditBalance={row.manual ? handleBalanceEdit : undefined}
+            onDelete={row.manual ? handleDeleteManual : undefined}
           />
         ))}
         <button type="button" className="acct-add-row" onClick={() => setAddingKind('depository')}>
@@ -281,6 +304,8 @@ export default function AccountsTab({
                 || row.account.tax_treatment_set_by_user),
             }}
             onTaxTreatmentChange={(v) => handleFieldUpdate(row.id, 'tax_treatment', v)}
+            onEditBalance={row.manual ? handleBalanceEdit : undefined}
+            onDelete={row.manual ? handleDeleteManual : undefined}
           />
         ))}
       </AccountSection>

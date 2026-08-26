@@ -3,24 +3,59 @@ import InlineField from './InlineField';
 import { fmt$, formatRelativeTime } from '../../../utils/formatting';
 import { chipColorFor } from '../../../utils/institutionColor';
 
+function toNum(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 // Two-tier credit/loan row. Clicking the row expands an inline drawer holding
 // the fields the bank doesn't sync (limit, APR, minimum, statement/due day).
 //
 // The account name never truncates — long names wrap to a second line. Meta
 // values that are missing are omitted entirely rather than rendered as a dash,
 // which is what made the old eight-column table read as mostly empty.
+//
+// A manual account additionally offers "Edit balance" and "Remove" — a
+// synced balance comes from the bank and must never be hand-edited, so those
+// controls exist only when `row.manual` is true AND the parent supplied the
+// corresponding handler.
 export default function AccountListRow({
   row,
   needsReconnect = false,
   cacheFetchedAt,
   onUpdate,
+  onEditBalance,
+  onDelete,
 }) {
   const [open, setOpen] = useState(false);
+  const [editingBalance, setEditingBalance] = useState(false);
+  const [owed, setOwed] = useState('');
+  const [available, setAvailable] = useState('');
   const palette = chipColorFor(row.institution);
   const meta = buildMeta(row, needsReconnect, cacheFetchedAt);
 
+  const canEditBalance = !!(row.manual && onEditBalance);
+  const canDelete = !!(row.manual && onDelete);
+
+  const openBalanceEditor = (e) => {
+    e.stopPropagation();
+    setOwed(row.owed === null || row.owed === undefined ? '' : String(row.owed));
+    setAvailable(row.available === null || row.available === undefined ? '' : String(row.available));
+    setEditingBalance(true);
+    setOpen(false);
+  };
+
+  const saveBalance = (e) => {
+    e.stopPropagation();
+    // The row displays owed/available, but updateAccountBalance's contract is
+    // { available, ledger } — owed is the credit account's ledger.
+    onEditBalance?.(row.id, { available: toNum(available), ledger: toNum(owed) });
+    setEditingBalance(false);
+  };
+
   return (
-    <>
+    <div className="acct-row-group" role="group" aria-label={row.name}>
       <div
         className="acct-row"
         role="button"
@@ -54,8 +89,66 @@ export default function AccountListRow({
           <div className="acct-row-subamount">{fmt$(row.available)} available</div>
         </div>
 
+        <div className="acct-row-actions">
+          {canEditBalance && (
+            <button
+              type="button"
+              className="ov-icon-btn"
+              onClick={openBalanceEditor}
+              aria-label="Edit balance"
+              title="Edit balance"
+            >
+              <span aria-hidden="true">✎</span>
+            </button>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              className="ov-icon-btn ov-icon-btn--danger"
+              onClick={(e) => { e.stopPropagation(); onDelete(row.id, row.name); }}
+              aria-label="Remove"
+              title="Remove"
+            >
+              <span aria-hidden="true">✕</span>
+            </button>
+          )}
+        </div>
+
         <div className={`acct-row-chevron${open ? ' is-open' : ''}`} aria-hidden="true">›</div>
       </div>
+
+      {editingBalance && (
+        <div className="acct-drawer" role="presentation" onClick={(e) => e.stopPropagation()}>
+          <DrawerField label="Balance owed">
+            <input
+              className="ifield ifield--boxed"
+              type="number"
+              step="0.01"
+              aria-label={`Balance owed, for ${row.name}`}
+              value={owed}
+              onChange={(e) => setOwed(e.target.value)}
+            />
+          </DrawerField>
+          <DrawerField label="Available credit">
+            <input
+              className="ifield ifield--boxed"
+              type="number"
+              step="0.01"
+              aria-label={`Available, for ${row.name}`}
+              value={available}
+              onChange={(e) => setAvailable(e.target.value)}
+            />
+          </DrawerField>
+          <div className="acct-drawer-note acct-drawer-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => setEditingBalance(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-primary" onClick={saveBalance}>
+              Save
+            </button>
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="acct-drawer" role="presentation" onClick={(e) => e.stopPropagation()}>
@@ -137,7 +230,7 @@ export default function AccountListRow({
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }
 

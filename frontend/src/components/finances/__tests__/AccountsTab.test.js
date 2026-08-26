@@ -2,9 +2,12 @@ import React from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axios from 'axios';
+import { MemoryRouter } from 'react-router-dom';
 import AccountsTab from '../AccountsTab';
+import { updateAccountBalance, deleteManualAccount } from '../../../api/balances';
 
 jest.mock('axios');
+jest.mock('../../../api/balances');
 jest.mock('../../accounts/AccountsModal', () => () => <div data-testid="accounts-modal" />);
 
 const LONG_NAME = 'Customized Cash Rewards Visa Signature 7473';
@@ -286,8 +289,8 @@ test('updating an asset value stamps the valuation date', async () => {
   await user.type(input, '470000');
   await user.tab();
 
-  await waitFor(() => expect(axios.put).toHaveBeenCalledWith(
-    expect.stringContaining('/api/balances/a1'),
+  await waitFor(() => expect(updateAccountBalance).toHaveBeenCalledWith(
+    'a1',
     expect.objectContaining({ available: 470000, ledger: 470000 }),
   ));
   await waitFor(() => expect(axios.put).toHaveBeenCalledWith(
@@ -365,4 +368,85 @@ test('choosing a treatment saves it against the account', async () => {
     expect.stringContaining('/api/accounts/i1/details'),
     expect.objectContaining({ tax_treatment: 'roth' }),
   ));
+});
+
+// --- Manual-balance editing / removal --------------------------------------
+// AccountsTab absorbs the two things BalancesSection alone used to offer: a
+// manual account's balance can be hand-edited, and it can be removed. Neither
+// is available on a synced account — its number comes from the bank feed.
+
+const manualCashAccount = (over = {}) => ({
+  id: 'mc1',
+  institution: '',
+  name: 'Manual Cash',
+  type: 'depository',
+  subtype: 'checking',
+  available: 500,
+  ledger: 500,
+  source: 'manual',
+  manual: true,
+  ...over,
+});
+
+const syncedCashAccount = (over = {}) => ({
+  id: 'sc1',
+  institution: 'Chase',
+  name: 'Chase Checking',
+  type: 'depository',
+  subtype: 'checking',
+  available: 1200,
+  ledger: 1200,
+  source: 'simplefin',
+  manual: false,
+  ...over,
+});
+
+function renderAccountsTab(props = {}) {
+  const { accounts, onRefresh, ...opts } = props;
+  mockApis(opts);
+  return render(
+    <MemoryRouter>
+      <AccountsTab
+        summary={summaryOf(accounts || [manualCashAccount(), syncedCashAccount()], opts.connections)}
+        summaryLoading={false}
+        onRefresh={onRefresh || jest.fn()}
+      />
+    </MemoryRouter>,
+  );
+}
+
+test('a manual account can have its balance edited', async () => {
+  const user = userEvent.setup();
+  renderAccountsTab();
+
+  const row = await screen.findByRole('group', { name: /manual cash/i });
+  await user.click(within(row).getByRole('button', { name: /edit balance/i }));
+  await user.clear(within(row).getByLabelText(/available/i));
+  await user.type(within(row).getByLabelText(/available/i), '250');
+  await user.click(within(row).getByRole('button', { name: /save/i }));
+
+  expect(updateAccountBalance).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({ available: 250 }),
+  );
+});
+
+test('a synced account offers no balance editing', async () => {
+  renderAccountsTab();
+
+  const row = await screen.findByRole('group', { name: /chase/i });
+  expect(within(row).queryByRole('button', { name: /edit balance/i })).toBeNull();
+});
+
+test('deleting a manual account asks first', async () => {
+  const user = userEvent.setup();
+  jest.spyOn(window, 'confirm').mockReturnValue(false);
+  renderAccountsTab();
+
+  const row = await screen.findByRole('group', { name: /manual cash/i });
+  await user.click(within(row).getByRole('button', { name: /remove/i }));
+
+  expect(window.confirm).toHaveBeenCalled();
+  expect(deleteManualAccount).not.toHaveBeenCalled();
+  window.confirm.mockRestore();
 });
