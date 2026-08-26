@@ -14,7 +14,7 @@ export default function SyncToast({ result, onClose }) {
     : `🏦 Sync done — ${result.total_new} new (${result.from_date} → ${result.to_date})`;
 
   return (
-    <div className="toast">
+    <div className="toast" data-testid="sync-toast">
       <button type="button" onClick={onClose} className="toast-close">✕</button>
       <div className="toast-title">{title}</div>
       {result.details?.map((d, i) => (

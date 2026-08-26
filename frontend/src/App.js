@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { resolveLegacyRoute } from './legacyRoutes';
@@ -6,8 +6,14 @@ import AppHeader        from './components/AppHeader';
 import Sidebar          from './components/Sidebar';
 import FinancesPage     from './components/finances/FinancesPage';
 import TransactionsPage from './components/transactions/TransactionsPage';
+import SyncModal        from './components/accounts/SyncModal';
+import AccountsModal    from './components/accounts/AccountsModal';
+import UploadCsvModal   from './components/transactions/UploadCsvModal';
+import SyncToast        from './components/ui/SyncToast';
 import { getHealthScore } from './api/health';
 import { UnsavedChangesContext } from './contexts/UnsavedChangesContext';
+import { SyncContext } from './contexts/SyncContext';
+import { useSyncFlow } from './hooks/useSyncFlow';
 
 // A returning user's stored section becomes a URL exactly once, on first
 // mount. After that the key is gone and this is inert.
@@ -49,12 +55,42 @@ export default function App() {
   const [unsaved, setUnsaved] = useState(false);
   const unsavedChangesValue = useMemo(() => ({ unsaved, setUnsaved }), [unsaved]);
 
+  // Sync (bank pull / CSV upload / sheet send) is driven from here so its
+  // modals and toast outlive whatever page started them — Transactions
+  // unmounts on navigation, but a sync in flight there shouldn't. The page
+  // is the only thing that knows how to refresh its own transaction list or
+  // surface an error, so it registers those plus the values `sendToSheet`
+  // needs (filterMonth, sharedCount) instead of that state living here.
+  const reloadRef = useRef(() => {});
+  const setErrorRef = useRef(() => {});
+  const [syncPageMeta, setSyncPageMeta] = useState({ filterMonth: 'all', sharedCount: 0 });
+  const reload = useCallback((...args) => reloadRef.current(...args), []);
+  const setError = useCallback((...args) => setErrorRef.current(...args), []);
+
+  const syncFlow = useSyncFlow({
+    reload, setError, filterMonth: syncPageMeta.filterMonth, sharedCount: syncPageMeta.sharedCount,
+  });
+
+  const registerSyncPage = useCallback(({ reload: pageReload, setError: pageSetError, filterMonth, sharedCount }) => {
+    reloadRef.current = pageReload || (() => {});
+    setErrorRef.current = pageSetError || (() => {});
+    setSyncPageMeta((prev) => (prev.filterMonth === filterMonth && prev.sharedCount === sharedCount)
+      ? prev
+      : { filterMonth: filterMonth ?? 'all', sharedCount: sharedCount ?? 0 });
+  }, []);
+
+  const syncValue = useMemo(
+    () => ({ ...syncFlow, registerSyncPage }),
+    [syncFlow, registerSyncPage],
+  );
+
   return (
     <div className="app-root">
       <AppHeader isDark={isDark} onToggleTheme={() => setIsDark((d) => !d)} />
 
       <LegacyTabRedirect />
       <UnsavedChangesContext.Provider value={unsavedChangesValue}>
+      <SyncContext.Provider value={syncValue}>
         <div className="eh-app">
           <a className="eh-skip-link" href="#eh-main">Skip to main content</a>
           <Sidebar healthScore={healthScore} healthSignals={healthSignals} />
@@ -75,7 +111,30 @@ export default function App() {
             <Route path="/finances" element={<Navigate to="/" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+
+          {syncFlow.showSyncModal && (
+            <SyncModal onSync={syncFlow.syncBanks} onClose={() => syncFlow.setShowSyncModal(false)} />
+          )}
+          {syncFlow.showAccountsModal && (
+            <AccountsModal
+              onClose={() => {
+                syncFlow.setShowAccountsModal(false);
+                syncFlow.setAccountsRefreshKey((k) => k + 1);
+              }}
+            />
+          )}
+          {syncFlow.pendingCsvFile && (
+            <UploadCsvModal
+              file={syncFlow.pendingCsvFile}
+              onSubmit={syncFlow.submitCsvUpload}
+              onClose={() => syncFlow.setPendingCsvFile(null)}
+            />
+          )}
+          {syncFlow.syncToast && (
+            <SyncToast result={syncFlow.syncToast} onClose={() => syncFlow.setSyncToast(null)} />
+          )}
         </div>
+      </SyncContext.Provider>
       </UnsavedChangesContext.Provider>
     </div>
   );

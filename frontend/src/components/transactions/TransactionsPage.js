@@ -7,19 +7,15 @@ import ControlBar       from './ControlBar';
 import BulkBar          from './BulkBar';
 import FilterBar        from './FilterBar';
 import TransactionTable from './TransactionTable';
-import UploadCsvModal   from './UploadCsvModal';
 import SuggestPreviewModal from './SuggestPreviewModal';
 import TransactionsRail from './TransactionsRail';
 import { bulkSuggestCategories, applyCategoryAssignments, deleteTransaction, previewDuplicates, applyDeduplication } from '../../api/transactions';
-import SyncModal        from '../accounts/SyncModal';
-import SyncToast        from '../ui/SyncToast';
-import AccountsModal    from '../accounts/AccountsModal';
 import HistoryPage      from './HistoryPage';
 import SharedPage       from '../shared/SharedPage';
 import { useTransactions } from '../../hooks/useTransactions';
 import { useFilters } from '../../hooks/useFilters';
 import { useSelection } from '../../hooks/useSelection';
-import { useSyncFlow } from '../../hooks/useSyncFlow';
+import { useSync } from '../../contexts/SyncContext';
 import { useCategories } from '../../hooks/useCategories';
 import { useTransactionDetail } from '../../hooks/useTransactionDetail';
 import { getBalancesSummary } from '../../api/balances';
@@ -57,13 +53,17 @@ export default function TransactionsPage({ view }) {
     categories, addLocal: addCategoryLocal, remove: removeCategoryRemote,
   } = useCategories();
 
-  const sync = useSyncFlow({
-    reload,
-    setError,
-    availableMonths,
-    filterMonth,
-    sharedCount: stats.shared,
-  });
+  // Sync lives at shell level (App.js) so an in-flight bank pull or CSV
+  // upload survives navigating away from Transactions. This page only
+  // registers what the shell can't know on its own: how to refresh this
+  // page's list, where to surface an error, and the filter/count
+  // `sendToSheet` needs.
+  const sync = useSync();
+  useEffect(() => {
+    sync.registerSyncPage({ reload, setError, filterMonth, sharedCount: stats.shared });
+    return () => sync.registerSyncPage({ reload: null, setError: null, filterMonth: 'all', sharedCount: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sync.registerSyncPage, reload, setError, filterMonth, stats.shared]);
 
   const [activeExpand, setActiveExpand] = useState(null);  // 'note-{id}' | 'adj-{id}' | null
   const [suggestionPreview, setSuggestionPreview] = useState(null);
@@ -483,24 +483,6 @@ export default function TransactionsPage({ view }) {
         )}
       </div>
 
-      {sync.showSyncModal && (
-        <SyncModal onSync={sync.syncBanks} onClose={() => sync.setShowSyncModal(false)} />
-      )}
-      {sync.showAccountsModal && (
-        <AccountsModal
-          onClose={() => {
-            sync.setShowAccountsModal(false);
-            sync.setAccountsRefreshKey((k) => k + 1);
-          }}
-        />
-      )}
-      {sync.pendingCsvFile && (
-        <UploadCsvModal
-          file={sync.pendingCsvFile}
-          onSubmit={sync.submitCsvUpload}
-          onClose={() => sync.setPendingCsvFile(null)}
-        />
-      )}
       {suggestionPreview && (
         <SuggestPreviewModal
           result={suggestionPreview}
@@ -508,7 +490,6 @@ export default function TransactionsPage({ view }) {
           onClose={() => setSuggestionPreview(null)}
         />
       )}
-      {sync.syncToast && <SyncToast result={sync.syncToast} onClose={() => sync.setSyncToast(null)} />}
     </>
   );
 }

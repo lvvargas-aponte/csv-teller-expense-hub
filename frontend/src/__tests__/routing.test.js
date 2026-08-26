@@ -6,12 +6,42 @@ import axios from 'axios';
 import App from '../App';
 import { ACTIVE_TAB_KEY } from '../legacyRoutes';
 import { ALL_PATHS } from '../navConfig';
+import { useSyncFlow } from '../hooks/useSyncFlow';
 
 jest.mock('axios');
+
+// Driving a real bank sync/CSV upload to completion through the UI in jsdom
+// (date pickers, file input, awaited axios round-trips inside SyncModal /
+// UploadCsvModal) isn't practical here. Instead this mocks useSyncFlow's
+// return value directly so a test can assert the toast renders from the
+// shell — i.e. it's still on screen after the route (and TransactionsPage)
+// that started the sync has unmounted.
+jest.mock('../hooks/useSyncFlow');
+
+const baseSyncFlow = {
+  syncing: false,
+  uploading: false,
+  sendingSheet: false,
+  syncToast: null,
+  setSyncToast: jest.fn(),
+  showSyncModal: false,
+  setShowSyncModal: jest.fn(),
+  showAccountsModal: false,
+  setShowAccountsModal: jest.fn(),
+  pendingCsvFile: null,
+  setPendingCsvFile: jest.fn(),
+  accountsRefreshKey: 0,
+  setAccountsRefreshKey: jest.fn(),
+  syncBanks: jest.fn(),
+  handleCsvPicked: jest.fn(),
+  submitCsvUpload: jest.fn(),
+  sendToSheet: jest.fn(),
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
+  useSyncFlow.mockReturnValue(baseSyncFlow);
   // Most endpoints are happy with an empty array; a couple of pages
   // destructure specific shapes off the response and would throw on that
   // generic default, which would make the route-coverage test below fail
@@ -124,4 +154,20 @@ test('insight actions point at real routes, not the pre-Phase-2 ones', () => {
 
   // "/" meant the transactions page before Phase 2 and means Home after it.
   expect(routes).not.toMatch(/"route":"\/"/);
+});
+
+test('a sync toast survives navigating away from transactions', async () => {
+  const user = userEvent.setup();
+  useSyncFlow.mockReturnValue({
+    ...baseSyncFlow,
+    syncToast: { total_new: 3, from_date: '2026-08-01', to_date: '2026-08-25', details: [] },
+  });
+  renderAt('/transactions');
+
+  expect(screen.getByTestId('sync-toast')).toBeInTheDocument();
+
+  await user.click(await screen.findByRole('link', { name: 'Accounts' }));
+
+  expect(screen.getByRole('heading', { level: 1, name: 'Accounts' })).toBeInTheDocument();
+  expect(screen.queryByTestId('sync-toast')).toBeInTheDocument();
 });
