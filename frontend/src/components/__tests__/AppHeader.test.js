@@ -20,6 +20,9 @@ test('no longer duplicates navigation the sidebar owns', () => {
 });
 
 test('does not render a second wordmark', () => {
-  const { container } = renderHeader();
-  expect(container.textContent).not.toMatch(/Fin/);
+  // The sidebar owns the "Fin" wordmark. A substring check would false-fail
+  // on any legitimate text containing "Fin" (e.g. "Finances"), so pin the
+  // element instead.
+  renderHeader();
+  expect(screen.queryByText(/^Fin$/)).toBeNull();
 });

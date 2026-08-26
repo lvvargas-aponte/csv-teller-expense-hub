@@ -1701,7 +1701,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   height: 56px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 0;
 }
 .tx-header-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
