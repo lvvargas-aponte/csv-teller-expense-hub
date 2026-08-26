@@ -10,6 +10,7 @@ const PATHS = {
   debt: <><circle cx="10" cy="10" r="6.5" /><path d="M10 3.5v6.5l4.6 2.6" /></>,
   invest: <><path d="M3.5 13.5 8 9l3 3 5.5-6" /><path d="M12.5 6h4v4" /></>,
   plan: <><circle cx="10" cy="10" r="6.5" /><circle cx="10" cy="10" r="2.5" /></>,
+  calendar: <><rect x="3" y="4.5" width="14" height="12.5" rx="2" /><path d="M3 8.5h14M7 3v3M13 3v3" /></>,
   goal: <><path d="M5 17V3.6" /><path d="M5 4.2h9.6l-2 3 2 3H5z" /></>,
   ask: <><path d="M10 3.2l1.9 4.2 4.6.5-3.4 3.1.9 4.5-4-2.3-4 2.3.9-4.5L3.5 7.9l4.6-.5z" /></>,
   settings: <><circle cx="10" cy="10" r="2.6" /><path d="M10 2.8v2M10 15.2v2M17.2 10h-2M4.8 10h-2M15.1 4.9l-1.4 1.4M6.3 13.7l-1.4 1.4M15.1 15.1l-1.4-1.4M6.3 6.3 4.9 4.9" /></>,
