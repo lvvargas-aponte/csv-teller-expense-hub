@@ -44,6 +44,16 @@ const PRESETS = {
     primaryField: 'available',
     secondaryField: 'ledger',
   },
+  investment: {
+    title: 'Investment / Retirement (401k, IRA, Brokerage)',
+    sub:   'Track a brokerage or retirement account manually — these are stored locally.',
+    type:  'investment',
+    nameHint: 'e.g. Fidelity 401(k)',
+    primaryLabel: 'Current Balance ($)',
+    secondaryLabel: 'Cost Basis ($)',
+    primaryField: 'available',
+    secondaryField: 'ledger',
+  },
 };
 
 const ASSET_SUBTYPES = [
