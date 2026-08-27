@@ -22,7 +22,7 @@ jest.mock('../cards/SpendingByCategoryCard', () => () => <div />);
 jest.mock('../cards/IncomeVsExpensesCard', () => () => <div />);
 jest.mock('../cards/BalancesCard', () => () => <div />);
 jest.mock('../cards/PortfolioCard', () => () => <div />);
-jest.mock('../cards/CreditUtilizationCard', () => () => <div />);
+jest.mock('../cards/CreditUtilizationCard', () => () => <div>Credit Utilization</div>);
 jest.mock('../cards/BudgetsCard', () => () => <div />);
 jest.mock('../cards/RecurringChargesCard', () => () => <div />);
 jest.mock('../cards/AlertsCard', () => () => <div />);
@@ -137,6 +137,11 @@ test('balances come from the page, not a second round-trip', async () => {
 // Real assets make "net worth" and "money you could reach" two different
 // numbers. The KPI is the total, so its help text has to say what it includes
 // and which of the other numbers deliberately leaves property out.
+test('utilization moved to the debt page', async () => {
+  renderTab({ rows: [] });
+  await waitFor(() => expect(screen.queryByText(/utilization/i)).toBeNull());
+});
+
 test('the net-worth KPI names the liquid figure and the runway exclusion', async () => {
   renderTab({
     rows: [],

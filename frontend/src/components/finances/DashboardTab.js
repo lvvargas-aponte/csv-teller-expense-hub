@@ -16,7 +16,6 @@ import RecurringChargesCard from './cards/RecurringChargesCard';
 import BalancesCard from './cards/BalancesCard';
 import PortfolioCard from './cards/PortfolioCard';
 import BudgetsCard from './cards/BudgetsCard';
-import CreditUtilizationCard from './cards/CreditUtilizationCard';
 import AlertsCard from './cards/AlertsCard';
 import IncomeVsExpensesCard from './cards/IncomeVsExpensesCard';
 import WeeklyDigestCard from './cards/WeeklyDigestCard';
@@ -310,7 +309,6 @@ export default function DashboardTab({
             </div>
             <BalancesCard summary={summary} loading={summaryLoading} error={summaryError} />
             <PortfolioCard />
-            <CreditUtilizationCard onNavigate={onNavigate} />
             <BudgetsCard />
             <div className="eh-card-full">
               <RecurringChargesCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />

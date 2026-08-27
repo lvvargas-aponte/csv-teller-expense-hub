@@ -16,6 +16,7 @@ import {
 } from './AccountsTab';
 import PayoffPlanner from './PayoffPlanner';
 import CreditFactorsPanel from './CreditFactorsPanel';
+import CreditUtilizationCard from './cards/CreditUtilizationCard';
 import Num from './Num';
 
 // Same convention as CreditUtilizationCard: the figure's colour carries the
@@ -187,6 +188,8 @@ export default function DebtPage({ summary, summaryLoading, summaryError, onRefr
             onSaved={() => onRefresh?.()}
           />
         )}
+
+        <CreditUtilizationCard />
 
         <PayoffPlanner creditAccounts={payoffAccounts} />
         <CreditFactorsPanel />

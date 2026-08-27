@@ -1,6 +1,5 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import CreditUtilizationCard from '../CreditUtilizationCard';
 import { getCreditHealth } from '../../../../api/dashboard';
 
@@ -41,7 +40,6 @@ test('puts a monthly price on the balances', async () => {
 });
 
 test('cards with no APR are named as the reason the figure is short', async () => {
-  const onNavigate = jest.fn();
   renderCard(
     health({
       carry_cost: {
@@ -49,12 +47,10 @@ test('cards with no APR are named as the reason the figure is short', async () =
         accounts_missing_apr: 2, by_account: [],
       },
     }),
-    { onNavigate },
   );
 
-  const link = await screen.findByRole('button', { name: /2 cards have no APR set/i });
-  await userEvent.click(link);
-  expect(onNavigate).toHaveBeenCalledWith('accounts');
+  expect(await screen.findByText(/2 cards have no APR set/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /no APR set/i })).toBeNull();
 });
 
 test('no debt means no carry-cost headline', async () => {

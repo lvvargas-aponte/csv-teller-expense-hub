@@ -23,7 +23,7 @@ const STATUS_TEXT = {
 
 const STATUS_WORD = { good: 'Good', warn: 'Watch', high: 'High' };
 
-export default function CreditUtilizationCard({ onHide, index, kicker, onNavigate }) {
+export default function CreditUtilizationCard({ onHide, index, kicker }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -60,19 +60,10 @@ export default function CreditUtilizationCard({ onHide, index, kicker, onNavigat
         </div>
       )}
       {carry?.accounts_missing_apr > 0 && (
-        <button
-          type="button"
-          onClick={() => onNavigate?.('accounts')}
-          style={{
-            display: 'block', marginBottom: 10, padding: 0,
-            background: 'none', border: 'none', font: 'inherit',
-            fontSize: 11, color: 'var(--accent)',
-            textDecoration: 'underline', cursor: 'pointer', textAlign: 'left',
-          }}
-        >
+        <div style={{ marginBottom: 10, fontSize: 11, color: 'var(--text-muted)' }}>
           {carry.accounts_missing_apr} card{carry.accounts_missing_apr === 1 ? '' : 's'}
           {' '}have no APR set — add one to see their cost
-        </button>
+        </div>
       )}
       {(data?.overall_utilization_pct !== null && data?.overall_utilization_pct !== undefined) && (
         <div style={{ marginBottom: 10 }}>

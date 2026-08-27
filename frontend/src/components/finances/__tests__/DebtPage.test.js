@@ -22,7 +22,13 @@ const summary = {
 beforeEach(() => {
   jest.clearAllMocks();
   getCreditHealth.mockResolvedValue({
-    data: { overall_utilization_pct: 42, overall_status: 'warn', total_balance: 6060, total_limit: 14400 },
+    data: {
+      overall_utilization_pct: 42, overall_status: 'warn', total_balance: 6060, total_limit: 14400,
+      accounts: [{
+        account_id: 'c1', institution: 'Chase', name: 'Chase Sapphire',
+        balance: 4820, credit_limit: 10000, utilization_pct: 48, status: 'warn',
+      }],
+    },
   });
   getCreditFactors.mockResolvedValue({
     data: {
@@ -55,7 +61,8 @@ test('totals only what is owed, ignoring cash', async () => {
 
 test('reports utilization from the API rather than recomputing it', async () => {
   renderPage();
-  expect(await screen.findByText(/42%/)).toBeInTheDocument();
+  const summarySection = screen.getByRole('region', { name: 'Debt summary' });
+  expect(await within(summarySection).findByText(/42%/)).toBeInTheDocument();
   expect(getCreditHealth).toHaveBeenCalled();
   await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
 });
@@ -275,6 +282,16 @@ test('carries the payoff planner and the credit factors', async () => {
   // /credit/i alone also matches the "Credit cards & loans" section heading
   // already on this page — scope to the factors panel's own title.
   expect(screen.getByRole('heading', { name: /credit factors/i })).toBeInTheDocument();
+});
+
+test('shows the utilization card', async () => {
+  renderPage();
+  // "$6,060.00 of $14,400.00" is split across sibling <Num> spans, so match
+  // on the containing element's full textContent rather than a single node.
+  const matches = await screen.findAllByText(
+    (_, el) => /of \$?14,400/i.test(el.textContent || ''),
+  );
+  expect(matches.length).toBeGreaterThan(0);
 });
 
 test('deleting a manual credit account asks first', async () => {
