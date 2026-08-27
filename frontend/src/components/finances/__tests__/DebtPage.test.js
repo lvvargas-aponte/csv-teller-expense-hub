@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import DebtPage from '../DebtPage';
-import { getCreditHealth } from '../../../api/dashboard';
+import { getCreditHealth, getCreditFactors } from '../../../api/dashboard';
 import { getAllAccountDetails } from '../../../api/accountDetails';
 import { updateAccountBalance, deleteManualAccount } from '../../../api/balances';
 
@@ -23,6 +23,12 @@ beforeEach(() => {
   jest.clearAllMocks();
   getCreditHealth.mockResolvedValue({
     data: { overall_utilization_pct: 42, overall_status: 'warn', total_balance: 6060, total_limit: 14400 },
+  });
+  getCreditFactors.mockResolvedValue({
+    data: {
+      utilization: {}, payment_timeliness: {}, history: {}, new_credit: {}, mix: {},
+      coverage_note: 'Measured on connected accounts.',
+    },
   });
   getAllAccountDetails.mockResolvedValue({ data: {} });
   updateAccountBalance.mockResolvedValue({ data: {} });
@@ -57,8 +63,11 @@ test('reports utilization from the API rather than recomputing it', async () => 
 test('utilization is not conveyed by colour alone', async () => {
   renderPage();
   // A colour-coded status must carry text too — see the repo's a11y commit.
-  expect(await screen.findByText(/42%/)).toBeInTheDocument();
-  expect(screen.getByText(/warn|watch|high/i)).toBeInTheDocument();
+  // Scoped to the summary section: the payoff planner below also has text
+  // matching this pattern ("Avalanche — High APR first").
+  const summarySection = screen.getByRole('region', { name: 'Debt summary' });
+  expect(await within(summarySection).findByText(/42%/)).toBeInTheDocument();
+  expect(within(summarySection).getByText(/warn|watch|high/i)).toBeInTheDocument();
   await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
 });
 
@@ -258,6 +267,14 @@ test("a manual credit account's balance editor pre-fills the starting balance, n
     'm1',
     expect.objectContaining({ ledger: 1000 }),
   );
+});
+
+test('carries the payoff planner and the credit factors', async () => {
+  renderPage();
+  expect(await screen.findByRole('heading', { name: /payoff/i })).toBeInTheDocument();
+  // /credit/i alone also matches the "Credit cards & loans" section heading
+  // already on this page — scope to the factors panel's own title.
+  expect(screen.getByRole('heading', { name: /credit factors/i })).toBeInTheDocument();
 });
 
 test('deleting a manual credit account asks first', async () => {

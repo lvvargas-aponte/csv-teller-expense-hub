@@ -14,6 +14,8 @@ import { buildCreditRow, summarize } from './accounts/accountMath';
 import {
   createBalanceEditHandler, createDeleteManualHandler, createFieldUpdateHandler, countLabel,
 } from './AccountsTab';
+import PayoffPlanner from './PayoffPlanner';
+import CreditFactorsPanel from './CreditFactorsPanel';
 import Num from './Num';
 
 // Same convention as CreditUtilizationCard: the figure's colour carries the
@@ -62,6 +64,15 @@ export default function DebtPage({ summary, summaryLoading, summaryError, onRefr
   const creditRows = useMemo(
     () => creditAccounts.map((a) => buildCreditRow(a, detailsMap[a.id] || {})),
     [creditAccounts, detailsMap],
+  );
+
+  // The planner's own account list, not creditRows/creditAccounts above: a
+  // paid-off card must stay in the list (creditAccounts, creditRows) so it
+  // shows as "Paid off", but has nothing for the planner to schedule, so it
+  // is filtered out here. Formerly FinancesPage's `creditAccounts` memo.
+  const payoffAccounts = useMemo(
+    () => creditAccounts.filter((a) => Math.abs(parseFloat(a.ledger) || 0) >= 0.005),
+    [creditAccounts],
   );
 
   const totalOwed = useMemo(() => summarize(creditRows, []).totalOwed, [creditRows]);
@@ -176,6 +187,9 @@ export default function DebtPage({ summary, summaryLoading, summaryError, onRefr
             onSaved={() => onRefresh?.()}
           />
         )}
+
+        <PayoffPlanner creditAccounts={payoffAccounts} />
+        <CreditFactorsPanel />
 
         {onRefresh && (
           <button type="button" onClick={onRefresh} style={{

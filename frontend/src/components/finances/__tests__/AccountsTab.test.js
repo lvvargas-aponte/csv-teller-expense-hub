@@ -109,6 +109,12 @@ test('credit is summarised and linked, not listed', async () => {
   expect(screen.queryByText(/chase sapphire/i)).toBeNull();
 });
 
+test('the payoff planner has moved to Debt', async () => {
+  renderTab([creditAccount()]);
+  await screen.findByRole('link', { name: /debt/i });
+  expect(screen.queryByRole('heading', { name: /payoff/i })).toBeNull();
+});
+
 // One classifier, front and back: a retirement account the user tracks as a
 // manual depository must group the same way here as it does on Overview and
 // in the backend's totals.

@@ -1,11 +1,9 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
 import DebtPage from './DebtPage';
 import InvestmentsTab from './InvestmentsTab';
-import PayoffPlanner from './PayoffPlanner';
-import CreditFactorsPanel from './CreditFactorsPanel';
 import BudgetsSection from './BudgetsSection';
 import GoalsSection from './GoalsSection';
 import AdvisorChat from './AdvisorChat';
@@ -61,13 +59,6 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
     loadBalances(false);
   }, [loadBalances]);
 
-  const creditAccounts = useMemo(
-    () => summary?.accounts?.filter(
-      (a) => a.type === 'credit' && Math.abs(parseFloat(a.ledger) || 0) >= 0.005,
-    ) ?? [],
-    [summary],
-  );
-
   const { categories, counts: categoryCounts } = useCategories();
 
   const handleTabNavigate = useCallback((tabId) => {
@@ -101,10 +92,6 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
               summaryError={summaryError}
               onRefresh={() => loadBalances(true)}
             />
-            {/* The payoff planner belongs beside the accounts it acts on,
-                not on a separate Overview page. */}
-            <PayoffPlanner creditAccounts={creditAccounts} />
-            <CreditFactorsPanel />
           </SimplePage>
         )}
 
