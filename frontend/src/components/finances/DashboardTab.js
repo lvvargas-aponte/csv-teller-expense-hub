@@ -14,7 +14,6 @@ import CashFlowOutlookCard from './cards/CashFlowOutlookCard';
 import SpendingByCategoryCard from './cards/SpendingByCategoryCard';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import BalancesCard from './cards/BalancesCard';
-import PortfolioCard from './cards/PortfolioCard';
 import BudgetsCard from './cards/BudgetsCard';
 import AlertsCard from './cards/AlertsCard';
 import IncomeVsExpensesCard from './cards/IncomeVsExpensesCard';
@@ -308,7 +307,6 @@ export default function DashboardTab({
               <IncomeVsExpensesCard months={months} />
             </div>
             <BalancesCard summary={summary} loading={summaryLoading} error={summaryError} />
-            <PortfolioCard />
             <BudgetsCard />
             <div className="eh-card-full">
               <RecurringChargesCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />

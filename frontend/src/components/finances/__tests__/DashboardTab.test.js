@@ -21,7 +21,6 @@ jest.mock('../cards/CashFlowOutlookCard', () => () => <div />);
 jest.mock('../cards/SpendingByCategoryCard', () => () => <div />);
 jest.mock('../cards/IncomeVsExpensesCard', () => () => <div />);
 jest.mock('../cards/BalancesCard', () => () => <div />);
-jest.mock('../cards/PortfolioCard', () => () => <div />);
 jest.mock('../cards/CreditUtilizationCard', () => () => <div>Credit Utilization</div>);
 jest.mock('../cards/BudgetsCard', () => () => <div />);
 jest.mock('../cards/RecurringChargesCard', () => () => <div />);
@@ -154,4 +153,10 @@ test('the net-worth KPI names the liquid figure and the runway exclusion', async
   await waitFor(() => expect(kpi('Net Worth')).toBeInTheDocument());
   expect(kpi('Net Worth')).toHaveTextContent(/\$138,000 liquid/);
   expect(await openHelp('Net Worth')).toHaveTextContent(/runway/i);
+});
+
+test('the portfolio card has moved off Home', async () => {
+  renderTab({ rows: [] });
+  await waitFor(() => expect(kpi('This Month')).toHaveTextContent('$120.00'));
+  expect(screen.queryByText(/portfolio/i)).toBeNull();
 });
