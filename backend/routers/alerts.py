@@ -99,7 +99,7 @@ async def _credit_utilization_alerts() -> List[Dict[str, Any]]:
             "severity": sev,
             "category": "credit",
             "message": f"{name} utilization at {pct:.0f}% — consider paying down",
-            "tab": "accounts",
+            "tab": "debt",
         })
     return out
 

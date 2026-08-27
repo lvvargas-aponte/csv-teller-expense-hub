@@ -5,7 +5,6 @@ import { getCreditHealth } from '../../api/dashboard';
 import { getAllAccountDetails } from '../../api/accountDetails';
 import { updateAccountBalance, deleteManualAccount } from '../../api/balances';
 import { classifyAccountBucket } from '../../utils/accountBucket';
-import { daysUntilNextDue } from './accounts/dueDate';
 import AccountSection from './accounts/AccountSection';
 import AccountListRow from './accounts/AccountListRow';
 import AddAccountModal from './accounts/AddAccountModal';
@@ -78,11 +77,11 @@ export default function DebtPage({ summary, summaryLoading, summaryError, onRefr
 
   const totalOwed = useMemo(() => summarize(creditRows, []).totalOwed, [creditRows]);
 
-  const nextDue = useMemo(() => creditAccounts
-    .map((a) => ({ account: a, days: daysUntilNextDue(a.due_day) }))
-    .filter(({ days }) => days !== null && days !== undefined)
-    .reduce((soonest, cur) => (soonest === null || cur.days < soonest.days ? cur : soonest), null)
-    ?.account ?? null, [creditAccounts]);
+  const nextDue = useMemo(() => creditRows
+    .filter((row) => Number.isFinite(row.dueInDays))
+    .reduce((soonest, cur) => (
+      soonest === null || cur.dueInDays < soonest.dueInDays ? cur : soonest
+    ), null) ?? null, [creditRows]);
 
   const health = useConnectionHealth(summary?.connections);
   const brokenNames = useMemo(
@@ -127,7 +126,8 @@ export default function DebtPage({ summary, summaryLoading, summaryError, onRefr
             </div>
           </div>
 
-          {creditHealth && !creditHealthError && (
+          {creditHealth && !creditHealthError
+            && Number.isFinite(creditHealth.overall_utilization_pct) && (
             <div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Utilization</div>
               <div style={{
@@ -148,7 +148,7 @@ export default function DebtPage({ summary, summaryLoading, summaryError, onRefr
             <div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Next payment due</div>
               <div style={{ fontSize: 24, fontWeight: 700 }}>
-                Day {nextDue.due_day}
+                Day {nextDue.dueDay}
                 <span style={{ fontSize: 13, fontWeight: 600, marginLeft: 6, color: 'var(--text-muted)' }}>
                   {nextDue.name}
                 </span>

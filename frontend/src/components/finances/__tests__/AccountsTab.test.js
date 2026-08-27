@@ -63,7 +63,10 @@ beforeEach(() => jest.clearAllMocks());
 // to be covered here through creditAccount() rows. That markup — and the
 // coverage for it — moved to DebtPage.test.js along with the credit list
 // (Phase 4 Task 2). AccountsTab now only summarises and links to /debt; see
-// 'credit is summarised and linked, not listed' below.
+// 'credit is summarised and linked, not listed' below. (The open-date wire
+// assertion did not survive that move intact — DebtPage.test.js's copy only
+// checked the input's displayed value. It has since been restored to assert
+// on the upsertAccountDetails payload, matching this file's original.)
 
 test('a broken connection is announced once at the top, not per row', async () => {
   renderTab([creditAccount()], {

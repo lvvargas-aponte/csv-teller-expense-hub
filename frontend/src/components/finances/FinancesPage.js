@@ -121,7 +121,7 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
         {section === 'plan' && view === 'commitments' && (
           <SimplePage title="Commitments">
             <div style={{ display: 'grid', gap: 16 }}>
-              <UpcomingBillsCard onNavigateToAccounts={() => navigate('/accounts')} />
+              <UpcomingBillsCard onNavigateToAccounts={() => navigate('/debt')} />
               <RecurringChargesCard variant="detail" />
             </div>
             <SubscriptionsSection />

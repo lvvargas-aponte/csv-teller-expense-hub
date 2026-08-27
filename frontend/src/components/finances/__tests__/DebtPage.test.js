@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import DebtPage from '../DebtPage';
 import { getCreditHealth, getCreditFactors } from '../../../api/dashboard';
-import { getAllAccountDetails } from '../../../api/accountDetails';
+import { getAllAccountDetails, upsertAccountDetails } from '../../../api/accountDetails';
 import { updateAccountBalance, deleteManualAccount } from '../../../api/balances';
 
 jest.mock('../../../api/dashboard');
@@ -13,11 +13,17 @@ jest.mock('../../../api/balances');
 
 const summary = {
   accounts: [
-    { id: 'c1', name: 'Chase Sapphire', institution: 'Chase', type: 'credit', ledger: 4820, due_day: 14 },
-    { id: 'c2', name: 'Amex Gold', institution: 'Amex', type: 'credit', ledger: 1240, due_day: 2 },
+    { id: 'c1', name: 'Chase Sapphire', institution: 'Chase', type: 'credit', ledger: 4820 },
+    { id: 'c2', name: 'Amex Gold', institution: 'Amex', type: 'credit', ledger: 1240 },
     { id: 'd1', name: 'Ally Savings', institution: 'Ally', type: 'depository', available: 18400 },
   ],
 };
+
+// `due_day` (and every other user-supplied detail) is served only from the
+// account_details side-car, never from balances-summary accounts — see
+// AccountBalance in backend/models.py. These fixtures route it through
+// getAllAccountDetails so tests exercise the shape the API actually returns.
+const DUE_DAY_DETAILS = { c1: { due_day: 14 }, c2: { due_day: 2 } };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -37,6 +43,7 @@ beforeEach(() => {
     },
   });
   getAllAccountDetails.mockResolvedValue({ data: {} });
+  upsertAccountDetails.mockResolvedValue({ data: {} });
   updateAccountBalance.mockResolvedValue({ data: {} });
   deleteManualAccount.mockResolvedValue({ data: {} });
 });
@@ -78,6 +85,22 @@ test('utilization is not conveyed by colour alone', async () => {
   await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
 });
 
+test('no credit limits set does not print a bare "%"', async () => {
+  getCreditHealth.mockResolvedValue({
+    data: {
+      overall_utilization_pct: null, overall_status: 'unknown', total_balance: 6060, total_limit: 0,
+      accounts: [],
+    },
+  });
+  renderPage();
+  await screen.findByRole('heading', { level: 1, name: 'Debt' });
+  const summarySection = screen.getByRole('region', { name: 'Debt summary' });
+  expect(within(summarySection).queryByText('Utilization')).toBeNull();
+  expect(within(summarySection).queryByText(/^%$/)).toBeNull();
+  expect(within(summarySection).queryByText(/null%/)).toBeNull();
+  await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+});
+
 test('survives a credit-health outage without blanking the page', async () => {
   getCreditHealth.mockRejectedValue(new Error('down'));
   renderPage();
@@ -90,13 +113,30 @@ test('survives a credit-health outage without blanking the page', async () => {
 test('the next payment is the nearest upcoming date, not the smallest day number', async () => {
   jest.useFakeTimers().setSystemTime(new Date('2026-08-20T12:00:00Z'));
   // due_day 25 is five days out; due_day 2 already passed and wraps to next month.
+  getAllAccountDetails.mockResolvedValue({ data: { c1: { due_day: 25 }, c2: { due_day: 2 } } });
   renderPage({ summary: { accounts: [
-    { id: 'c1', name: 'Near Card', institution: 'A', type: 'credit', ledger: 100, due_day: 25 },
-    { id: 'c2', name: 'Far Card', institution: 'B', type: 'credit', ledger: 100, due_day: 2 },
+    { id: 'c1', name: 'Near Card', institution: 'A', type: 'credit', ledger: 100 },
+    { id: 'c2', name: 'Far Card', institution: 'B', type: 'credit', ledger: 100 },
   ] } });
 
-  expect(await screen.findByText(/Near Card/)).toBeInTheDocument();
-  expect(screen.queryByText(/Far Card/)).toBeNull();
+  const summarySection = await screen.findByRole('region', { name: 'Debt summary' });
+  expect(await within(summarySection).findByText(/Near Card/)).toBeInTheDocument();
+  expect(within(summarySection).queryByText(/Far Card/)).toBeNull();
+  // The line must actually render a day, not silently stay hidden.
+  expect(within(summarySection).getByText('Day 25')).toBeInTheDocument();
+  jest.useRealTimers();
+  await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+});
+
+test('reports the next payment due date, sourced from account details not the summary payload', async () => {
+  jest.useFakeTimers().setSystemTime(new Date('2026-08-01T12:00:00Z'));
+  getAllAccountDetails.mockResolvedValue({ data: DUE_DAY_DETAILS });
+  renderPage();
+
+  const summarySection = await screen.findByRole('region', { name: 'Debt summary' });
+  expect(await within(summarySection).findByText('Next payment due')).toBeInTheDocument();
+  expect(within(summarySection).getByText('Day 2')).toBeInTheDocument();
+  expect(within(summarySection).getByText(/Amex Gold/)).toBeInTheDocument();
   jest.useRealTimers();
   await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
 });
@@ -221,6 +261,14 @@ test('the open date is editable and survives an edit to another field', async ()
   await user.tab();
 
   await waitFor(() => expect(opened).toHaveValue('2016-04-02'));
+
+  // Length of history is the one factor a bank feed cannot infer, so an edit
+  // to any other field must not quietly drop it from the PUT. Assert on the
+  // wire, not just the (optimistically-merged) displayed value — see the
+  // note in AccountsTab.test.js about this test's history.
+  await waitFor(() => expect(upsertAccountDetails).toHaveBeenCalled());
+  const [, payload] = upsertAccountDetails.mock.calls[upsertAccountDetails.mock.calls.length - 1];
+  expect(payload.opened_on).toBe('2016-04-02');
 });
 
 test('a card you just paid off stays listed and is marked paid off', async () => {

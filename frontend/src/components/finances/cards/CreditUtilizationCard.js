@@ -46,7 +46,7 @@ export default function CreditUtilizationCard({ onHide, index, kicker }) {
       loading={loading}
       error={error}
       empty={empty}
-      emptyText="No credit cards found. Add credit limits on the Accounts tab to see utilization."
+      emptyText="No credit cards found. Add credit limits from the card drawer above to see utilization."
       onHide={onHide}
     >
       {carry?.monthly_interest > 0 && (

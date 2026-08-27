@@ -243,7 +243,7 @@ class TestAlertTargets:
         assert alert["tab"] == "budgets"
         assert "link" not in alert
 
-    def test_utilization_alerts_target_the_accounts_tab(self, client):
+    def test_utilization_alerts_target_the_debt_tab(self, client):
         state._manual_accounts["c1"] = {
             "id": "c1", "institution": "Bank", "name": "Card", "type": "credit",
             "subtype": "", "available": 0.0, "ledger": 900.0, "manual": True,
@@ -255,4 +255,4 @@ class TestAlertTargets:
             if a["category"] == "credit"
         ][0]
 
-        assert alert["tab"] == "accounts"
+        assert alert["tab"] == "debt"

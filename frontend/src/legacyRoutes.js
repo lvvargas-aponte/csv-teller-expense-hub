@@ -8,6 +8,7 @@ const TAB_TO_PATH = {
   overview: '/',            // held net worth, payoff and insights — three unrelated things
   transactions: '/transactions',   // alert targets use this id; without it they fall back to Home
   accounts: '/accounts',
+  debt: '/debt',
   investments: '/invest',
   budgets: '/plan/budgets',
   goals: '/plan/goals',
