@@ -47,9 +47,89 @@ function mockGet(config, portfolio, { accounts = [], details = {} } = {}) {
     return Promise.reject(new Error(`Unexpected GET: ${url}`));
   });
   axios.put.mockResolvedValue({ data: {} });
+  axios.delete.mockResolvedValue({ data: {} });
 }
 
 beforeEach(() => jest.clearAllMocks());
+
+// --- Manual balance editing / removal --------------------------------------
+// The file mocks only `axios` (not `api/balances`, which also supplies
+// `getBalancesSummary` and would return `undefined` from every reader if
+// blanket-mocked) so these assert on `axios.put`/`axios.delete` — one level
+// removed from updateAccountBalance/deleteManualAccount, but no new mocking
+// and every pre-existing test in this file keeps reading real data.
+const investBoth = {
+  ...portfolioWithHoldings,
+  by_account: [
+    { account_id: 'a2', account_name: 'Fidelity 401(k)', institution: 'Fidelity', source: 'manual', value: 39500 },
+  ],
+};
+
+const bothAccounts = [
+  {
+    id: 'a1', name: 'Robinhood Individual', institution: 'Robinhood', type: 'investment',
+    manual: false, available: 22000, starting_balance: 22000, ledger: 22000,
+  },
+  {
+    // starting_balance and available deliberately differ, as if a linked
+    // transaction moved the live figure $500 below what's on file. Seeding
+    // the editor from `available` (the displayed number) would walk the
+    // stored balance down by that delta on every save — a data-corruption
+    // bug that shipped once already.
+    id: 'a2', name: 'Fidelity 401(k)', institution: 'Fidelity', type: 'investment',
+    manual: true, available: 39500, starting_balance: 40000, ledger: 40000, linked_txn_count: 3,
+  },
+];
+
+function renderInvestments(overrides = {}) {
+  const {
+    config = { configured: true, connected: true },
+    portfolio = investBoth,
+    accounts = bothAccounts,
+    details = {},
+  } = overrides;
+  mockGet(config, portfolio, { accounts, details });
+  return render(<InvestmentsTab />);
+}
+
+test('a manual retirement account can have its balance corrected', async () => {
+  const user = userEvent.setup();
+  renderInvestments();
+
+  const group = await screen.findByRole('group', { name: /fidelity 401/i });
+  await user.click(within(group).getByRole('button', { name: /edit balance/i }));
+
+  expect(within(group).getByLabelText(/balance|value/i)).toHaveValue(40000);
+
+  await user.clear(within(group).getByLabelText(/balance|value/i));
+  await user.type(within(group).getByLabelText(/balance|value/i), '41000');
+  await user.click(within(group).getByRole('button', { name: /save/i }));
+
+  await waitFor(() => expect(axios.put).toHaveBeenCalledWith(
+    expect.stringContaining('/api/balances/a2'),
+    expect.objectContaining({ available: 41000 }),
+  ));
+});
+
+test('a synced brokerage offers no balance editing', async () => {
+  renderInvestments();
+  const group = await screen.findByRole('group', { name: /robinhood/i });
+  expect(within(group).queryByRole('button', { name: /edit balance/i })).toBeNull();
+  expect(within(group).queryByRole('button', { name: /remove/i })).toBeNull();
+});
+
+test('removing a manual account asks first', async () => {
+  const user = userEvent.setup();
+  jest.spyOn(window, 'confirm').mockReturnValue(false);
+  renderInvestments();
+
+  const group = await screen.findByRole('group', { name: /fidelity 401/i });
+  await user.click(within(group).getByRole('button', { name: /remove/i }));
+
+  expect(window.confirm).toHaveBeenCalled();
+  expect(axios.delete).not.toHaveBeenCalled();
+  window.confirm.mockRestore();
+});
 
 test('shows the not-configured message when SnapTrade keys are missing', async () => {
   mockGet({ configured: false }, null);

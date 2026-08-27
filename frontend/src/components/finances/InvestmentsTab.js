@@ -9,10 +9,13 @@ import {
   listSnapTradeConnections,
 } from '../../api/snaptrade';
 import { getPortfolio, setCostBasis, clearCostBasis } from '../../api/investments';
-import { getBalancesSummary } from '../../api/balances';
+import { getBalancesSummary, updateAccountBalance, deleteManualAccount } from '../../api/balances';
 import { getAllAccountDetails, upsertAccountDetails } from '../../api/accountDetails';
+import { createBalanceEditHandler, createDeleteManualHandler } from './AccountsTab';
+import AddAccountModal from './accounts/AddAccountModal';
 import RetirementSection from './RetirementSection';
 import PortfolioQuality from './PortfolioQuality';
+import Icon from '../ui/Icon';
 
 // Tax treatment (taxable / traditional / Roth / …) has exactly one live
 // consumer — the per-account picker below. It used to live on AccountsTab's
@@ -167,6 +170,100 @@ function CostBasisCell({ holding, onSaved }) {
   );
 }
 
+// Balance editing/removal for a manual investment or retirement account —
+// the same affordance AccountsTab's SimpleAccountRow offers cash accounts,
+// via the same shared handler factories (their manual-only bail is a second
+// line of defence, independent of the `acct.manual` check that decides
+// whether this component renders at all).
+//
+// Seeded from `starting_balance`, not the displayed `available` — the API
+// returns available = starting_balance − txn_delta, and re-saving the
+// displayed figure unchanged would walk the stored balance down by the
+// delta on every save. That shipped as a data-corruption bug once already.
+function ManualAccountControls({ account, onEditBalance, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const [saveError, setSaveError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const openEditor = () => {
+    const starting = account.starting_balance ?? account.available;
+    setValue(starting === null || starting === undefined ? '' : String(starting));
+    setSaveError(null);
+    setEditing(true);
+  };
+
+  const save = async () => {
+    const num = value === '' ? NaN : parseFloat(value);
+    if (!Number.isFinite(num)) {
+      setSaveError('Enter a number.');
+      return;
+    }
+    setBusy(true);
+    setSaveError(null);
+    try {
+      await onEditBalance(account.id, account.manual, { available: num, ledger: num });
+      setEditing(false);
+    } catch {
+      setSaveError('Could not save balance.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      {/* No aria-label here — an "Edit balance" aria-label would also match
+          the drawer's own balance input under getByLabelText(/balance/i).
+          Text content supplies the accessible name for getByRole instead. */}
+      <button
+        type="button"
+        className="ov-icon-btn"
+        onClick={openEditor}
+        title="Edit balance"
+        disabled={busy}
+      >
+        <Icon name="edit" size={16} />
+        <span className="sr-only">Edit balance</span>
+      </button>
+      <button
+        type="button"
+        className="ov-icon-btn ov-icon-btn--danger"
+        onClick={() => onDelete(account.id, account.manual, account.name)}
+        aria-label="Remove"
+        title="Remove"
+        disabled={busy}
+      >
+        <Icon name="close" size={16} />
+      </button>
+      {editing && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12 }}>
+            <span aria-hidden="true" style={{ color: 'var(--text-muted)' }}>Balance</span>
+            <input
+              className="ifield"
+              type="number"
+              step="0.01"
+              aria-label={`Balance, for ${account.name}`}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={busy}
+              style={{ width: 110, fontSize: 12 }}
+            />
+          </div>
+          {saveError && <span style={{ color: 'var(--status-bad-text)', fontSize: 11 }}>{saveError}</span>}
+          <button type="button" className="btn btn-secondary" onClick={() => setEditing(false)} disabled={busy} style={{ fontSize: 11, padding: '2px 8px' }}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary" onClick={save} disabled={busy} style={{ fontSize: 11, padding: '2px 8px' }}>
+            Save
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // InvestmentsTab — connects brokerages via SnapTrade and shows holdings,
 // allocation, and unrealized gain/loss. Mirrors the connect flow used for
 // bank accounts (accounts/AccountsModal.js) but SnapTrade hands back a
@@ -198,19 +295,24 @@ export default function InvestmentsTab({ onOpenSettings }) {
   const [accountsById, setAccountsById] = useState({});
   const [detailsMap, setDetailsMap] = useState({});
   const detailsRef = useRef({});
+  const [addingAccount, setAddingAccount] = useState(false);
+
+  // Extracted so a balance edit/delete/add can refresh the manual-ness and
+  // starting-balance data this reads, not just re-fetch on mount.
+  const fetchSummary = useCallback(() => getBalancesSummary(false)
+    .then((r) => {
+      const map = {};
+      (r.data?.accounts || []).forEach((a) => { map[a.id] = a; });
+      setAccountsById(map);
+    })
+    .catch(() => setAccountsById({})), []);
 
   useEffect(() => {
-    getBalancesSummary(false)
-      .then((r) => {
-        const map = {};
-        (r.data?.accounts || []).forEach((a) => { map[a.id] = a; });
-        setAccountsById(map);
-      })
-      .catch(() => setAccountsById({}));
+    fetchSummary();
     getAllAccountDetails()
       .then((r) => { detailsRef.current = r.data || {}; setDetailsMap(detailsRef.current); })
       .catch(() => { detailsRef.current = {}; setDetailsMap({}); });
-  }, []);
+  }, [fetchSummary]);
 
   const taxTreatmentFor = useCallback((accountId) => {
     const acct = accountsById[accountId];
@@ -258,6 +360,29 @@ export default function InvestmentsTab({ onOpenSettings }) {
         .catch(() => setConnections([])),
     ]);
   }, []);
+
+  // A balance edit, delete, or new manual account all change what the
+  // balances summary reports (manual-ness, starting balance, group value),
+  // so both it and the portfolio need to come back in sync.
+  const refreshAfterWrite = useCallback(
+    () => Promise.all([fetchSummary(), reload()]),
+    [fetchSummary, reload],
+  );
+
+  // Imported from AccountsTab rather than reimplemented — their manual-only
+  // bail is a second line of defence independent of the `acct.manual` check
+  // that gates whether these controls render at all.
+  const handleBalanceEdit = useCallback(
+    (accountId, manual, payload) =>
+      createBalanceEditHandler(updateAccountBalance, refreshAfterWrite)(accountId, manual, payload),
+    [refreshAfterWrite],
+  );
+
+  const handleDeleteManual = useCallback(
+    (accountId, manual, label) =>
+      createDeleteManualHandler(deleteManualAccount, refreshAfterWrite, setError)(accountId, manual, label),
+    [refreshAfterWrite],
+  );
 
   useEffect(() => {
     getSnapTradeConfig()
@@ -387,16 +512,35 @@ export default function InvestmentsTab({ onOpenSettings }) {
     );
   }
 
+  // Manual accounts (retirement, brokerage entered by hand) don't need
+  // SnapTrade, so Task 1's create path stays reachable even when SnapTrade
+  // isn't configured on the server.
+  const addAccountModal = addingAccount && (
+    <AddAccountModal
+      kind="investment"
+      onClose={() => setAddingAccount(false)}
+      onSaved={() => { setAddingAccount(false); refreshAfterWrite(); }}
+    />
+  );
+
   if (config && !config.configured) {
     // The projection reads balances, not positions, so it still has something
     // to say when no brokerage is linked.
     return (
       <div style={{ display: 'grid', gap: 16 }}>
         <div className="finances-section" style={{ color: 'var(--text-muted)' }}>
-          SnapTrade isn&apos;t configured on the server. Add <code>SNAPTRADE_CLIENT_ID</code> and{' '}
-          <code>SNAPTRADE_CONSUMER_KEY</code> to your <code>.env</code>, then restart the backend.
+          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
+            <div>
+              SnapTrade isn&apos;t configured on the server. Add <code>SNAPTRADE_CLIENT_ID</code> and{' '}
+              <code>SNAPTRADE_CONSUMER_KEY</code> to your <code>.env</code>, then restart the backend.
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={() => setAddingAccount(true)}>
+              + Add investment account
+            </button>
+          </div>
         </div>
         <RetirementSection onOpenSettings={onOpenSettings} />
+        {addAccountModal}
       </div>
     );
   }
@@ -429,7 +573,14 @@ export default function InvestmentsTab({ onOpenSettings }) {
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setAddingAccount(true)}
+            >
+              + Add investment account
+            </button>
             <button
               type="button"
               className="btn btn-secondary"
@@ -514,30 +665,44 @@ export default function InvestmentsTab({ onOpenSettings }) {
 
       {groups.map((g) => {
         const tt = taxTreatmentFor(g.account_id);
+        const acct = accountsById[g.account_id];
         return (
-        <div className="finances-section" key={g.account_id}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="finances-section" key={g.account_id} role="group" aria-label={g.account_name}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
             <h2 className="finances-section-title" style={{ margin: 0 }}>
               {g.account_name}
               {g.institution ? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> · {g.institution}</span> : null}
             </h2>
-            {/* Per-account sync is a SnapTrade endpoint — a bank-synced
-                brokerage refreshes with the rest of the balances instead. */}
-            {g.source === 'snaptrade' ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => runAccountSync(g.account_id, g.account_name)}
-                disabled={syncing || syncingAccount === g.account_id}
-                title="Sync only this account"
-              >
-                {syncingAccount === g.account_id ? 'Syncing…' : '↺ Sync'}
-              </button>
-            ) : (
-              <span style={{ fontFamily: "'DM Mono', ui-monospace, monospace", fontWeight: 500 }}>
-                {fmt$(g.value || 0)}
-              </span>
-            )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Per-account sync is a SnapTrade endpoint — a bank-synced
+                  brokerage refreshes with the rest of the balances instead. */}
+              {g.source === 'snaptrade' ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => runAccountSync(g.account_id, g.account_name)}
+                  disabled={syncing || syncingAccount === g.account_id}
+                  title="Sync only this account"
+                >
+                  {syncingAccount === g.account_id ? 'Syncing…' : '↺ Sync'}
+                </button>
+              ) : (
+                <span style={{ fontFamily: "'DM Mono', ui-monospace, monospace", fontWeight: 500 }}>
+                  {fmt$(g.value || 0)}
+                </span>
+              )}
+              {/* A synced balance comes from the bank or SnapTrade; only a
+                  manual account offers editing/removal. `acct.manual` is
+                  read from the balances summary, not the portfolio payload —
+                  the portfolio has no notion of manual-ness. */}
+              {acct?.manual && (
+                <ManualAccountControls
+                  account={acct}
+                  onEditBalance={handleBalanceEdit}
+                  onDelete={handleDeleteManual}
+                />
+              )}
+            </div>
           </div>
           {tt && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12 }}>
@@ -639,6 +804,7 @@ export default function InvestmentsTab({ onOpenSettings }) {
         </div>
         );
       })}
+      {addAccountModal}
     </div>
   );
 }

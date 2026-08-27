@@ -122,6 +122,17 @@ const summary = {
       id: 'mc1', institution: '', name: 'Manual Card', type: 'credit',
       available: 200, ledger: 300, source: 'manual', manual: true,
     },
+    // Phase 5 Task 2 — a manual investment/retirement account gets its own
+    // Edit-balance/Remove controls in InvestmentsTab's group header, the
+    // same nested-interactive-prone shape (buttons inside a header) as
+    // mc1's row above. starting_balance and available deliberately differ
+    // (a linked transaction moved the live figure below what's on file) so
+    // this fixture would catch the balance-seeding bug too, not just axe.
+    {
+      id: 'i1', institution: 'Fidelity', name: 'Fidelity 401(k)', type: 'investment',
+      subtype: 'retirement', available: 39500, starting_balance: 40000, ledger: 40000,
+      source: 'manual', manual: true,
+    },
   ],
 };
 
@@ -139,7 +150,11 @@ const portfolio = {
     { symbol: 'AAPL', value: 200000, pct: 46 },
     { symbol: 'VTI', value: 230000, pct: 54 },
   ],
-  by_account: [],
+  // i1 (Fidelity 401(k)) has no positions, so it only surfaces via
+  // by_account — same as any manual, balance-only investment account.
+  by_account: [
+    { account_id: 'i1', account_name: 'Fidelity 401(k)', institution: 'Fidelity', source: 'manual', value: 39500 },
+  ],
   holdings: [
     {
       account_id: 'a1', account_name: 'Brokerage', institution: 'Fidelity',
@@ -320,8 +335,15 @@ test('the accounts surface has no axe violations', async () => {
   expect(await axe(document.body)).toHaveNoViolations();
 });
 
+// Phase 5 Task 2 restored InvestmentsTab's own Edit-balance/Remove controls
+// on a manual account's group header — confirm this pass actually renders
+// that markup (the i1 fixture), not just axe over the holdings-only groups
+// that were here before.
 test('the investments surface has no axe violations', async () => {
   await renderTab('invest');
+  const group = await screen.findByRole('group', { name: /fidelity 401/i });
+  expect(within(group).getByRole('button', { name: /edit balance/i })).toBeInTheDocument();
+  expect(within(group).getByRole('button', { name: /remove/i })).toBeInTheDocument();
   expect(await axe(document.body)).toHaveNoViolations();
 });
 
