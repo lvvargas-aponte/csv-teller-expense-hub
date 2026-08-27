@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback, useEffect, useMemo, useRef, useState,
+} from 'react';
 import axios from 'axios';
 import { API_BASE } from '../../../utils/formatting';
 import { userMessage } from '../../../utils/errorMessage';
@@ -19,6 +21,11 @@ export function usePayoffPlanner(creditAccounts) {
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [adviceError,   setAdviceError]   = useState(null);
   const [prefilled,     setPrefilled]     = useState(false);
+  // Mirrors each account's full details record so persistApr can send it
+  // back whole — the PUT is create-or-replace, so sending `{ apr }` alone
+  // would silently null out credit_limit, minimum_payment, statement/due
+  // day, opened_on and notes for that account.
+  const detailsRef = useRef({});
 
   // Prefill once when credit accounts become available.
   useEffect(() => {
@@ -30,6 +37,7 @@ export function usePayoffPlanner(creditAccounts) {
         const r = await getAllAccountDetails();
         detailsMap = r.data || {};
       } catch { /* no details configured yet */ }
+      detailsRef.current = detailsMap;
       const enriched = creditAccounts.map((acct) => {
         const details = detailsMap[acct.id] || null;
         return {
@@ -59,9 +67,16 @@ export function usePayoffPlanner(creditAccounts) {
     if (!row?.accountId) return;
     const value = apr === '' || apr === null || apr === undefined ? null : parseFloat(apr);
     if (value !== null && Number.isNaN(value)) return;
+    // Same full-record payload as InvestmentsTab's handleTaxTreatmentChange:
+    // the PUT replaces the side-car record wholesale, so every field not
+    // carried over from what's already on file would be silently cleared.
+    const prev = detailsRef.current[row.accountId] || {};
+    const next = { ...prev, apr: value };
+    detailsRef.current = { ...detailsRef.current, [row.accountId]: next };
     try {
-      await upsertAccountDetails(row.accountId, { apr: value });
+      await upsertAccountDetails(row.accountId, next);
     } catch (e) {
+      detailsRef.current = { ...detailsRef.current, [row.accountId]: prev };
       setError(userMessage(e, 'Failed to save APR.'));
     }
   }, [rows]);

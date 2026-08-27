@@ -372,6 +372,10 @@ export default function InvestmentsTab({ onOpenSettings }) {
   // Imported from AccountsTab rather than reimplemented — their manual-only
   // bail is a second line of defence independent of the `acct.manual` check
   // that gates whether these controls render at all.
+  // No onError here, unlike handleDeleteManual below: ManualAccountControls
+  // already shows its own saveError inline in the row, and this page's
+  // `error` has exactly one consumer (the plain message div above) — a
+  // second copy there would just be noise.
   const handleBalanceEdit = useCallback(
     (accountId, manual, payload) =>
       createBalanceEditHandler(updateAccountBalance, refreshAfterWrite)(accountId, manual, payload),
@@ -388,8 +392,12 @@ export default function InvestmentsTab({ onOpenSettings }) {
     getSnapTradeConfig()
       .then((r) => {
         setConfig(r.data);
-        if (r.data.configured) return reload();
-        return null;
+        // The portfolio is balance-aware even with no brokerage linked (see
+        // the balance-only branch below), and manual accounts — the only
+        // kind reachable without SnapTrade — live in it too. Fetching it
+        // regardless of `configured` is what makes a manually-added 401(k)
+        // actually show up instead of vanishing into an early return.
+        return reload();
       })
       .catch(() => setError('Could not reach the server.'))
       .finally(() => setLoading(false));
@@ -523,27 +531,7 @@ export default function InvestmentsTab({ onOpenSettings }) {
     />
   );
 
-  if (config && !config.configured) {
-    // The projection reads balances, not positions, so it still has something
-    // to say when no brokerage is linked.
-    return (
-      <div style={{ display: 'grid', gap: 16 }}>
-        <div className="finances-section" style={{ color: 'var(--text-muted)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
-            <div>
-              SnapTrade isn&apos;t configured on the server. Add <code>SNAPTRADE_CLIENT_ID</code> and{' '}
-              <code>SNAPTRADE_CONSUMER_KEY</code> to your <code>.env</code>, then restart the backend.
-            </div>
-            <button type="button" className="btn btn-secondary" onClick={() => setAddingAccount(true)}>
-              + Add investment account
-            </button>
-          </div>
-        </div>
-        <RetirementSection onOpenSettings={onOpenSettings} />
-        {addAccountModal}
-      </div>
-    );
-  }
+  const notConfigured = config && !config.configured;
 
   const hasHoldings = portfolio && portfolio.holding_count > 0;
   const gain = portfolio?.total_gain ?? 0;
@@ -581,15 +569,17 @@ export default function InvestmentsTab({ onOpenSettings }) {
             >
               + Add investment account
             </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={handleConnect}
-              disabled={connecting || syncing}
-            >
-              {connecting ? 'Connecting…' : '+ Connect a brokerage'}
-            </button>
-            {connections.length > 0 && (
+            {!notConfigured && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleConnect}
+                disabled={connecting || syncing}
+              >
+                {connecting ? 'Connecting…' : '+ Connect a brokerage'}
+              </button>
+            )}
+            {!notConfigured && connections.length > 0 && (
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -601,6 +591,18 @@ export default function InvestmentsTab({ onOpenSettings }) {
             )}
           </div>
         </div>
+
+        {notConfigured && (
+          // The portfolio still reads balances (manual accounts included), so
+          // this is a banner alongside the normal render rather than a
+          // separate early-return page — a manually-added 401(k) needs to
+          // reach the account groups below regardless of SnapTrade config.
+          <div style={{ marginTop: 10, color: 'var(--text-muted)', fontSize: 13 }}>
+            SnapTrade isn&apos;t configured on the server. Add <code>SNAPTRADE_CLIENT_ID</code> and{' '}
+            <code>SNAPTRADE_CONSUMER_KEY</code> to your <code>.env</code>, then restart the backend
+            to connect a brokerage. You can still add and manage accounts by hand below.
+          </div>
+        )}
 
         {notice && <div style={{ marginTop: 10, color: 'var(--status-good-text)', fontSize: 13 }}>{notice}</div>}
         {error && <div style={{ marginTop: 10, color: 'var(--status-bad-text)', fontSize: 13 }}>{error}</div>}

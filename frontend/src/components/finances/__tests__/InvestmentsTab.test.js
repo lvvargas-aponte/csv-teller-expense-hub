@@ -137,6 +137,27 @@ test('shows the not-configured message when SnapTrade keys are missing', async (
   expect(await screen.findByText('SNAPTRADE_CLIENT_ID')).toBeInTheDocument();
 });
 
+// FIX 1 — with SnapTrade unconfigured, the not-configured branch used to
+// early-return before the account groups ever rendered, so a manually
+// created 401(k) was invisible: no account, no total, no way to edit or
+// remove it. The groups must render on this branch too.
+test('a manual account still shows up when SnapTrade is not configured', async () => {
+  mockGet({ configured: false }, investBoth, { accounts: bothAccounts });
+  render(<InvestmentsTab />);
+
+  expect(await screen.findByText('SNAPTRADE_CLIENT_ID')).toBeInTheDocument();
+  expect(await screen.findByRole('group', { name: /fidelity 401/i })).toBeInTheDocument();
+});
+
+test('Edit and Remove controls for a manual account are present when SnapTrade is not configured', async () => {
+  mockGet({ configured: false }, investBoth, { accounts: bothAccounts });
+  render(<InvestmentsTab />);
+
+  const group = await screen.findByRole('group', { name: /fidelity 401/i });
+  expect(within(group).getByRole('button', { name: /edit balance/i })).toBeInTheDocument();
+  expect(within(group).getByRole('button', { name: /remove/i })).toBeInTheDocument();
+});
+
 test('renders holdings grouped by account when configured', async () => {
   mockGet({ configured: true, connected: true }, portfolioWithHoldings);
   render(<InvestmentsTab />);
