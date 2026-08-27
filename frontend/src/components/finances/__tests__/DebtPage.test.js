@@ -55,3 +55,16 @@ test('survives a credit-health outage without blanking the page', async () => {
   expect(await screen.findByRole('heading', { level: 1, name: 'Debt' })).toBeInTheDocument();
   expect(screen.getByText(/6,060/)).toBeInTheDocument();
 });
+
+test('the next payment is the nearest upcoming date, not the smallest day number', async () => {
+  jest.useFakeTimers().setSystemTime(new Date('2026-08-20T12:00:00Z'));
+  // due_day 25 is five days out; due_day 2 already passed and wraps to next month.
+  renderPage({ summary: { accounts: [
+    { id: 'c1', name: 'Near Card', institution: 'A', type: 'credit', ledger: 100, due_day: 25 },
+    { id: 'c2', name: 'Far Card', institution: 'B', type: 'credit', ledger: 100, due_day: 2 },
+  ] } });
+
+  expect(await screen.findByText(/Near Card/)).toBeInTheDocument();
+  expect(screen.queryByText(/Far Card/)).toBeNull();
+  jest.useRealTimers();
+});

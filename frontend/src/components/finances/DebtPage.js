@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { getCreditHealth } from '../../api/dashboard';
 import { classifyAccountBucket } from '../../utils/accountBucket';
+import { daysUntilNextDue } from './accounts/dueDate';
 import Num from './Num';
 
 // Same convention as CreditUtilizationCard: the figure's colour carries the
@@ -37,8 +38,10 @@ export default function DebtPage({ summary, summaryLoading, summaryError, onRefr
 
   const nextDue = useMemo(() => {
     return creditAccounts
-      .filter((a) => a.due_day !== null && a.due_day !== undefined)
-      .reduce((soonest, a) => (soonest === null || a.due_day < soonest.due_day ? a : soonest), null);
+      .map((a) => ({ account: a, days: daysUntilNextDue(a.due_day) }))
+      .filter(({ days }) => days !== null && days !== undefined)
+      .reduce((soonest, cur) => (soonest === null || cur.days < soonest.days ? cur : soonest), null)
+      ?.account ?? null;
   }, [creditAccounts]);
 
   return (
