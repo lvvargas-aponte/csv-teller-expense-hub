@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
 import { axe } from 'jest-axe';
@@ -114,6 +114,10 @@ const summary = {
     // buttons. A manual credit account is the surface that had the
     // nested-interactive violation (buttons nested inside a role="button"
     // row), so the axe pass needs one to actually render that markup.
+    //
+    // Phase 4 Task 2 moved the credit list (and AccountListRow with it) from
+    // /accounts to /debt. This fixture still renders AccountListRow — just
+    // on the debt surface's axe pass below, not the accounts one.
     {
       id: 'mc1', institution: '', name: 'Manual Card', type: 'credit',
       available: 200, ledger: 300, source: 'manual', manual: true,
@@ -318,6 +322,20 @@ test('the accounts surface has no axe violations', async () => {
 
 test('the investments surface has no axe violations', async () => {
   await renderTab('invest');
+  expect(await axe(document.body)).toHaveNoViolations();
+});
+
+// AccountListRow — the component that carried Phase 3's nested-interactive
+// violation (real <button>s inside a role="button" row) — moved from
+// /accounts to /debt with the credit list in Phase 4 Task 2. Confirm this
+// pass actually reaches that markup: the `mc1` manual credit fixture must
+// render as an expandable row with its own Edit-balance/Remove buttons here,
+// not just be present in the mocked data.
+test('the debt surface has no axe violations', async () => {
+  await renderTab('debt');
+  const row = await screen.findByRole('group', { name: /manual card/i });
+  expect(within(row).getByRole('button', { name: /edit balance/i })).toBeInTheDocument();
+  expect(within(row).getByRole('button', { name: /remove/i })).toBeInTheDocument();
   expect(await axe(document.body)).toHaveNoViolations();
 });
 

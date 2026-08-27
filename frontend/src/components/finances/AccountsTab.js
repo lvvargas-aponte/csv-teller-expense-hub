@@ -9,7 +9,6 @@ import {
 import useSyncAll from '../../hooks/useSyncAll';
 import ConnectionsStrip from './accounts/ConnectionsStrip';
 import AccountSection from './accounts/AccountSection';
-import AccountListRow from './accounts/AccountListRow';
 import SimpleAccountRow from './accounts/SimpleAccountRow';
 import AddAccountModal from './accounts/AddAccountModal';
 import AssetRow from './accounts/AssetRow';
@@ -118,32 +117,13 @@ export default function AccountsTab({
 
   // Optimistic-merge: apply the edit locally so the field snaps back with the
   // new value, then PUT in the background. On failure we revert and let the
-  // user see the original value.
-  const handleFieldUpdate = useCallback(async (accountId, field, value) => {
-    const prev = detailsRef.current[accountId] || {};
-    const next = { ...prev, [field]: value };
-    detailsRef.current = { ...detailsRef.current, [accountId]: next };
-    setDetailsMap(detailsRef.current);
-
-    const payload = {
-      apr:             toNum(next.apr),
-      credit_limit:    toNum(next.credit_limit),
-      minimum_payment: toNum(next.minimum_payment),
-      statement_day:   toInt(next.statement_day),
-      due_day:         toInt(next.due_day),
-      opened_on:       next.opened_on || null,
-      valuation_updated_on: next.valuation_updated_on || null,
-      secured_by_account_id: next.secured_by_account_id || null,
-      tax_treatment:   next.tax_treatment || null,
-      notes:           next.notes ?? '',
-    };
-    try {
-      await upsertAccountDetails(accountId, payload);
-    } catch {
-      detailsRef.current = { ...detailsRef.current, [accountId]: prev };
-      setDetailsMap(detailsRef.current);
-    }
-  }, []);
+  // user see the original value. The handler itself is a shared factory (see
+  // below) so DebtPage's credit drawer can use the exact same merge/PUT/
+  // revert logic against its own detailsMap instead of reimplementing it.
+  const handleFieldUpdate = useMemo(
+    () => createFieldUpdateHandler(detailsRef, setDetailsMap),
+    [],
+  );
 
   // Revaluing a real asset is the only thing that moves its worth — no
   // transaction does, and nothing estimates it. The new figure and the date
@@ -254,21 +234,11 @@ export default function AccountsTab({
         count={countLabel(creditRows.length)}
         total={stats.totalOwed}
       >
-        {creditRows.map((row) => (
-          <AccountListRow
-            key={row.id}
-            row={row}
-            needsReconnect={!row.manual && brokenNames.has(row.institution)}
-            cacheFetchedAt={cacheFetchedAt}
-            onUpdate={(field, value) => handleFieldUpdate(row.id, field, value)}
-            onEditBalance={handleBalanceEdit}
-            onDelete={handleDeleteManual}
-          />
-        ))}
-        <button type="button" className="acct-add-row" onClick={() => setAddingKind('credit')}>
-          <span aria-hidden="true">+</span>
-          <span>Add credit card or loan</span>
-        </button>
+        <Link to="/debt" className="acct-add-row">
+          <span>
+            {countLabel(creditRows.length)} — view in Debt
+          </span>
+        </Link>
       </AccountSection>
 
       <AccountSection
@@ -348,7 +318,9 @@ export default function AccountsTab({
   );
 }
 
-function countLabel(n) {
+// Exported so DebtPage's credit section header uses the same wording as
+// every other account-group header instead of a second copy of the format.
+export function countLabel(n) {
   if (n === 0) return 'none yet';
   return `${n} account${n === 1 ? '' : 's'}`;
 }
@@ -390,6 +362,38 @@ export function createDeleteManualHandler(deleteAccount, onRefresh, onError) {
       await onRefresh?.();
     } catch {
       onError?.('Could not remove the account — please try again.');
+    }
+  };
+}
+
+// Exported so DebtPage's credit drawer (Credit limit, APR, min payment,
+// statement/due day, opened-on) can write through the same optimistic
+// merge/PUT/revert path this tab uses for its own detailsMap, instead of a
+// second implementation of the payload shape drifting into existence.
+export function createFieldUpdateHandler(detailsRef, setDetailsMap) {
+  return async (accountId, field, value) => {
+    const prev = detailsRef.current[accountId] || {};
+    const next = { ...prev, [field]: value };
+    detailsRef.current = { ...detailsRef.current, [accountId]: next };
+    setDetailsMap(detailsRef.current);
+
+    const payload = {
+      apr:             toNum(next.apr),
+      credit_limit:    toNum(next.credit_limit),
+      minimum_payment: toNum(next.minimum_payment),
+      statement_day:   toInt(next.statement_day),
+      due_day:         toInt(next.due_day),
+      opened_on:       next.opened_on || null,
+      valuation_updated_on: next.valuation_updated_on || null,
+      secured_by_account_id: next.secured_by_account_id || null,
+      tax_treatment:   next.tax_treatment || null,
+      notes:           next.notes ?? '',
+    };
+    try {
+      await upsertAccountDetails(accountId, payload);
+    } catch {
+      detailsRef.current = { ...detailsRef.current, [accountId]: prev };
+      setDetailsMap(detailsRef.current);
     }
   };
 }

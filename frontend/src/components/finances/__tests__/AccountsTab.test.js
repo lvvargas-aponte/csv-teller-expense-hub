@@ -10,12 +10,10 @@ jest.mock('axios');
 jest.mock('../../../api/balances');
 jest.mock('../../accounts/AccountsModal', () => () => <div data-testid="accounts-modal" />);
 
-const LONG_NAME = 'Customized Cash Rewards Visa Signature 7473';
-
 const creditAccount = (over = {}) => ({
   id: 'c1',
   institution: 'Bank of America',
-  name: LONG_NAME,
+  name: 'Bank of America Card',
   type: 'credit',
   available: 2011.65,
   ledger: 1488.35,
@@ -59,80 +57,13 @@ const renderTab = (accounts, opts = {}) => {
   );
 };
 
-// Each expandable account row is a button whose accessible name carries the
-// account name, so we can address a row without reaching into the DOM.
-const findRow = (name) => screen.findByRole('button', { name: new RegExp(name) });
-
 beforeEach(() => jest.clearAllMocks());
 
-test('a long account name renders in full, with no truncation', async () => {
-  renderTab([creditAccount()]);
-
-  const row = await findRow(LONG_NAME);
-  // The old table clipped names with text-overflow; the row must not.
-  expect(within(row).getByText(LONG_NAME)).toBeInTheDocument();
-});
-
-test('empty metadata is omitted from the meta line rather than shown as dashes', async () => {
-  renderTab([creditAccount()], { details: {} });
-
-  const row = await findRow(LONG_NAME);
-  expect(row).toHaveTextContent('Bank of America');
-  expect(row).not.toHaveTextContent('—');
-  expect(row).not.toHaveTextContent(/APR|used|due day|min \$/);
-});
-
-test('populated metadata appears in the meta line', async () => {
-  renderTab([creditAccount()], {
-    details: { c1: { credit_limit: 3500, apr: 21.99, minimum_payment: 37 } },
-  });
-
-  const row = await findRow(LONG_NAME);
-  expect(row).toHaveTextContent('43% used');
-  expect(row).toHaveTextContent('21.99% APR');
-  expect(row).toHaveTextContent('min $37.00');
-});
-
-test('editing the credit limit on a manual card recomputes its available credit', async () => {
-  const user = userEvent.setup();
-  renderTab(
-    [creditAccount({ id: 'm1', name: 'Discover', manual: true, ledger: 1000, available: 0 })],
-    { details: { m1: { credit_limit: 4000 } } },
-  );
-
-  const row = await findRow('Discover');
-  expect(within(row).getByText('$3,000.00 available')).toBeInTheDocument();
-
-  await user.click(row);
-  const limitInput = screen.getByPlaceholderText('$ limit');
-  await user.clear(limitInput);
-  await user.type(limitInput, '5000');
-  await user.tab();
-
-  await waitFor(() => {
-    expect(within(row).getByText('$4,000.00 available')).toBeInTheDocument();
-  });
-  expect(axios.put).toHaveBeenCalled();
-});
-
-test("a synced card keeps the bank's available credit when the limit is edited", async () => {
-  const user = userEvent.setup();
-  renderTab([creditAccount({ available: 2011.65, ledger: 1488.35 })], {
-    details: { c1: { credit_limit: 3500 } },
-  });
-
-  const row = await findRow(LONG_NAME);
-  await user.click(row);
-  const limitInput = screen.getByPlaceholderText('$ limit');
-  await user.clear(limitInput);
-  await user.type(limitInput, '9000');
-  await user.tab();
-
-  await waitFor(() => expect(axios.put).toHaveBeenCalled());
-  // Utilization follows the new limit, but availability stays the bank's number.
-  expect(within(row).getByText('$2,011.65 available')).toBeInTheDocument();
-  expect(row).toHaveTextContent('17% used');
-});
+// A long name, its meta line and the credit-limit/APR editing behaviour used
+// to be covered here through creditAccount() rows. That markup — and the
+// coverage for it — moved to DebtPage.test.js along with the credit list
+// (Phase 4 Task 2). AccountsTab now only summarises and links to /debt; see
+// 'credit is summarised and linked, not listed' below.
 
 test('a broken connection is announced once at the top, not per row', async () => {
   renderTab([creditAccount()], {
@@ -146,9 +77,6 @@ test('a broken connection is announced once at the top, not per row', async () =
   const strip = await screen.findByText(/needs to be reconnected/);
   expect(strip).toHaveTextContent('Bank of America');
   expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
-
-  const row = await findRow(LONG_NAME);
-  expect(row).toHaveTextContent('needs reconnect');
 });
 
 test('healthy connections collapse to a single line', async () => {
@@ -171,6 +99,14 @@ test('rendering the page makes no aggregator calls', async () => {
   const urls = axios.get.mock.calls.map(([url]) => url);
   expect(urls).toHaveLength(1);
   expect(urls[0]).toContain('/api/accounts/details');
+});
+
+test('credit is summarised and linked, not listed', async () => {
+  renderTab([creditAccount({ name: 'Chase Sapphire' })]);
+
+  const link = await screen.findByRole('link', { name: /debt/i });
+  expect(link).toHaveAttribute('href', '/debt');
+  expect(screen.queryByText(/chase sapphire/i)).toBeNull();
 });
 
 // One classifier, front and back: a retirement account the user tracks as a
@@ -210,30 +146,6 @@ test('a depository account with a retirement subtype groups under Investments', 
   expect(cash).toHaveTextContent('1 account');
   expect(cash).toHaveTextContent('$100.00');
   expect(cash).not.toHaveTextContent('$5,100.00');
-});
-
-test('the open date is editable and survives an edit to another field', async () => {
-  const user = userEvent.setup();
-  renderTab([creditAccount({ id: 'c1' })], {
-    details: { c1: { credit_limit: 3500, opened_on: '2016-04-02' } },
-  });
-
-  const row = await findRow(LONG_NAME);
-  await user.click(row);
-
-  const opened = screen.getByPlaceholderText('YYYY-MM-DD');
-  expect(opened).toHaveValue('2016-04-02');
-
-  // Length of history is the one factor a bank feed cannot infer, so an edit
-  // to any other field must not quietly drop it from the PUT.
-  const limitInput = screen.getByPlaceholderText('$ limit');
-  await user.clear(limitInput);
-  await user.type(limitInput, '5000');
-  await user.tab();
-
-  await waitFor(() => expect(axios.put).toHaveBeenCalled());
-  const [, payload] = axios.put.mock.calls[axios.put.mock.calls.length - 1];
-  expect(payload.opened_on).toBe('2016-04-02');
 });
 
 // --- Real assets -----------------------------------------------------------
@@ -325,6 +237,32 @@ test('an asset row shows its equity and lets a loan be linked to it', async () =
     expect.stringContaining('/api/accounts/a1/details'),
     expect.objectContaining({ secured_by_account_id: 'm1' }),
   ));
+});
+
+// Collapsing the credit section to a summary (Phase 4 Task 2) must not stop
+// computing creditRows — AssetRow still reads it as `creditAccounts` for this
+// picker, and a task that deletes the section body along with the
+// computation would silently empty this dropdown.
+const houseAccount = (over = {}) => ({
+  id: 'house1',
+  institution: '',
+  name: 'House',
+  type: 'asset',
+  subtype: 'home',
+  available: 450000,
+  ledger: 450000,
+  source: 'manual',
+  manual: true,
+  valuation_updated_on: '2026-08-01',
+  ...over,
+});
+
+test('a property can still be linked to the loan securing it', async () => {
+  renderTab([houseAccount(), creditAccount({ name: 'Chase Sapphire' })]);
+
+  const assets = await sectionNamed('Property & vehicles');
+  const picker = within(assets).getByLabelText(/secured by/i);
+  expect(within(picker).getByRole('option', { name: /chase sapphire/i })).toBeInTheDocument();
 });
 
 const investmentAccount = (over = {}) => ({
@@ -541,25 +479,9 @@ test('investments are summarised, not listed twice', async () => {
   expect(screen.queryByText(/employer 401\(k\)/i)).toBeNull();
 });
 
-// --- Coverage carried over from the deleted BalancesSection.test.js -------
-// A card just paid off must stay listed rather than vanish from the page
-// where it would be closed or edited (accountMath/buildCreditRow does not
-// filter zero-balance cards out), and the zero balance must be called out in
-// text, not just the faint colour the row already applies to it — a
-// colour-blind user can't otherwise tell "paid off" from any other card.
-test('a card you just paid off stays listed and is marked paid off', async () => {
-  renderAccountsTab({ accounts: [creditAccount({ id: 'pc1', name: 'Cleared Visa', ledger: 0 })] });
-
-  const row = await findRow('Cleared Visa');
-  expect(within(row).getByText('Paid off')).toBeInTheDocument();
-});
-
-test('a card carrying a balance is not marked paid off', async () => {
-  renderAccountsTab({ accounts: [creditAccount({ id: 'bc1', name: 'Carrying Balance Card', ledger: 500 })] });
-
-  const row = await findRow('Carrying Balance Card');
-  expect(within(row).queryByText('Paid off')).toBeNull();
-});
+// The "paid off" text badge and the zero-balance-not-filtered behaviour it
+// covers are still exercised, now on DebtPage.test.js, where the rows that
+// carry that markup live.
 
 test('the delete handler refuses a non-manual account, even called directly', async () => {
   jest.spyOn(window, 'confirm');

@@ -1,7 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback, useEffect, useMemo, useRef, useState,
+} from 'react';
 import { getCreditHealth } from '../../api/dashboard';
+import { getAllAccountDetails } from '../../api/accountDetails';
+import { updateAccountBalance, deleteManualAccount } from '../../api/balances';
 import { classifyAccountBucket } from '../../utils/accountBucket';
 import { daysUntilNextDue } from './accounts/dueDate';
+import AccountSection from './accounts/AccountSection';
+import AccountListRow from './accounts/AccountListRow';
+import AddAccountModal from './accounts/AddAccountModal';
+import useConnectionHealth from './accounts/useConnectionHealth';
+import { buildCreditRow, summarize } from './accounts/accountMath';
+import {
+  createBalanceEditHandler, createDeleteManualHandler, createFieldUpdateHandler, countLabel,
+} from './AccountsTab';
 import Num from './Num';
 
 // Same convention as CreditUtilizationCard: the figure's colour carries the
@@ -26,23 +38,62 @@ export default function DebtPage({ summary, summaryLoading, summaryError, onRefr
       .catch(() => setCreditHealthError('Could not load utilization.'));
   }, []);
 
+  // Account-detail metadata (limit, APR, statement/due day, opened-on) — the
+  // same store AccountsTab reads, loaded here too since the drawer that edits
+  // it now lives on this page.
+  const [detailsMap, setDetailsMap] = useState({});
+  const detailsRef = useRef({});
+  const [detailsLoaded, setDetailsLoaded] = useState(false);
+  const [addingKind, setAddingKind] = useState(null);
+  const [localError, setLocalError] = useState(null);
+
+  useEffect(() => {
+    getAllAccountDetails()
+      .then((r) => { detailsRef.current = r.data || {}; setDetailsMap(detailsRef.current); })
+      .catch(() => { detailsRef.current = {}; setDetailsMap({}); })
+      .finally(() => setDetailsLoaded(true));
+  }, []);
+
   const creditAccounts = useMemo(
     () => summary?.accounts?.filter((a) => classifyAccountBucket(a) === 'credit') ?? [],
     [summary],
   );
 
-  const totalOwed = useMemo(
-    () => creditAccounts.reduce((sum, a) => sum + (parseFloat(a.ledger) || 0), 0),
-    [creditAccounts],
+  const creditRows = useMemo(
+    () => creditAccounts.map((a) => buildCreditRow(a, detailsMap[a.id] || {})),
+    [creditAccounts, detailsMap],
   );
 
-  const nextDue = useMemo(() => {
-    return creditAccounts
-      .map((a) => ({ account: a, days: daysUntilNextDue(a.due_day) }))
-      .filter(({ days }) => days !== null && days !== undefined)
-      .reduce((soonest, cur) => (soonest === null || cur.days < soonest.days ? cur : soonest), null)
-      ?.account ?? null;
-  }, [creditAccounts]);
+  const totalOwed = useMemo(() => summarize(creditRows, []).totalOwed, [creditRows]);
+
+  const nextDue = useMemo(() => creditAccounts
+    .map((a) => ({ account: a, days: daysUntilNextDue(a.due_day) }))
+    .filter(({ days }) => days !== null && days !== undefined)
+    .reduce((soonest, cur) => (soonest === null || cur.days < soonest.days ? cur : soonest), null)
+    ?.account ?? null, [creditAccounts]);
+
+  const health = useConnectionHealth(summary?.connections);
+  const brokenNames = useMemo(
+    () => new Set(health.broken.map((i) => i.institution)),
+    [health.broken],
+  );
+
+  const handleFieldUpdate = useMemo(
+    () => createFieldUpdateHandler(detailsRef, setDetailsMap),
+    [],
+  );
+
+  const handleBalanceEdit = useCallback(
+    (accountId, manual, payload) =>
+      createBalanceEditHandler(updateAccountBalance, onRefresh)(accountId, manual, payload),
+    [onRefresh],
+  );
+
+  const handleDeleteManual = useCallback(
+    (accountId, manual, label) =>
+      createDeleteManualHandler(deleteManualAccount, onRefresh, setLocalError)(accountId, manual, label),
+    [onRefresh],
+  );
 
   return (
     <>
@@ -52,6 +103,9 @@ export default function DebtPage({ summary, summaryLoading, summaryError, onRefr
       <div className="eh-content">
         {summaryError && (
           <div className="eh-error" role="alert">{summaryError}</div>
+        )}
+        {localError && (
+          <div className="eh-error" role="alert">{localError}</div>
         )}
         <section aria-label="Debt summary" style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 20 }}>
           <div>
@@ -90,6 +144,39 @@ export default function DebtPage({ summary, summaryLoading, summaryError, onRefr
             </div>
           )}
         </section>
+
+        <AccountSection
+          title="Credit cards & loans"
+          count={countLabel(creditRows.length)}
+          total={totalOwed}
+        >
+          {detailsLoaded ? creditRows.map((row) => (
+            <AccountListRow
+              key={row.id}
+              row={row}
+              needsReconnect={!row.manual && brokenNames.has(row.institution)}
+              cacheFetchedAt={summary?.cache_fetched_at}
+              onUpdate={(field, value) => handleFieldUpdate(row.id, field, value)}
+              onEditBalance={handleBalanceEdit}
+              onDelete={handleDeleteManual}
+            />
+          )) : (
+            <div className="acct-empty-note">Loading…</div>
+          )}
+          <button type="button" className="acct-add-row" onClick={() => setAddingKind('credit')}>
+            <span aria-hidden="true">+</span>
+            <span>Add credit card or loan</span>
+          </button>
+        </AccountSection>
+
+        {addingKind && (
+          <AddAccountModal
+            kind={addingKind}
+            onClose={() => setAddingKind(null)}
+            onSaved={() => onRefresh?.()}
+          />
+        )}
+
         {onRefresh && (
           <button type="button" onClick={onRefresh} style={{
             background: 'none', border: 'none', padding: 0, font: 'inherit',
