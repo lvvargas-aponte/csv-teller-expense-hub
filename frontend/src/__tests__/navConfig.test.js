@@ -25,6 +25,11 @@ test('every path is unique', () => {
   expect(new Set(ALL_PATHS).size).toBe(ALL_PATHS.length);
 });
 
+test('ALL_PATHS flattens grandchildren, not just children', () => {
+  expect(ALL_PATHS).toContain('/plan/commitments/due');
+  expect(ALL_PATHS).toContain('/plan/commitments/recurring');
+});
+
 test('child paths are nested under their parent', () => {
   for (const section of NAV) {
     for (const child of section.children ?? []) {

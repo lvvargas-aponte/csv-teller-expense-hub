@@ -24,16 +24,31 @@ export const NAV = [
     children: [
       { id: 'budgets', path: '/plan/budgets', label: 'Budgets', icon: 'plan' },
       { id: 'goals', path: '/plan/goals', label: 'Goals', icon: 'goal' },
-      { id: 'commitments', path: '/plan/commitments', label: 'Commitments', icon: 'calendar' },
+      {
+        id: 'commitments',
+        path: '/plan/commitments',
+        label: 'Commitments',
+        icon: 'calendar',
+        children: [
+          { id: 'due', path: '/plan/commitments/due', label: 'Due soon' },
+          { id: 'recurring', path: '/plan/commitments/recurring', label: 'Recurring' },
+        ],
+      },
     ],
   },
   { id: 'ask', path: '/ask', label: 'Ask', icon: 'ask' },
   { id: 'settings', path: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
-export const ALL_PATHS = NAV.flatMap(
-  (s) => [s.path, ...(s.children ?? []).map((c) => c.path)],
-).filter((p, i, all) => all.indexOf(p) === i);
+// Flattens every level below the top, so a grandchild (e.g. Commitments'
+// due/recurring views) is covered by route-coverage checks even though the
+// sidebar only ever renders one level of children.
+function flattenPaths(nodes) {
+  return nodes.flatMap((n) => [n.path, ...flattenPaths(n.children ?? [])]);
+}
+
+export const ALL_PATHS = flattenPaths(NAV)
+  .filter((p, i, all) => all.indexOf(p) === i);
 
 // Prefix match on path SEGMENTS, so /accountsomething never resolves to
 // /accounts.

@@ -1248,6 +1248,34 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   box-shadow: 0 1px 3px rgba(5,150,105,0.06);
 }
 
+/* Sub-tabs within a page (Commitments: Due soon / Recurring). Same pill
+   language as the dashboard range picker, one level down. */
+.eh-subtabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 16px;
+  background: var(--accent-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.eh-subtabs button {
+  border: none;
+  background: transparent;
+  padding: 5px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.eh-subtabs button.eh-subtab--active {
+  background: var(--bg-card);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(5,150,105,0.06);
+}
+
 .eh-content { padding: 24px 28px; }
 
 /* Health banner */

@@ -125,6 +125,35 @@ test.each(ALL_PATHS.filter((p) => p !== '/'))(
   },
 );
 
+test('commitments due-soon shows bills and recurring charges together', async () => {
+  renderAt('/plan/commitments/due');
+  expect(await screen.findByRole('heading', { level: 1, name: 'Commitments' })).toBeInTheDocument();
+  expect(await screen.findByText('Upcoming Bills')).toBeInTheDocument();
+  expect(await screen.findByText('Recurring Charges')).toBeInTheDocument();
+});
+
+test('commitments recurring shows subscriptions', async () => {
+  renderAt('/plan/commitments/recurring');
+  expect(await screen.findByRole('heading', { level: 1, name: 'Commitments' })).toBeInTheDocument();
+  expect(await screen.findByText(/subscriptions & recurring charges/i)).toBeInTheDocument();
+});
+
+test('the bare commitments path lands on due soon', async () => {
+  renderAt('/plan/commitments');
+  expect(await screen.findByText('Upcoming Bills')).toBeInTheDocument();
+});
+
+test('each commitments view fetches only what it shows', async () => {
+  // Stacking all three sections made every visit fire all three fetches.
+  // Splitting them is the point; assert it actually happened. axios is
+  // already mocked module-wide above, so this needs no extra mocking —
+  // just check the URL never reaches the subscriptions endpoint.
+  renderAt('/plan/commitments/due');
+  await screen.findByText('Upcoming Bills');
+  const subscriptionCalls = axios.get.mock.calls.filter(([url]) => url.includes('/api/subscriptions'));
+  expect(subscriptionCalls).toHaveLength(0);
+});
+
 test('insight actions point at real routes, not the pre-Phase-2 ones', () => {
   const { buildInsights } = require('../utils/insightBuilder');
 

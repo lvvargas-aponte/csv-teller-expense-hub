@@ -15,8 +15,13 @@ import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
 import { getBalancesSummary } from '../../api/balances';
 import { pathForTab } from '../../legacyRoutes';
+import { NAV } from '../../navConfig';
 
-export default function FinancesPage({ section, view, healthScore, healthSignals }) {
+const COMMITMENTS_TABS = NAV
+  .find((s) => s.id === 'plan').children
+  .find((c) => c.id === 'commitments').children;
+
+export default function FinancesPage({ section, view, subView, healthScore, healthSignals }) {
   const navigate = useNavigate();
   const { pane } = useParams();
 
@@ -120,11 +125,14 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
 
         {section === 'plan' && view === 'commitments' && (
           <SimplePage title="Commitments">
-            <div style={{ display: 'grid', gap: 16 }}>
-              <UpcomingBillsCard onNavigateToAccounts={() => navigate('/debt')} />
-              <RecurringChargesCard variant="detail" />
-            </div>
-            <SubscriptionsSection />
+            <SubTabs tabs={COMMITMENTS_TABS} active={subView} onNavigate={navigate} />
+            {subView === 'due' && (
+              <div style={{ display: 'grid', gap: 16 }}>
+                <UpcomingBillsCard onNavigateToAccounts={() => navigate('/debt')} />
+                <RecurringChargesCard variant="detail" />
+              </div>
+            )}
+            {subView === 'recurring' && <SubscriptionsSection />}
           </SimplePage>
         )}
 
@@ -146,6 +154,24 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
         )}
       </main>
     </>
+  );
+}
+
+function SubTabs({ tabs, active, onNavigate }) {
+  return (
+    <div className="eh-subtabs">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          className={tab.id === active ? 'eh-subtab--active' : ''}
+          aria-current={tab.id === active ? 'page' : undefined}
+          onClick={() => onNavigate(tab.path)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

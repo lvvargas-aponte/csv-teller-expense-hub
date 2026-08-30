@@ -80,7 +80,9 @@ export default function App() {
             <Route path="/plan" element={<Navigate to="/plan/budgets" replace />} />
             <Route path="/plan/budgets" element={<FinancesPage section="plan" view="budgets" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/plan/goals" element={<FinancesPage section="plan" view="goals" healthScore={healthScore} healthSignals={healthSignals} />} />
-            <Route path="/plan/commitments" element={<FinancesPage section="plan" view="commitments" healthScore={healthScore} healthSignals={healthSignals} />} />
+            <Route path="/plan/commitments" element={<Navigate to="/plan/commitments/due" replace />} />
+            <Route path="/plan/commitments/due" element={<FinancesPage section="plan" view="commitments" subView="due" healthScore={healthScore} healthSignals={healthSignals} />} />
+            <Route path="/plan/commitments/recurring" element={<FinancesPage section="plan" view="commitments" subView="recurring" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/ask" element={<FinancesPage section="ask" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/settings" element={<FinancesPage section="settings" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/settings/:pane" element={<FinancesPage section="settings" healthScore={healthScore} healthSignals={healthSignals} />} />
