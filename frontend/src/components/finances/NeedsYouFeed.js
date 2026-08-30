@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardCard from './cards/DashboardCard';
 import Icon from '../ui/Icon';
 import { getAlerts } from '../../api/dashboard';
@@ -7,8 +7,17 @@ import { getAllTransactions } from '../../api/transactions';
 import { getAllAccountDetails } from '../../api/accountDetails';
 import { buildInsights } from '../../utils/insightBuilder';
 
+// summary/dashboard arrive as props that start null and fill in asynchronously
+// (DashboardTab, FinancesPage). Fetching lives in one mount-only effect; the
+// insight list is a separate memo so it recomputes once those props land,
+// instead of being frozen at whatever they were on first render.
 export default function NeedsYouFeed({ summary, dashboard, onNavigate }) {
-  const [insights, setInsights] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [alerts, setAlerts] = useState([]);
+  const [alertsFailed, setAlertsFailed] = useState(false);
+  const [digest, setDigest] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [accountDetails, setAccountDetails] = useState({});
   const markedRef = useRef(false);
 
   useEffect(() => {
@@ -22,34 +31,49 @@ export default function NeedsYouFeed({ summary, dashboard, onNavigate }) {
     ]).then(([alertsRes, digestRes, transactionsRes, accountDetailsRes]) => {
       if (cancelled) return;
 
-      const alerts = alertsRes.status === 'fulfilled' ? alertsRes.value.data?.alerts : [];
-      const digest = digestRes.status === 'fulfilled' ? digestRes.value.data : null;
-      const transactions = transactionsRes.status === 'fulfilled'
-        ? transactionsRes.value.data?.transactions : [];
-      const accountDetails = accountDetailsRes.status === 'fulfilled'
-        ? accountDetailsRes.value.data : {};
-
-      if (digest && !digest.read && !markedRef.current) {
-        markedRef.current = true;
-        Promise.resolve(markDigestRead(digest.id)).catch(() => {});
+      if (alertsRes.status === 'fulfilled') {
+        setAlerts(alertsRes.value.data?.alerts || []);
+      } else {
+        setAlertsFailed(true);
       }
 
-      setInsights(buildInsights({
-        summary, dashboard, transactions, accountDetails, alerts, digest,
-      }));
+      const fetchedDigest = digestRes.status === 'fulfilled' ? digestRes.value.data : null;
+      setDigest(fetchedDigest);
+      setTransactions(transactionsRes.status === 'fulfilled'
+        ? (transactionsRes.value.data?.transactions || []) : []);
+      setAccountDetails(accountDetailsRes.status === 'fulfilled'
+        ? (accountDetailsRes.value.data || {}) : {});
+
+      if (fetchedDigest && !fetchedDigest.read && !markedRef.current) {
+        markedRef.current = true;
+        Promise.resolve(markDigestRead(fetchedDigest.id)).catch(() => {});
+      }
+
+      setLoaded(true);
     });
 
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const insights = useMemo(() => {
+    if (!loaded) return null;
+    return buildInsights({
+      summary, dashboard, transactions, accountDetails, alerts, digest,
+    });
+  }, [loaded, summary, dashboard, transactions, accountDetails, alerts, digest]);
+
   const loading = insights === null;
-  const empty = !loading && insights.length === 0;
+  // Alerts are the primary source — a rejection there means the feed could
+  // not tell whether anything needs attention, not that nothing does.
+  const error = (!loading && alertsFailed)
+    ? 'Could not load insights — is the backend running?' : null;
+  const empty = !loading && !error && insights.length === 0;
 
   return (
     <DashboardCard
       title="Needs you"
       loading={loading}
+      error={error}
       empty={empty}
       emptyText="Nothing needs you right now."
     >
