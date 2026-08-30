@@ -103,3 +103,85 @@ test('without a 90-day delta it says this month, not a tripled guess', () => {
   expect(card.title).not.toMatch(/quarter/);
   expect(card.title).not.toMatch(/1,200/);
 });
+
+const alert = (severity, category, message, tab) => ({ severity, category, message, tab });
+
+describe('buildInsights — alerts', () => {
+  test('turns each alert into an insight, error before warn before info', () => {
+    const out = buildInsights({
+      alerts: [
+        alert('info',  'cashflow', 'Cash dips below zero in 12 days', 'accounts'),
+        alert('error', 'budget',   'Dining is $80 over its cap',      'budgets'),
+        alert('warn',  'credit',   'Visa utilization at 61%',         'accounts'),
+      ],
+    });
+    const ranks = out.map((i) => i.tag);
+    expect(ranks.indexOf('Action needed')).toBeLessThan(ranks.indexOf('Heads up'));
+    expect(out.map((i) => i.body)).toEqual([
+      'Dining is $80 over its cap',
+      'Visa utilization at 61%',
+      'Cash dips below zero in 12 days',
+    ]);
+  });
+
+  test('gives alerts stable ids without an id field on the payload', () => {
+    const one = buildInsights({ alerts: [alert('warn', 'budget', 'Same text', 'budgets')] });
+    const two = buildInsights({ alerts: [alert('warn', 'budget', 'Same text', 'budgets')] });
+    expect(one[0].id).toBe(two[0].id);
+    expect(one[0].id).toEqual(expect.any(String));
+  });
+
+  test('routes an alert through its tab, not a hardcoded path', () => {
+    const [i] = buildInsights({ alerts: [alert('warn', 'budget', 'x', 'budgets')] });
+    expect(i.action.target).toEqual({ financesTab: 'budgets' });
+  });
+
+  test('an alert with no tab produces no action', () => {
+    const [i] = buildInsights({ alerts: [alert('info', 'cashflow', 'x', null)] });
+    expect(i.action).toBeNull();
+  });
+});
+
+describe('buildInsights — digest', () => {
+  const digest = (payload) => ({ id: 1, read: false, payload });
+
+  test('ignores the digest alerts array, which duplicates /api/alerts', () => {
+    const dup = alert('error', 'budget', 'Dining is $80 over its cap', 'budgets');
+    const out = buildInsights({ alerts: [dup], digest: digest({ alerts: [dup] }) });
+    expect(out.filter((i) => i.body === 'Dining is $80 over its cap')).toHaveLength(1);
+  });
+
+  test('surfaces a subscription price hike from the digest', () => {
+    const out = buildInsights({
+      digest: digest({
+        subscriptions: {
+          price_increases: [
+            { merchant_key: 'netflix', sample_description: 'NETFLIX.COM', price_change_pct: 14.0, latest_amount: 22.99 },
+          ],
+        },
+      }),
+    });
+    const hike = out.find((i) => i.id.startsWith('sub-hike'));
+    expect(hike).toBeTruthy();
+    expect(hike.body).toMatch(/NETFLIX\.COM/);
+  });
+
+  test('no digest and no alerts still returns the pure-data rules', () => {
+    expect(() => buildInsights({})).not.toThrow();
+    expect(Array.isArray(buildInsights({}))).toBe(true);
+  });
+});
+
+describe('buildInsights — presentation', () => {
+  test('every insight names an Icon rather than carrying an emoji', () => {
+    const out = buildInsights({ alerts: [alert('error', 'budget', 'x', 'budgets')] });
+    for (const i of out) {
+      expect(i.icon).toMatch(/^[a-z][a-zA-Z]*$/);
+    }
+  });
+
+  test('every insight carries a numeric priority', () => {
+    const out = buildInsights({ alerts: [alert('warn', 'budget', 'x', 'budgets')] });
+    expect(typeof out[0].priority).toBe('number');
+  });
+});
