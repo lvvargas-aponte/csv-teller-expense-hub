@@ -1,25 +1,15 @@
 import React, { useState } from 'react';
 import { fmt$, calculateHalf } from '../../utils/formatting';
-
-const parseDollars = (s) => {
-  const n = parseFloat(String(s).replace(/[^0-9.-]/g, ''));
-  return isNaN(n) ? 0 : n;
-};
-
-const parsePercent = (s) => {
-  const n = parseFloat(String(s).replace(/[^0-9.]/g, ''));
-  if (isNaN(n)) return null;
-  return Math.max(0, Math.min(100, n));
-};
-
-const round2 = (n) => Math.round(n * 100) / 100;
+import {
+  parseDollars, parsePercent, round2, shareOf, remainderOf, percentOf,
+} from '../../utils/splitMath';
 
 export default function SplitAdjustRow({ txn, otherPersonName, colSpan, onSave, onClose }) {
   const total = Number(txn.amount) || 0;
   const half  = calculateHalf(total);
   const initialP1 = txn.is_shared ? Number(txn.person_1_owes ?? half) : half;
   const initialP2 = txn.is_shared ? Number(txn.person_2_owes ?? half) : half;
-  const initialPct = total > 0 ? round2((initialP1 / total) * 100) : 50;
+  const initialPct = total > 0 ? percentOf(total, initialP1) : 50;
 
   const [you,    setYou]    = useState(fmt$(initialP1));
   const [other,  setOther]  = useState(fmt$(initialP2));
@@ -33,30 +23,30 @@ export default function SplitAdjustRow({ txn, otherPersonName, colSpan, onSave, 
     const p = parsePercent(next);
     setPct(next);
     if (p === null) return;
-    const youAmt = round2((total * p) / 100);
+    const youAmt = shareOf(total, p);
     setYou(fmt$(youAmt));
-    setOther(fmt$(round2(total - youAmt)));
+    setOther(fmt$(remainderOf(total, youAmt)));
   };
 
   const onYouChange = (e) => {
     const v = e.target.value;
     setYou(v);
     const youAmt = parseDollars(v);
-    if (total > 0) setPct(String(round2((youAmt / total) * 100)));
-    setOther(fmt$(round2(total - youAmt)));
+    if (total > 0) setPct(String(percentOf(total, youAmt)));
+    setOther(fmt$(remainderOf(total, youAmt)));
   };
 
   const onOtherChange = (e) => {
     const v = e.target.value;
     setOther(v);
     const otherAmt = parseDollars(v);
-    if (total > 0) setPct(String(round2(((total - otherAmt) / total) * 100)));
+    if (total > 0) setPct(String(percentOf(total, total - otherAmt)));
   };
 
   const fillFiftyFifty = () => {
     setPct('50');
     setYou(fmt$(half));
-    setOther(fmt$(round2(total - half)));
+    setOther(fmt$(remainderOf(total, half)));
   };
 
   const save = async () => {

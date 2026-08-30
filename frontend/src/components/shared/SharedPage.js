@@ -1,9 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import SyncStatusStrip from './SyncStatusStrip';
+import SyncStatusLine from './SyncStatusLine';
 import CorrectionsFeed from './CorrectionsFeed';
-import SharedRow from './SharedRow';
+import SettleUpCard from './SettleUpCard';
+import SettleActions from './SettleActions';
+import AttentionStrip from './AttentionStrip';
+import SharedFilters, { matchesFilter } from './SharedFilters';
+import SharedDayGroup from './SharedDayGroup';
 import Spin from '../ui/Spin';
-import { getSharedRows, getSyncStatus, syncShared, acknowledgeCorrection, setDispute } from '../../api/sync';
+import { SyncIcon } from './icons';
+import {
+  getSharedRows, getSyncStatus, syncShared, acknowledgeCorrection, setDispute,
+  markPeriodReady, withdrawPeriodReady, markPeriodPaid, reopenPeriod,
+} from '../../api/sync';
+import { putTransactionFields, getPersonNames } from '../../api/transactions';
 import { userMessage } from '../../utils/errorMessage';
 import './SharedPage.css';
 
@@ -28,23 +37,49 @@ function monthOptions() {
   return months;
 }
 
+function groupByDate(rows) {
+  const byDate = new Map();
+  rows.forEach((row) => {
+    const key = row.date || '';
+    if (!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key).push(row);
+  });
+  return [...byDate.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([date, dayRows]) => ({ date, rows: dayRows }));
+}
+
 export default function SharedPage() {
   const months = useMemo(() => monthOptions(), []);
-  const [period, setPeriod] = useState(months[months.length - 1].key);
+  const [period, setPeriod] = useState(months[months.length - 1]?.key || CUTOVER_PERIOD);
   const [rows, setRows] = useState([]);
+  const [settlement, setSettlement] = useState(null);
+  const [settleState, setSettleState] = useState(null);
+  const [settling, setSettling] = useState(false);
   const [peer, setPeer] = useState(null);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
+  const [filter, setFilter] = useState('all');
+  // The two configured names, for the "who paid" repair. Person slots are
+  // config, not per-row data, so this is fetched once rather than per period.
+  const [personNames, setPersonNames] = useState({ person_1: '', person_2: '' });
+  const [mySlot, setMySlot] = useState(1);
+  // What the last settlement action managed to write to the spreadsheet.
+  const [published, setPublished] = useState(null);
 
   const load = useCallback(async (p) => {
     setLoading(true);
     try {
       const [rowsRes, statusRes] = await Promise.all([getSharedRows(p), getSyncStatus()]);
       setRows(rowsRes.data.rows);
+      setSettlement(rowsRes.data.settlement || null);
+      setSettleState(rowsRes.data.settlement_state || null);
+      setPublished(null);
       setPeer(rowsRes.data.peer);
+      setMySlot(rowsRes.data.me ? rowsRes.data.me.person_slot : 1);
       setStatus(statusRes.data);
       setError(null);
     } catch (e) {
@@ -55,6 +90,34 @@ export default function SharedPage() {
   }, []);
 
   useEffect(() => { load(period); }, [period, load]);
+
+  useEffect(() => {
+    getPersonNames()
+      .then((res) => setPersonNames(res.data))
+      .catch(() => {});   // the who-repair falls back to a blank picker
+  }, []);
+
+  // Repairing a blocked row of ours. PUT /transactions/{id} replaces the whole
+  // shared block, so putTransactionFields re-sends what we already know and
+  // overlays the patch; then the month reloads, which is what moves the row out
+  // of "not counted" and into the settle-up total.
+  const handleFix = useCallback(async (row, patch) => {
+    const editable = row.editable || {};
+    await putTransactionFields(
+      {
+        id: row.transaction_id,
+        is_shared: editable.is_shared,
+        who: row.who,
+        what: editable.what,
+        notes: row.notes,
+        person_1_owes: editable.person_1_owes,
+        person_2_owes: editable.person_2_owes,
+        reviewed: row.reviewed,
+      },
+      patch,
+    );
+    await load(period);
+  }, [period, load]);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
@@ -99,6 +162,30 @@ export default function SharedPage() {
     }
   }, [period, load]);
 
+  // Every settlement call answers with the period's whole recomputed position,
+  // so the card updates from the response rather than a second round trip.
+  const runSettle = useCallback(async (call) => {
+    setSettling(true);
+    try {
+      const res = await call(period);
+      setSettlement(res.data.settlement || null);
+      setSettleState(res.data.settlement_state || null);
+      setPublished(res.data.published || null);
+      setError(null);
+    } catch (e) {
+      // 409 means the other side settled it first. Their record is the truth,
+      // so reload rather than leaving the page showing a state that lost.
+      setPublished(null);
+      if (e?.response?.status === 409) {
+        await load(period);
+      } else {
+        setError(userMessage(e, 'Could not update the settlement — please try again.'));
+      }
+    } finally {
+      setSettling(false);
+    }
+  }, [period, load]);
+
   const dismissCorrection = useCallback(async (id) => {
     try {
       await acknowledgeCorrection(id);
@@ -111,11 +198,16 @@ export default function SharedPage() {
     }
   }, []);
 
+  const peerName = peer && peer.display_name ? peer.display_name : 'peer';
+  const monthLabel = (months.find((m) => m.key === period) || {}).label || period;
+  const visible = useMemo(() => rows.filter((r) => matchesFilter(r, filter)), [rows, filter]);
+  const groups = useMemo(() => groupByDate(visible), [visible]);
+
   return (
     <div className="shared-page">
-      <div className="shared-header">
-        <h2 className="shared-title">Shared</h2>
-        <div className="tx-sel-wrap shared-month-wrap">
+      <div className="sh-head">
+        <h2>Shared</h2>
+        <div className="tx-sel-wrap">
           <select
             aria-label="Month"
             value={period}
@@ -124,13 +216,9 @@ export default function SharedPage() {
             {months.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
           </select>
         </div>
-        <button
-          type="button"
-          className="tx-btn tx-btn-primary"
-          onClick={handleSync}
-          disabled={syncing}
-        >
-          {syncing ? <><Spin /> Syncing…</> : 'Sync now'}
+        <span className="sh-spacer" />
+        <button type="button" className="sh-btn" onClick={handleSync} disabled={syncing}>
+          {syncing ? <><Spin /> Syncing…</> : <><SyncIcon /> Sync now</>}
         </button>
       </div>
 
@@ -146,62 +234,63 @@ export default function SharedPage() {
         </div>
       )}
 
-      {syncMessage && syncMessage.kind !== 'ok' && (
-        <div className="tx-error-banner">
-          <span>⚠️ {syncMessage.text}</span>
-          <button
-            type="button"
-            className="tx-error-close"
-            aria-label="Dismiss sync message"
-            onClick={() => setSyncMessage(null)}
-          >✕</button>
-        </div>
-      )}
-      {syncMessage && syncMessage.kind === 'ok' && (
-        <div className="shared-sync-toast" role="status">✓ {syncMessage.text}</div>
-      )}
+      <SettleUpCard settlement={settlement} peerName={peerName} monthLabel={monthLabel} />
 
-      <SyncStatusStrip status={status} />
+      <SettleActions
+        state={settleState}
+        peerName={peerName}
+        busy={settling}
+        published={published}
+        onReady={() => runSettle(markPeriodReady)}
+        onWithdrawReady={() => runSettle(withdrawPeriodReady)}
+        onPaid={(note) => runSettle((p) => markPeriodPaid(p, note))}
+        onReopen={() => runSettle(reopenPeriod)}
+      />
+
+      <SyncStatusLine
+        status={status}
+        syncMessage={syncMessage}
+        onDismissMessage={() => setSyncMessage(null)}
+        onSync={handleSync}
+        syncing={syncing}
+      />
 
       <CorrectionsFeed corrections={status?.corrections || []} onDismiss={dismissCorrection} />
 
-      <div className="tx-table-card">
-        <table className="tx-table shared-table">
-          <thead>
-            <tr>
-              <th>Who</th>
-              <th>Date</th>
-              <th>Description</th>
-              <th className="tx-col-amt">Amount</th>
-              <th className="tx-col-amt">You owe</th>
-              <th className="tx-col-amt">{peer && peer.display_name ? `${peer.display_name} owes` : 'They owe'}</th>
-              <th className="shared-col-actions"><span className="shared-sr-only">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={7}>
-                <div className="tx-empty"><div style={{ fontSize: 28 }}>⏳</div><p>Loading…</p></div>
-              </td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={7}>
-                <div className="tx-empty">
-                  <div style={{ fontSize: 28 }}>🔍</div>
-                  <p>No shared expenses for this month.</p>
-                </div>
-              </td></tr>
-            ) : (
-              rows.map((row) => (
-                <SharedRow key={row.transaction_id} row={row} onDispute={handleDispute} />
-              ))
-            )}
-          </tbody>
-        </table>
+      <AttentionStrip rows={rows} peerName={peerName} onReview={() => setFilter('attention')} />
+
+      {rows.length > 0 && (
+        <SharedFilters rows={rows} value={filter} onChange={setFilter} peerName={peerName} />
+      )}
+
+      <div className="sh-list">
+        {loading ? (
+          <div className="sh-empty"><span>Loading…</span></div>
+        ) : groups.length === 0 ? (
+          <div className="sh-empty">
+            <b>Nothing shared in {monthLabel} yet</b>
+            <span>Mark a transaction as shared and it shows up here.</span>
+          </div>
+        ) : (
+          groups.map((g) => (
+            <SharedDayGroup
+              key={g.date}
+              date={g.date}
+              rows={g.rows}
+              peerName={peerName}
+              personNames={personNames}
+              mySlot={mySlot}
+              onDispute={handleDispute}
+              onFix={handleFix}
+            />
+          ))
+        )}
       </div>
 
-      <div className="shared-legend">
-        <span><span className="shared-owner-dot shared-owner-dot--me" aria-hidden="true">●</span> yours</span>
-        <span><span className="shared-owner-dot shared-owner-dot--peer" aria-hidden="true">○</span> {peer ? peer.display_name : 'peer'}</span>
+      <div className="sh-legend">
+        <i><span className="sh-k sh-k--me" /> Paid by you</i>
+        <i><span className="sh-k sh-k--peer" /> Paid by {peerName}</i>
+        <i>Only rows with a split are counted toward settle up.</i>
       </div>
     </div>
   );

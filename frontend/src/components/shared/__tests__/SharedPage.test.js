@@ -25,15 +25,31 @@ function row(overrides = {}) {
     amount: 140.0,
     who: 'Valeria',
     notes: '',
+    category: 'housing',
+    account: 'Chase',
     you_owe: null,
     they_owe: null,
+    split_label: null,
     reviewed: true,
     publishable: true,
     blocked_reason: null,
     dispute_flag: null,
     dispute_by: null,
     dispute_note: null,
-    synced_at: null,
+    synced_at: '2026-06-15T14:32:05Z',
+    ...overrides,
+  };
+}
+
+function settlement(overrides = {}) {
+  return {
+    you_owe_total: 0,
+    they_owe_total: 0,
+    net: 0,
+    direction: 'even',
+    counted_count: 0,
+    counted_amount: 0,
+    blocked_count: 0,
     ...overrides,
   };
 }
@@ -61,13 +77,17 @@ function statusBody(overrides = {}) {
   };
 }
 
-function mockRows(rows, me = ME, peer = PEER) {
-  getSharedRows.mockResolvedValue({ data: { period: '2026-06', me, peer, rows } });
+function mockRows(rows, me = ME, peer = PEER, settle = settlement()) {
+  getSharedRows.mockResolvedValue({
+    data: { period: '2026-06', me, peer, rows, settlement: settle },
+  });
 }
 
 function mockStatus(overrides = {}) {
   getSyncStatus.mockResolvedValue({ data: statusBody(overrides) });
 }
+
+const rowOf = (id) => screen.getByTestId(`shared-row-${id}`);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -88,50 +108,46 @@ test('renders your row and the peer row, each labelled with its owner name', asy
   render(<SharedPage />);
 
   await screen.findByText('Cleaning');
-  const yourRow = screen.getByRole('row', { name: /Cleaning/ });
-  expect(within(yourRow).getByText('Valeria')).toBeInTheDocument();
-
-  const theirRow = screen.getByRole('row', { name: /UBER \*TRIP/ });
-  expect(within(theirRow).getByText('Christy')).toBeInTheDocument();
+  expect(within(rowOf('t1')).getByText('Valeria')).toBeInTheDocument();
+  expect(within(rowOf('peer:x1')).getByText('Christy')).toBeInTheDocument();
 });
 
-test('a null you_owe renders as an em dash, not 0.00', async () => {
+test('a null you_owe leaves the settles column to the other side, never 0.00', async () => {
   mockRows([row({ you_owe: null, they_owe: 56.13 })]);
 
   render(<SharedPage />);
 
   await screen.findByText('Cleaning');
-  const tr = screen.getByRole('row', { name: /Cleaning/ });
-  const cells = within(tr).getAllByRole('cell');
-  expect(cells[4]).toHaveTextContent('—');
+  const tr = rowOf('t1');
+  expect(within(tr).getByText('Christy owes you')).toBeInTheDocument();
+  expect(within(tr).getByText('$56.13')).toBeInTheDocument();
   expect(within(tr).queryByText('$0.00')).not.toBeInTheDocument();
+  expect(within(tr).queryByText('You owe Christy')).not.toBeInTheDocument();
 });
 
-test('a row you paid shows the peer amount under "They owe" and an em dash under "You owe"', async () => {
+test('a row you paid says the peer owes you', async () => {
   mockRows([row({ who: 'Valeria', you_owe: null, they_owe: 56.13 })]);
 
   render(<SharedPage />);
 
   await screen.findByText('Cleaning');
-  const tr = screen.getByRole('row', { name: /Cleaning/ });
-  const cells = within(tr).getAllByRole('cell');
-  expect(cells[4]).toHaveTextContent('—');
-  expect(cells[5]).toHaveTextContent('$56.13');
+  const tr = rowOf('t1');
+  expect(within(tr).getByText('Christy owes you')).toBeInTheDocument();
+  expect(within(tr).getByText('$56.13')).toBeInTheDocument();
 });
 
-test('a row they paid shows your amount under "You owe" and an em dash under "They owe"', async () => {
+test('a row they paid says you owe the peer', async () => {
   mockRows([row({ who: 'Christy', you_owe: 56.13, they_owe: null })]);
 
   render(<SharedPage />);
 
   await screen.findByText('Cleaning');
-  const tr = screen.getByRole('row', { name: /Cleaning/ });
-  const cells = within(tr).getAllByRole('cell');
-  expect(cells[4]).toHaveTextContent('$56.13');
-  expect(cells[5]).toHaveTextContent('—');
+  const tr = rowOf('t1');
+  expect(within(tr).getByText('You owe Christy')).toBeInTheDocument();
+  expect(within(tr).getByText('$56.13')).toBeInTheDocument();
 });
 
-test('a publishable: false row shows its blocked_reason', async () => {
+test('a publishable: false row shows its blocked_reason, a tag, and no settling figure', async () => {
   mockRows([row({
     transaction_id: 't2', publishable: false,
     blocked_reason: 'No split set for this row',
@@ -140,7 +156,32 @@ test('a publishable: false row shows its blocked_reason', async () => {
   render(<SharedPage />);
 
   await screen.findByText('Cleaning');
-  expect(screen.getByText(/No split set for this row/)).toBeInTheDocument();
+  const tr = rowOf('t2');
+  expect(within(tr).getByText(/No split set for this row/)).toBeInTheDocument();
+  expect(within(tr).getByText(/can't publish/i)).toBeInTheDocument();
+  expect(within(tr).getByText(/not counted/i)).toBeInTheDocument();
+});
+
+test('a row omits empty meta rather than rendering a dash for it', async () => {
+  mockRows([
+    row({ category: null, account: null, split_label: null }),
+    row({
+      transaction_id: 't2', description: 'Costco',
+      category: 'groceries', account: 'Chase', split_label: '50 / 50 split',
+    }),
+  ]);
+
+  render(<SharedPage />);
+
+  await screen.findByText('Cleaning');
+  const bare = rowOf('t1');
+  expect(within(bare).queryByText('—')).not.toBeInTheDocument();
+  expect(within(bare).queryByText('Groceries')).not.toBeInTheDocument();
+
+  const full = rowOf('t2');
+  expect(within(full).getByText('Chase')).toBeInTheDocument();
+  expect(within(full).getByText('Groceries')).toBeInTheDocument();
+  expect(within(full).getByText('50 / 50 split')).toBeInTheDocument();
 });
 
 test('a disputed row shows the disputer and note', async () => {
@@ -152,12 +193,12 @@ test('a disputed row shows the disputer and note', async () => {
   render(<SharedPage />);
 
   await screen.findByText('Cleaning');
-  const tr = screen.getByRole('row', { name: /Cleaning/ });
+  const tr = rowOf('t3');
   expect(within(tr).getByText(/Christy/)).toBeInTheDocument();
   expect(within(tr).getByText(/that was mine/)).toBeInTheDocument();
 });
 
-test('an unparseable date renders the raw string, never "Invalid Date"', async () => {
+test('an unparseable date renders the raw string in its day header, never "Invalid Date"', async () => {
   mockRows([row({
     transaction_id: 't4', publishable: false,
     date: 'not-a-date', blocked_reason: 'Date could not be parsed',
@@ -166,9 +207,9 @@ test('an unparseable date renders the raw string, never "Invalid Date"', async (
   render(<SharedPage />);
 
   await screen.findByText('Cleaning');
-  const tr = screen.getByRole('row', { name: /Cleaning/ });
-  expect(within(tr).getByText('not-a-date')).toBeInTheDocument();
-  expect(within(tr).queryByText(/Invalid Date/)).not.toBeInTheDocument();
+  const group = screen.getByTestId('day-group-not-a-date');
+  expect(within(group).getByText('not-a-date')).toBeInTheDocument();
+  expect(within(group).queryByText(/Invalid Date/)).not.toBeInTheDocument();
 });
 
 test('renders without a peer and falls back sensibly in the legend', async () => {
@@ -177,7 +218,7 @@ test('renders without a peer and falls back sensibly in the legend', async () =>
   render(<SharedPage />);
 
   await screen.findByText('Cleaning');
-  expect(screen.getByText(/peer/i)).toBeInTheDocument();
+  expect(screen.getAllByText(/peer/i).length).toBeGreaterThan(0);
 });
 
 test('dismissing a correction calls acknowledgeCorrection and removes it from the list', async () => {
@@ -190,14 +231,13 @@ test('dismissing a correction calls acknowledgeCorrection and removes it from th
 
   render(<SharedPage />);
 
-  const correctionText = await screen.findByText(/rewritten to 112\.25/);
-  expect(correctionText).toBeInTheDocument();
+  expect(await screen.findByText(/112\.25/)).toBeInTheDocument();
 
-  const dismissBtn = screen.getByRole('button', { name: /dismiss/i });
+  const dismissBtn = screen.getByRole('button', { name: /^dismiss correction/i });
   await userEvent.click(dismissBtn);
 
   await waitFor(() => expect(acknowledgeCorrection).toHaveBeenCalledWith(5));
-  await waitFor(() => expect(screen.queryByText(/rewritten to 112\.25/)).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByText(/112\.25/)).not.toBeInTheDocument());
 });
 
 test('a refused sync response surfaces refusal_message and does not show a success state', async () => {
@@ -235,7 +275,7 @@ test('an error sync response surfaces the error', async () => {
   expect(await screen.findByText(/Sheet API is unreachable/)).toBeInTheDocument();
 });
 
-test('a refused sync still refreshes the status strip, instead of leaving a stale success banner', async () => {
+test('a refused sync still refreshes the status line, instead of leaving a stale success banner', async () => {
   syncShared.mockResolvedValue({
     data: {
       status: 'refused',
@@ -253,7 +293,7 @@ test('a refused sync still refreshes the status strip, instead of leaving a stal
   await waitFor(() => expect(getSyncStatus).toHaveBeenCalledTimes(2));
 });
 
-test('an error sync response also refreshes the status strip', async () => {
+test('an error sync response also refreshes the status line', async () => {
   syncShared.mockResolvedValue({
     data: {
       status: 'error',
@@ -271,7 +311,7 @@ test('an error sync response also refreshes the status strip', async () => {
   await waitFor(() => expect(getSyncStatus).toHaveBeenCalledTimes(2));
 });
 
-test('a successful sync shows the toast and refetches, picking up rows the sync just wrote', async () => {
+test('a successful sync shows the result and refetches, picking up rows the sync just wrote', async () => {
   syncShared.mockResolvedValue({
     data: {
       status: 'ok',
@@ -288,14 +328,14 @@ test('a successful sync shows the toast and refetches, picking up rows the sync 
   const syncBtn = screen.getByRole('button', { name: /sync now/i });
   await userEvent.click(syncBtn);
 
-  const toast = await screen.findByRole('status');
-  expect(toast).toHaveTextContent('2 sent, 3 received');
+  const line = await screen.findByRole('status');
+  expect(line).toHaveTextContent('2 sent, 3 received');
 
   await waitFor(() => expect(getSharedRows).toHaveBeenCalledTimes(2));
   expect(await screen.findByText('Just synced')).toBeInTheDocument();
 });
 
-test('a sync that pushed a dispute includes it in the toast', async () => {
+test('a sync that pushed a dispute includes it in the status line', async () => {
   syncShared.mockResolvedValue({
     data: {
       status: 'ok',
@@ -309,12 +349,12 @@ test('a sync that pushed a dispute includes it in the toast', async () => {
   const syncBtn = screen.getByRole('button', { name: /sync now/i });
   await userEvent.click(syncBtn);
 
-  const toast = await screen.findByRole('status');
-  expect(toast).toHaveTextContent('2 sent, 3 received');
-  expect(toast).toHaveTextContent(/1 dispute/);
+  const line = await screen.findByRole('status');
+  expect(line).toHaveTextContent('2 sent, 3 received');
+  expect(line).toHaveTextContent(/1 dispute/);
 });
 
-test('a sync with no dispute writes leaves the toast unchanged', async () => {
+test('a sync with no dispute writes leaves the status line unchanged', async () => {
   syncShared.mockResolvedValue({
     data: {
       status: 'ok',
@@ -328,9 +368,9 @@ test('a sync with no dispute writes leaves the toast unchanged', async () => {
   const syncBtn = screen.getByRole('button', { name: /sync now/i });
   await userEvent.click(syncBtn);
 
-  const toast = await screen.findByRole('status');
-  expect(toast).toHaveTextContent('2 sent, 3 received');
-  expect(toast).not.toHaveTextContent(/dispute/);
+  const line = await screen.findByRole('status');
+  expect(line).toHaveTextContent('2 sent, 3 received');
+  expect(line).not.toHaveTextContent(/dispute/);
 });
 
 test('raising a dispute on a peer row calls the API with txn_id, flag and note, then refetches', async () => {
@@ -396,9 +436,10 @@ test('our own row disputed by the peer shows their note read-only, with no clear
 
   await screen.findByText(/christy is disputing this/i);
   expect(screen.getByText(/that was mine/)).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /withdraw/i })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /dispute/i })).not.toBeInTheDocument();
+  const tr = rowOf('t1');
+  expect(within(tr).queryByRole('button', { name: /withdraw/i })).not.toBeInTheDocument();
+  expect(within(tr).queryByRole('button', { name: /edit/i })).not.toBeInTheDocument();
+  expect(within(tr).queryByRole('button', { name: /dispute/i })).not.toBeInTheDocument();
 });
 
 test('a failed dispute call surfaces an error and does not leave the row looking disputed', async () => {
@@ -493,4 +534,113 @@ test('changing the month refetches', async () => {
 
   await waitFor(() => expect(getSharedRows).toHaveBeenCalledTimes(2));
   expect(getSharedRows.mock.calls[1][0]).not.toBe(firstPeriod);
+});
+
+describe('settle up', () => {
+  test('a net in the peer\'s favour names them and shows both sides', async () => {
+    mockRows([row()], ME, PEER, settlement({
+      you_owe_total: 267.41, they_owe_total: 1274.7, net: 1007.29,
+      direction: 'they_owe', counted_count: 8, counted_amount: 3084.2,
+    }));
+
+    render(<SharedPage />);
+
+    const card = await screen.findByTestId('settle-up');
+    expect(within(card).getByTestId('settle-net')).toHaveTextContent('$1,007.29');
+    expect(within(card).getByText(/Christy owes you, net for/)).toBeInTheDocument();
+    expect(within(card).getByText('$1,274.70')).toBeInTheDocument();
+    expect(within(card).getByText('$267.41')).toBeInTheDocument();
+    expect(within(card).getByText(/8 shared expenses/)).toBeInTheDocument();
+    expect(within(card).getByText(/\$3,084\.20 counted this month/)).toBeInTheDocument();
+  });
+
+  test('a net in your favour reads as you owing, and counts the blocked rows out', async () => {
+    mockRows([row()], ME, PEER, settlement({
+      you_owe_total: 600.46, they_owe_total: 188.4, net: 412.06,
+      direction: 'you_owe', counted_count: 6, counted_amount: 1577.72,
+      blocked_count: 1,
+    }));
+
+    render(<SharedPage />);
+
+    const card = await screen.findByTestId('settle-up');
+    expect(within(card).getByTestId('settle-net')).toHaveTextContent('$412.06');
+    expect(within(card).getByText(/You owe Christy, net for/)).toBeInTheDocument();
+    expect(within(card).getByText(/1 not counted/)).toBeInTheDocument();
+  });
+
+  test('an even month reads as even at zero, with no bars to compare', async () => {
+    mockRows([row()], ME, PEER, settlement({ counted_count: 2, counted_amount: 200 }));
+
+    render(<SharedPage />);
+
+    const card = await screen.findByTestId('settle-up');
+    expect(within(card).getByTestId('settle-net')).toHaveTextContent('$0.00');
+    expect(within(card).getByText(/You're even for/)).toBeInTheDocument();
+    expect(within(card).queryByText(/owes you$/)).not.toBeInTheDocument();
+  });
+});
+
+describe('filters', () => {
+  function threeRows() {
+    mockRows([
+      row({ transaction_id: 't1', description: 'Cleaning' }),
+      row({
+        transaction_id: 'peer:x1', owner: 'peer', owner_name: 'Christy',
+        description: 'UBER *TRIP', you_owe: 22.69,
+      }),
+      row({
+        transaction_id: 't2', description: 'Delta Air Lines',
+        publishable: false, blocked_reason: 'No split set — nothing to publish.',
+      }),
+    ]);
+  }
+
+  test('the peer chip narrows the list to their rows', async () => {
+    threeRows();
+    render(<SharedPage />);
+
+    await screen.findByText('Cleaning');
+    await userEvent.click(screen.getByRole('button', { name: /Christy's/ }));
+
+    expect(screen.getByText('UBER *TRIP')).toBeInTheDocument();
+    expect(screen.queryByText('Cleaning')).not.toBeInTheDocument();
+    expect(screen.queryByText('Delta Air Lines')).not.toBeInTheDocument();
+  });
+
+  test('the yours chip narrows the list to your rows', async () => {
+    threeRows();
+    render(<SharedPage />);
+
+    await screen.findByText('Cleaning');
+    await userEvent.click(screen.getByRole('button', { name: /^Yours/ }));
+
+    expect(screen.getByText('Cleaning')).toBeInTheDocument();
+    expect(screen.queryByText('UBER *TRIP')).not.toBeInTheDocument();
+  });
+
+  test('the needs-attention chip keeps only rows that need a decision', async () => {
+    threeRows();
+    render(<SharedPage />);
+
+    await screen.findByText('Cleaning');
+    await userEvent.click(screen.getByRole('button', { name: /needs attention/i }));
+
+    expect(screen.getByText('Delta Air Lines')).toBeInTheDocument();
+    expect(screen.queryByText('Cleaning')).not.toBeInTheDocument();
+    expect(screen.queryByText('UBER *TRIP')).not.toBeInTheDocument();
+  });
+
+  test('All restores the full list', async () => {
+    threeRows();
+    render(<SharedPage />);
+
+    await screen.findByText('Cleaning');
+    await userEvent.click(screen.getByRole('button', { name: /^Yours/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^All/ }));
+
+    expect(screen.getByText('Cleaning')).toBeInTheDocument();
+    expect(screen.getByText('UBER *TRIP')).toBeInTheDocument();
+    expect(screen.getByText('Delta Air Lines')).toBeInTheDocument();
+  });
 });
