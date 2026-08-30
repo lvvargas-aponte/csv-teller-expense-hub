@@ -83,9 +83,6 @@ export default function FinancesPage({ section, view, subView, healthScore, heal
             healthScore={healthScore}
             healthSignals={healthSignals}
             summary={summary}
-            summaryLoading={summaryLoading}
-            summaryError={summaryError}
-            onOpenSettings={openSettings}
             onNavigate={handleTabNavigate}
             onInsightAction={handleInsightAction}
           />
