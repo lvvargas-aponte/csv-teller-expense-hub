@@ -67,7 +67,7 @@ class TestRefreshBalances:
             net_worth=1000.0, total_cash=1500.0, total_credit_debt=500.0,
             total_investments=0.0, accounts=[],
         ))
-        with patch("routers.balances.get_balances_summary", new=fake):
+        with patch("balances_service.build_summary", new=fake):
             out = _run(_refresh_balances(RefreshBalancesArgs()))
         assert out["refreshed"] is True
         assert out["net_worth"] == 1000.0

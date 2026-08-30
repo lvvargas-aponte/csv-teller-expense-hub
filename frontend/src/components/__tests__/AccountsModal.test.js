@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import axios from 'axios';
 import AccountsModal from '../accounts/AccountsModal';
 
@@ -209,6 +209,178 @@ test('Yes on confirmation calls DELETE and removes account from list', async () 
     expect(screen.queryByText('First Bank')).not.toBeInTheDocument();
   });
   expect(axios.delete).toHaveBeenCalledWith(expect.stringContaining('acct_1'));
+});
+
+// ── Grouping ─────────────────────────────────────────────────────────────────
+
+const groupedAccounts = [
+  { id: 'sf_1', name: 'Prime Visa',    type: 'credit',     subtype: 'credit card', institution: { name: 'Chase Bank' },     balance: {}, _source: 'simplefin' },
+  { id: 'sf_2', name: 'TOTAL CHECKING', type: 'depository', subtype: 'checking',   institution: { name: 'Chase Bank' },     balance: {}, _source: 'simplefin' },
+  { id: 'sf_3', name: 'Cash Rewards',  type: 'credit',     subtype: 'credit card', institution: { name: 'Bank of America' }, balance: {}, _source: 'simplefin' },
+  { id: 'mn_1', name: 'HSY',           type: 'depository', subtype: '',            institution: { name: 'Synchrony' },      balance: {}, _source: 'manual' },
+];
+
+const mockGrouped = (data = groupedAccounts) => {
+  axios.get.mockImplementation((url) => {
+    if (url.includes('/api/accounts')) return Promise.resolve({ data });
+    return Promise.reject(new Error('Unknown URL'));
+  });
+};
+
+test('groups accounts under institution headings with a count', async () => {
+  mockGrouped();
+  render(<AccountsModal onClose={jest.fn()} />);
+
+  expect(await screen.findByText('Chase Bank')).toBeInTheDocument();
+  expect(screen.getByText('Bank of America')).toBeInTheDocument();
+
+  // Chase has two accounts, BofA one.
+  const chase = within(screen.getByRole('group', { name: 'Chase Bank' }));
+  expect(chase.getByText('2')).toBeInTheDocument();
+  expect(chase.getByText('Prime Visa')).toBeInTheDocument();
+  expect(chase.getByText('TOTAL CHECKING')).toBeInTheDocument();
+
+  const bofa = within(screen.getByRole('group', { name: 'Bank of America' }));
+  expect(bofa.getByText('1')).toBeInTheDocument();
+  expect(bofa.queryByText('Prime Visa')).not.toBeInTheDocument();
+});
+
+test('puts manual accounts in their own group, last', async () => {
+  mockGrouped();
+  render(<AccountsModal onClose={jest.fn()} />);
+  await screen.findByText('Chase Bank');
+
+  const manualGroup = within(screen.getByRole('group', { name: 'Added manually' }));
+  expect(manualGroup.getByText('HSY')).toBeInTheDocument();
+
+  const labels = screen.getAllByTestId('account-group-label').map((n) => n.textContent);
+  expect(labels[labels.length - 1]).toMatch(/Added manually/);
+});
+
+test('puts connection errors in a Needs attention group, first', async () => {
+  mockGrouped([
+    ...groupedAccounts,
+    { id: '_sferror_abc', name: 'Unknown account', type: '', subtype: '', institution: { name: 'SimpleFIN' }, balance: {}, _connection_error: true, _source: 'simplefin' },
+  ]);
+  render(<AccountsModal onClose={jest.fn()} />);
+
+  expect(await screen.findByText('Needs attention')).toBeInTheDocument();
+  const labels = screen.getAllByTestId('account-group-label').map((n) => n.textContent);
+  expect(labels[0]).toMatch(/Needs attention/);
+});
+
+// ── Connect form disclosure ──────────────────────────────────────────────────
+
+test('collapses the connect form when a SimpleFIN account is already linked', async () => {
+  mockGrouped();
+  render(<AccountsModal onClose={jest.fn()} />);
+  await screen.findByText('Chase Bank');
+
+  expect(screen.queryByPlaceholderText('Paste Setup Token')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Connect another bank/ })).toBeInTheDocument();
+});
+
+test('expands the connect form when the disclosure is clicked', async () => {
+  mockGrouped();
+  render(<AccountsModal onClose={jest.fn()} />);
+  await screen.findByText('Chase Bank');
+
+  fireEvent.click(screen.getByRole('button', { name: /Connect another bank/ }));
+
+  expect(screen.getByPlaceholderText('Paste Setup Token')).toBeInTheDocument();
+  expect(screen.getByText('Connect via SimpleFIN')).toBeInTheDocument();
+});
+
+test('shows the connect form expanded when no SimpleFIN account is linked', async () => {
+  mockGrouped([groupedAccounts[3]]); // manual only
+  render(<AccountsModal onClose={jest.fn()} />);
+  await screen.findByText('Added manually');
+
+  expect(screen.getByPlaceholderText('Paste Setup Token')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Connect another bank/ })).not.toBeInTheDocument();
+});
+
+// ── Manual account actions ───────────────────────────────────────────────────
+
+test('manual accounts offer only permanent delete, not disconnect', async () => {
+  mockGrouped([groupedAccounts[3]]);
+  render(<AccountsModal onClose={jest.fn()} />);
+  await screen.findByText('Added manually');
+
+  expect(screen.getByText('Manual')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Delete permanently/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Disconnect/ })).not.toBeInTheDocument();
+});
+
+// ── Brokerages (SnapTrade) ───────────────────────────────────────────────────
+
+const mockWithBrokerages = ({ connections, snaptradeAccounts = [] }) => {
+  axios.get.mockImplementation((url) => {
+    if (url.includes('/api/snaptrade/connections')) return Promise.resolve({ data: { connections } });
+    if (url.includes('/api/balances/summary'))      return Promise.resolve({ data: { accounts: snaptradeAccounts } });
+    if (url.includes('/api/accounts'))              return Promise.resolve({ data: groupedAccounts });
+    return Promise.reject(new Error('Unknown URL'));
+  });
+};
+
+test('renders brokerage connections in their own group with account counts', async () => {
+  mockWithBrokerages({
+    connections: [
+      { id: 'auth_1', brokerage: 'Robinhood', disabled: false },
+      { id: 'auth_2', brokerage: 'Fidelity',  disabled: false },
+    ],
+    snaptradeAccounts: [
+      { id: 'a1', institution: 'Robinhood', source: 'snaptrade' },
+      { id: 'a2', institution: 'Robinhood', source: 'snaptrade' },
+      { id: 'a3', institution: 'Fidelity',  source: 'snaptrade' },
+      { id: 'a4', institution: 'Chase Bank', source: 'simplefin' },
+    ],
+  });
+  render(<AccountsModal onClose={jest.fn()} />);
+
+  const group = within(await screen.findByRole('group', { name: 'Brokerages' }));
+  expect(group.getByText('Robinhood')).toBeInTheDocument();
+  expect(group.getByText('2 accounts')).toBeInTheDocument();
+  expect(group.getByText('Fidelity')).toBeInTheDocument();
+  expect(group.getByText('1 account')).toBeInTheDocument();
+});
+
+test('a healthy brokerage is Active, a disabled one needs reconnect', async () => {
+  mockWithBrokerages({
+    connections: [
+      { id: 'auth_1', brokerage: 'Robinhood', disabled: false },
+      { id: 'auth_2', brokerage: 'Fidelity',  disabled: true },
+    ],
+  });
+  render(<AccountsModal onClose={jest.fn()} />);
+
+  const group = within(await screen.findByRole('group', { name: 'Brokerages' }));
+  expect(group.getByText('Needs Reconnect')).toBeInTheDocument();
+  expect(group.getAllByText('Active').length).toBe(1);
+});
+
+test('disconnecting a brokerage revokes the authorization', async () => {
+  axios.delete.mockResolvedValue({});
+  mockWithBrokerages({ connections: [{ id: 'auth_1', brokerage: 'Robinhood', disabled: false }] });
+  render(<AccountsModal onClose={jest.fn()} />);
+
+  const group = within(await screen.findByRole('group', { name: 'Brokerages' }));
+  fireEvent.click(group.getByRole('button', { name: /Disconnect/ }));
+  fireEvent.click(group.getByRole('button', { name: 'Yes' }));
+
+  await waitFor(() => {
+    expect(axios.delete).toHaveBeenCalledWith(
+      expect.stringContaining('/api/snaptrade/connections/auth_1'),
+    );
+  });
+});
+
+test('omits the brokerage group when SnapTrade is unconfigured', async () => {
+  mockGrouped();  // /api/snaptrade/connections rejects
+  render(<AccountsModal onClose={jest.fn()} />);
+  await screen.findByText('Chase Bank');
+
+  expect(screen.queryByRole('group', { name: 'Brokerages' })).not.toBeInTheDocument();
 });
 
 // ── Close ─────────────────────────────────────────────────────────────────────

@@ -22,6 +22,8 @@ import contextlib
 import logging
 from typing import Any, Dict, List, Optional
 
+from institution_normalizer import normalize as normalize_institution
+
 logger = logging.getLogger(__name__)
 
 # SnapTrade universal-symbol type codes that represent equity-like instruments.
@@ -415,7 +417,11 @@ class SnapTradeClient:
             out.append(
                 {
                     "id": c.get("id"),
-                    "brokerage": _dig(c, "brokerage", "name") or "Brokerage",
+                    # Normalized so it matches the institution label on
+                    # AccountBalance rows — callers join the two by name.
+                    "brokerage": normalize_institution(
+                        _dig(c, "brokerage", "name")
+                    ) or "Brokerage",
                     "disabled": bool(c.get("disabled")),
                     "created_date": c.get("created_date"),
                 }

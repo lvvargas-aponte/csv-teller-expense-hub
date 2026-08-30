@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 
+import connection_health
 import state
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,8 @@ async def list_snaptrade_connections() -> Dict[str, Any]:
     creds = _stored_creds()
     if not creds:
         return {"connections": []}
+    # Read-only: cached brokerage health is a by-product of syncing (see
+    # ``/snaptrade/sync``), so listing connections never writes.
     connections = await state.snaptrade.list_connections(
         creds["user_id"], creds["user_secret"]
     )
@@ -223,6 +226,15 @@ async def sync_snaptrade() -> Dict[str, Any]:
         })
 
     _update_snaptrade_cache(synced_accounts)
+
+    # Refresh cached brokerage health as part of syncing — this is the path the
+    # scheduler and "Sync all" take, and it's what the Accounts page reads.
+    try:
+        connection_health.record_snaptrade_connections(
+            await state.snaptrade.list_connections(creds["user_id"], creds["user_secret"])
+        )
+    except Exception as e:
+        logger.warning(f"[SnapTrade] could not refresh connection health: {e}")
 
     return {
         "message": (

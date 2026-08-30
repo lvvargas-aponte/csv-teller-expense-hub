@@ -24,6 +24,7 @@ Mocking in tests: patch individual async methods on the instance, e.g.
 import base64
 import hashlib
 import logging
+import re
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
@@ -41,6 +42,32 @@ logger = logging.getLogger(__name__)
 _CREDIT_KEYWORDS = ("credit card", "credit", "visa", "mastercard", "amex", "discover", "card")
 _LOAN_KEYWORDS = ("loan", "mortgage")
 _SAVINGS_KEYWORDS = ("saving", "hysa", "money market")
+# Brokerage and retirement wrappers. Matched before the depository fallback so
+# a brokerage doesn't land in cash, but after credit/loan so a "brokerage
+# credit card" still reads as credit.
+#
+# Matched on word boundaries rather than as bare substrings: short tokens like
+# "ira" and "hsa" otherwise hit inside ordinary words ("Admiral", "Kira").
+_INVESTMENT_KEYWORDS = (
+    "brokerage", "restricted stock", "rsu", "401(k)", "401k", "403(b)", "403b",
+    "ira", "roth", "rollover", "hsa", "espp", "pension", "annuity",
+    "investment", "investments", "portfolio", "securities", "mutual fund", "crypto",
+)
+_INVESTMENT_RE = re.compile(
+    r"(?<!\w)(?:" + "|".join(re.escape(k) for k in _INVESTMENT_KEYWORDS) + r")(?!\w)"
+)
+
+
+# Access URLs carry basic-auth credentials in the userinfo segment, and
+# exception strings from httpx embed the URL they were raised for. Anything
+# derived from an exception must go through this before it is logged, stored,
+# or returned to a client.
+_CREDENTIALED_URL_RE = re.compile(r"(https?://)[^\s/@]+:[^\s/@]*@")
+
+
+def scrub_credentials(text: str) -> str:
+    """Replace ``user:pass@`` userinfo in any URL inside ``text`` with ``***@``."""
+    return _CREDENTIALED_URL_RE.sub(r"\1***@", text)
 
 
 def mask_url(url: str) -> str:
@@ -95,6 +122,10 @@ def infer_account_bucket(
     otherwise false-positive every single one of their accounts (checking,
     savings, escrow, ...) as a credit card.
 
+    Investment wrappers are checked ahead of savings so a "Roth IRA Savings"
+    is filed as an investment rather than as cash, and behind credit/loan so a
+    brokerage's own credit card stays a liability.
+
     When no keyword matches at all (e.g. a card product name like "Blue Cash
     Everyday" that doesn't contain "card" or "credit"), ``raw_balance`` — if
     given — breaks the tie: a negative balance on an unlabeled account is a
@@ -106,6 +137,11 @@ def infer_account_bucket(
         return "credit", "loan"
     if any(kw in text for kw in _CREDIT_KEYWORDS):
         return "credit", "credit_card"
+    # Institution names ("Fidelity Investments", "Vanguard") would otherwise
+    # file every account there — including cash management — as an investment,
+    # so only the account's own name votes on this one.
+    if _INVESTMENT_RE.search(name.lower()):
+        return "investment", "brokerage"
     if any(kw in text for kw in _SAVINGS_KEYWORDS):
         return "depository", "savings"
     if raw_balance is not None and raw_balance < 0:
@@ -293,11 +329,12 @@ class SimpleFinClient:
                         "error": f"Auth failed ({e.response.status_code})",
                     })
                 except Exception as e:
-                    logger.warning(f"[SimpleFIN] {masked} error: {e}")
+                    safe_error = scrub_credentials(str(e))
+                    logger.warning(f"[SimpleFIN] {masked} error: {safe_error}")
                     errors.append({
                         "id": connection_id(url),
                         "label": masked,
-                        "error": str(e),
+                        "error": safe_error,
                     })
 
         return successes, errors

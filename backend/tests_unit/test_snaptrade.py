@@ -289,3 +289,72 @@ class TestInvestmentsSnapshot:
         assert snap["holding_count"] == 1
         assert snap["holdings"][0]["symbol"] == "AAPL"
         assert snap["concentrated"] is True   # single holding = 100%
+
+
+class TestBankSyncedBrokerages:
+    """A brokerage reached through the bank aggregator is an investment
+    everywhere else in the app; the Investments page has to agree.
+
+    SimpleFIN reports these accounts' value but never their positions, so they
+    arrive as balance-only rows rather than holdings.
+    """
+
+    def _cache_simplefin_brokerage(self):
+        import state
+        state._balances_cache_store.data["simplefin_accounts"] = [{
+            "id": "sf_broker_1",
+            "institution": "E*Trade",
+            "name": "Individual Brokerage (9423)",
+            "type": "investment",
+            "subtype": "brokerage",
+            "available": 1412.25,
+            "ledger": 1412.25,
+            "source": "simplefin",
+        }]
+        state._balances_cache_store.data["simplefin_cash"] = 0.0
+        state._balances_cache_store.data["simplefin_credit_debt"] = 0.0
+        state._balances_cache_store.save()
+
+    def test_portfolio_includes_a_bank_synced_brokerage(self, client):
+        self._cache_simplefin_brokerage()
+
+        data = client.get("/api/investments/portfolio").json()
+
+        rows = {a["account_name"]: a for a in data["by_account"]}
+        assert "Individual Brokerage (9423)" in rows
+        assert rows["Individual Brokerage (9423)"]["value"] == 1412.25
+        assert rows["Individual Brokerage (9423)"]["source"] == "simplefin"
+        # Its balance counts toward the total, and is reported separately so
+        # the UI can say the allocation doesn't cover it.
+        assert data["total_value"] == 1412.25
+        assert data["balance_only_value"] == 1412.25
+
+    def test_holdings_lists_it_with_no_positions(self, client):
+        self._cache_simplefin_brokerage()
+
+        data = client.get("/api/investments/holdings").json()
+
+        account = next(a for a in data["accounts"] if a["account_id"] == "sf_broker_1")
+        assert account["holdings"] == []
+        assert account["source"] == "simplefin"
+
+    def test_depository_accounts_are_not_pulled_in(self, client):
+        """Only the investment bucket crosses over — a checking account must
+        not appear on the Investments page."""
+        import state
+        state._balances_cache_store.data["simplefin_accounts"] = [{
+            "id": "sf_checking",
+            "institution": "Chase",
+            "name": "TOTAL CHECKING",
+            "type": "depository",
+            "subtype": "checking",
+            "available": 500.0,
+            "ledger": 500.0,
+            "source": "simplefin",
+        }]
+        state._balances_cache_store.save()
+
+        data = client.get("/api/investments/portfolio").json()
+
+        assert data["by_account"] == []
+        assert data["total_value"] == 0

@@ -34,9 +34,9 @@ async def _run_sync_transactions() -> Dict[str, Any]:
 
 
 async def _run_refresh_balances() -> Dict[str, Any]:
-    from routers.balances import get_balances_summary
+    from balances_service import build_summary
 
-    summary = await get_balances_summary(force=True)
+    summary = await build_summary(force=True)
     return {"net_worth": summary.net_worth, "account_count": len(summary.accounts)}
 
 

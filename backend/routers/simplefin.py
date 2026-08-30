@@ -21,7 +21,7 @@ from helpers import (
     derive_direction,
 )
 from models import SimplefinClaimRequest, SimplefinSyncRequest
-from routers.balances import persist_simplefin_balances
+from balances_service import persist_simplefin_balances
 from simplefin import mask_url
 
 logger = logging.getLogger(__name__)
@@ -112,7 +112,7 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
     # Refresh the balances cache using the same account data we just fetched —
     # otherwise the Finances page keeps showing stale balances after a sync.
     try:
-        await persist_simplefin_balances(url_batches)
+        await persist_simplefin_balances(url_batches, url_errors)
     except Exception as e:
         logger.warning(f"[SimpleFIN] Could not refresh balances cache during sync: {e}")
 
