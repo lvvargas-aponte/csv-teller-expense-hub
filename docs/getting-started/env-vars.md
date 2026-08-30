@@ -33,6 +33,21 @@ SnapTrade has no sandbox/production switch — these two credentials are the ent
 |---|---|---|
 | `PERSON_1_NAME` | — | Used in Sheet headers and splits UI |
 | `PERSON_2_NAME` | — | Used in Sheet headers and splits UI |
+| `INSTANCE_PERSON_SLOT` | `1` | Which of the two people **this installation** belongs to. Must be `1` or `2`; the backend refuses to start on any other value. |
+
+!!! warning "If you ever run a second copy, change the slot"
+
+    `INSTANCE_PERSON_SLOT` defaults to `1`. If each person runs their own copy of
+    the app, one of them must set it to `2`.
+
+    Two installations left on the same slot both believe they are the same
+    person, so one side computes every "who owes whom" figure **backwards** —
+    and nothing in the app looks wrong when it happens.
+
+    The two copies must also use **identical** `PERSON_1_NAME` and
+    `PERSON_2_NAME` values, because those strings become the sheet's column
+    headers. `Christy` on one side and `Christina` on the other means each copy
+    looks for a column the other never wrote.
 
 ## CSV ingest
 

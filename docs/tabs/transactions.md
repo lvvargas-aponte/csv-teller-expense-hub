@@ -65,7 +65,7 @@ The rail is pinned — it stays in place as you scroll the table. Below ~1600px 
 ### Send shared expenses to Google Sheets
 
 1. Click **📊 Send to Sheet** in the control bar.
-2. All currently shared transactions are written to the configured Google Sheet and cleared from the queue.
+2. All currently shared transactions are written to the configured Google Sheet. They **stay in your local records** and remain visible under [History](transactions-history.md); nothing is deleted. Running this twice for the same month appends those rows to the sheet twice.
 
 ### Upload a CSV
 

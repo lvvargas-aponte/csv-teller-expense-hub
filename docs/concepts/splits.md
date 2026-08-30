@@ -28,7 +28,7 @@ For an even split, `person_1_owes == person_2_owes == abs(amount) / 2`.
 
 ## Export
 
-When **📊 Send to Sheet** runs, only `is_shared = True` transactions are written. They're then cleared from the in-memory queue. (Persistent rows remain in the DB.)
+When **📊 Send to Sheet** runs, only `is_shared = True` transactions are written. Nothing is removed locally — the rows stay in the database and remain visible under [Transactions → History](../tabs/transactions-history.md). Because the export does not clear anything, running it twice for the same month appends those rows to the sheet twice.
 
 ## Why two columns instead of one ratio?
 

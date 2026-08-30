@@ -71,6 +71,7 @@ nav:
       - Environment variables: getting-started/env-vars.md
   - Tabs & Pages:
       - Transactions: tabs/transactions.md
+      - Transactions → History: tabs/transactions-history.md
       - Transaction detail: modals/edit-transaction.md
       - Finances → Dashboard: tabs/finances-dashboard.md
       - Finances → Overview: tabs/finances-overview.md
@@ -79,6 +80,7 @@ nav:
       - Finances → Budgets: tabs/finances-budgets.md
       - Finances → Goals: tabs/finances-goals.md
       - Finances → Bills: tabs/finances-bills.md
+      - Finances → Subscriptions: tabs/finances-subscriptions.md
       - Finances → Knowledge: tabs/finances-knowledge.md
       - Finances → AI Advisor: tabs/finances-advisor.md
   - Modals:

@@ -13,8 +13,12 @@ Shared transactions can be exported to a Google Sheet via **📊 Send to Sheet**
 5. Create a Google Sheet with these headers in row 1 (replace placeholders with your `PERSON_1_NAME` / `PERSON_2_NAME`):
 
    ```
-   Transaction Date | Description | Amount | Who | What | Alice Owes | Bob Owes | Notes
+   Transaction Date | Description | Amount | Who | What Alice Owes | What Bob Owes | Notes
    ```
+
+   `Who` is the person who **paid**. Fill only the *other* person's Owes column;
+   the payer's cell stays empty. A blank Owes cell means the row has not been
+   split yet — it does not mean zero.
 
 6. **Share the sheet** with the `client_email` from `credentials.json` — give it **Editor** access.
 7. Copy the Sheet ID from the URL (between `/d/` and `/edit`) into `.env`:
@@ -34,4 +38,9 @@ Returns the sheet title if everything is wired up; otherwise a structured error.
 
 ## Person names
 
-`PERSON_1_NAME` and `PERSON_2_NAME` show up as the "Owes" column headers in your sheet, and as labels in the Transactions UI when assigning splits. Set them once in `.env`.
+`PERSON_1_NAME` and `PERSON_2_NAME` show up as the "What … Owes" column headers in your sheet, and as labels in the Transactions UI when assigning splits. Set them once in `.env`.
+
+`INSTANCE_PERSON_SLOT` says which of the two this installation belongs to. It
+defaults to `1`, which is correct for a single household copy. If a second copy
+is ever set up for the other person, that one must use `2` — see
+[Environment variables](env-vars.md#household).

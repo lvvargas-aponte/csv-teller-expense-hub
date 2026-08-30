@@ -31,7 +31,10 @@ This app helps you:
 ### 3. Google Sheet Setup
 - Create a Google Sheet with these headers (swap in your actual names):
 
-  `Transaction Date | Description | Amount | Who | What | [PERSON_1_NAME] Owes | [PERSON_2_NAME] Owes | Notes`
+  `Transaction Date | Description | Amount | Who | What [PERSON_1_NAME] Owes | What [PERSON_2_NAME] Owes | Notes`
+
+- `Who` is the person who **paid**. Fill only the *other* person's Owes column —
+  the payer's cell stays empty.
 
 - Copy the Sheet ID from the URL — the string between `/d/` and `/edit`
 
@@ -69,11 +72,23 @@ SHEET_NAME=Sheet1                # optional: name of the tab
 PERSON_1_NAME=Alice
 PERSON_2_NAME=Bob
 
+# Which of the two people THIS installation belongs to (1 or 2).
+INSTANCE_PERSON_SLOT=1
+
 # CSV Watch Folder
 CSV_WATCH_FOLDER=./csv_imports
 ```
 
-> **Person names** appear as column headers in your Google Sheet (e.g. "Alice Owes", "Bob Owes"). Set them to whatever makes sense for your household.
+> **Person names** appear as column headers in your Google Sheet (e.g. "What Alice Owes", "What Bob Owes"). Set them to whatever makes sense for your household.
+
+> ⚠️ **`INSTANCE_PERSON_SLOT` — read this if you ever run a second copy.**
+> It says which of the two people this installation belongs to, and it
+> **defaults to `1`**. If you and your partner each run your own copy, one of you
+> must set it to `2`. Two installations left on the same slot both believe they
+> are the same person, and every "who owes whom" figure on one side comes out
+> **backwards** — with nothing in the app looking wrong. The two copies must also
+> share identical `PERSON_1_NAME` and `PERSON_2_NAME` values, since those become
+> the sheet's column headers.
 
 ---
 
@@ -236,7 +251,7 @@ The Access URL from a claimed Setup Token is saved automatically to `SIMPLEFIN_A
 2. Click **50/50** to mark a shared equal split, or **🧮** for a custom amount
 3. Bulk-select rows and use **✓ Mark shared** or **Mark personal** to process many at once
 4. Click **🗒️** to add a note (icon becomes **📝** once saved)
-5. Click **📊 Send to Sheet** (on the Transactions page, above the filters) — shared transactions go to Google Sheets and are cleared from the queue
+5. Click **📊 Send to Sheet** (on the Transactions page, above the filters) — shared transactions are written to Google Sheets and **stay in your local records**, so they remain visible under Transactions → History
 
 ---
 
@@ -334,7 +349,7 @@ curl -X POST http://localhost:8000/api/upload-csv \
 
 ## 📝 Notes
 
-- **Transactions** live in memory until sent to Google Sheets. Restarting the app clears the queue.
+- **Transactions** are stored in Postgres and survive restarts. Sending them to Google Sheets does not remove them — the full record stays under Transactions → History. Because nothing is cleared, pressing **Send to Sheet** twice for the same month appends those rows to the sheet twice.
 - **Manually added balances** are persisted to `backend/manual_accounts.json` and survive restarts.
 - All transaction sources (SimpleFIN + CSVs) appear together in one review table.
 - The CSV watcher processes files one at a time.
