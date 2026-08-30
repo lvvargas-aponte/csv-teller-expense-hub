@@ -143,6 +143,16 @@ test('the bare commitments path lands on due soon', async () => {
   expect(await screen.findByText('Upcoming Bills')).toBeInTheDocument();
 });
 
+test('commitments sub-tabs are real links, not buttons', async () => {
+  // Buttons can't be ctrl/cmd-clicked, middle-clicked, or right-clicked for
+  // "copy link address" — the whole point of these being routes.
+  renderAt('/plan/commitments/due');
+  const due = await screen.findByRole('link', { name: 'Due soon' });
+  const recurring = await screen.findByRole('link', { name: 'Recurring' });
+  expect(due).toHaveAttribute('href', '/plan/commitments/due');
+  expect(recurring).toHaveAttribute('href', '/plan/commitments/recurring');
+});
+
 test('each commitments view fetches only what it shows', async () => {
   // Stacking all three sections made every visit fire all three fetches.
   // Splitting them is the point; assert it actually happened. axios is

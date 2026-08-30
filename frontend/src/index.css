@@ -1249,7 +1249,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 }
 
 /* Sub-tabs within a page (Commitments: Due soon / Recurring). Same pill
-   language as the dashboard range picker, one level down. */
+   language as the dashboard range picker, one level down. These are real
+   routes, so the strip is a <nav> of <a>s (react-router NavLink), not
+   buttons — restored selectors target `a`, not the original `button`. */
 .eh-subtabs {
   display: inline-flex;
   gap: 2px;
@@ -1259,7 +1261,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   border: 1px solid var(--border);
   border-radius: 8px;
 }
-.eh-subtabs button {
+.eh-subtabs a {
   border: none;
   background: transparent;
   padding: 5px 14px;
@@ -1269,8 +1271,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   border-radius: 6px;
   color: var(--text-muted);
   cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
 }
-.eh-subtabs button.eh-subtab--active {
+.eh-subtabs a.eh-subtab--active {
   background: var(--bg-card);
   color: var(--accent);
   box-shadow: 0 1px 3px rgba(5,150,105,0.06);

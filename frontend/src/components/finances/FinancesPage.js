@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
 import DebtPage from './DebtPage';
@@ -125,7 +125,7 @@ export default function FinancesPage({ section, view, subView, healthScore, heal
 
         {section === 'plan' && view === 'commitments' && (
           <SimplePage title="Commitments">
-            <SubTabs tabs={COMMITMENTS_TABS} active={subView} onNavigate={navigate} />
+            <SubTabs tabs={COMMITMENTS_TABS} />
             {subView === 'due' && (
               <div style={{ display: 'grid', gap: 16 }}>
                 <UpcomingBillsCard onNavigateToAccounts={() => navigate('/debt')} />
@@ -157,21 +157,23 @@ export default function FinancesPage({ section, view, subView, healthScore, heal
   );
 }
 
-function SubTabs({ tabs, active, onNavigate }) {
+// Real routes get real links: ctrl/cmd-click, middle-click and "copy link
+// address" all need an <a href>, which a button can never give them. Same
+// idiom as Sidebar.js's NavLink usage — NavLink supplies isActive and
+// aria-current itself, so there's no hand-rolled active-state tracking here.
+function SubTabs({ tabs }) {
   return (
-    <div className="eh-subtabs">
+    <nav className="eh-subtabs" aria-label="Commitments views">
       {tabs.map((tab) => (
-        <button
+        <NavLink
           key={tab.id}
-          type="button"
-          className={tab.id === active ? 'eh-subtab--active' : ''}
-          aria-current={tab.id === active ? 'page' : undefined}
-          onClick={() => onNavigate(tab.path)}
+          to={tab.path}
+          className={({ isActive }) => (isActive ? 'eh-subtab--active' : undefined)}
         >
           {tab.label}
-        </button>
+        </NavLink>
       ))}
-    </div>
+    </nav>
   );
 }
 
