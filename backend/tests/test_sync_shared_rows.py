@@ -1,4 +1,6 @@
 """The combined view of both sides' shared rows for one month."""
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -232,3 +234,277 @@ class TestNamePlumbing:
                                      person_1_name=P1, person_2_name=P2)
 
         assert row["you_owe"] == 75.0
+
+
+class TestRowMeta:
+    def test_your_row_carries_its_category_and_account(self, client):
+        identity_service.ensure_identity()
+        mine("t1", category="groceries", institution="Chase Bank")
+
+        row = client.get("/api/sync/shared-rows?period=2026-06").json()["rows"][0]
+
+        assert row["category"] == "groceries"
+        assert row["account"] == "Chase"  # normalized, as everywhere else
+
+    def test_a_blank_category_or_account_is_null_not_a_dash(self, client):
+        """The page omits empty meta rather than rendering a placeholder."""
+        identity_service.ensure_identity()
+        mine("t1", category="", institution="")
+
+        row = client.get("/api/sync/shared-rows?period=2026-06").json()["rows"][0]
+
+        assert row["category"] is None
+        assert row["account"] is None
+
+    def test_a_peer_row_reports_category_and_account_as_empty(self, client):
+        """Both row shapes carry the same keys; a peer row simply has no
+        account or category of ours to report."""
+        identity_service.ensure_identity()
+        theirs()
+
+        row = client.get("/api/sync/shared-rows?period=2026-06").json()["rows"][0]
+
+        assert row["category"] is None
+        assert row["account"] is None
+
+
+class TestSplitLabel:
+    def _label(self, client):
+        return client.get("/api/sync/shared-rows?period=2026-06").json()["rows"][0]["split_label"]
+
+    def test_an_even_split_reads_fifty_fifty(self, client):
+        identity_service.ensure_identity()
+        mine("t1", amount=-112.26, who=P1, person_1_owes=0.0, person_2_owes=56.13)
+        assert self._label(client) == "50 / 50 split"
+
+    def test_an_uneven_split_reads_payer_share_first(self, client):
+        identity_service.ensure_identity()
+        mine("t1", amount=-100.0, who=P1, person_1_owes=0.0, person_2_owes=30.0)
+        assert self._label(client) == "70 / 30 split"
+
+    def test_a_row_with_no_split_has_no_label(self, client):
+        identity_service.ensure_identity()
+        mine("t1", who=P1, person_1_owes=0.0, person_2_owes=0.0)
+        assert self._label(client) is None
+
+    def test_a_peer_row_gets_a_label_from_the_same_helper(self, client):
+        identity_service.ensure_identity()
+        theirs(amount=150, who=P2, person_1_owes=75, person_2_owes=0)
+        assert self._label(client) == "50 / 50 split"
+
+
+class TestSettlement:
+    def _settlement(self, client):
+        return client.get("/api/sync/shared-rows?period=2026-06").json()["settlement"]
+
+    def test_when_they_owe_more_the_net_points_at_them(self, client):
+        identity_service.ensure_identity()
+        mine("t1", amount=-200.0, who=P1, person_1_owes=0.0, person_2_owes=100.0)
+        mine("t2", amount=-40.0, who=P2, person_1_owes=20.0, person_2_owes=0.0)
+
+        s = self._settlement(client)
+
+        assert s["they_owe_total"] == 100.0
+        assert s["you_owe_total"] == 20.0
+        assert s["net"] == 80.0
+        assert s["direction"] == "they_owe"
+
+    def test_when_you_owe_more_the_net_points_at_you(self, client):
+        identity_service.ensure_identity()
+        mine("t1", amount=-40.0, who=P1, person_1_owes=0.0, person_2_owes=20.0)
+        mine("t2", amount=-200.0, who=P2, person_1_owes=100.0, person_2_owes=0.0)
+
+        s = self._settlement(client)
+
+        assert s["net"] == 80.0
+        assert s["direction"] == "you_owe"
+
+    def test_equal_owes_settle_even_with_a_zero_net(self, client):
+        identity_service.ensure_identity()
+        mine("t1", amount=-100.0, who=P1, person_1_owes=0.0, person_2_owes=50.0)
+        mine("t2", amount=-100.0, who=P2, person_1_owes=50.0, person_2_owes=0.0)
+
+        s = self._settlement(client)
+
+        assert s["net"] == 0.0
+        assert s["direction"] == "even"
+
+    def test_counted_totals_describe_only_the_publishable_rows(self, client):
+        identity_service.ensure_identity()
+        mine("t1", amount=-200.0, who=P1, person_1_owes=0.0, person_2_owes=100.0)
+        mine("t2", amount=-500.0, who=P1, person_1_owes=0.0, person_2_owes=0.0)
+
+        s = self._settlement(client)
+
+        assert s["counted_count"] == 1
+        assert s["counted_amount"] == 200.0
+        assert s["blocked_count"] == 1
+
+    def test_a_blocked_row_never_moves_the_net(self, client):
+        """A row sync would withhold must not be promised to either side."""
+        identity_service.ensure_identity()
+        mine("t1", amount=-200.0, who="Mom", person_1_owes=0.0, person_2_owes=100.0)
+
+        s = self._settlement(client)
+
+        assert s["they_owe_total"] == 0.0
+        assert s["you_owe_total"] == 0.0
+        assert s["net"] == 0.0
+        assert s["direction"] == "even"
+        assert s["blocked_count"] == 1
+
+    def test_an_empty_month_settles_even_at_zero(self, client):
+        identity_service.ensure_identity()
+        s = self._settlement(client)
+        assert s == {
+            "you_owe_total": 0.0, "they_owe_total": 0.0, "net": 0.0,
+            "direction": "even", "counted_count": 0, "counted_amount": 0.0,
+            "blocked_count": 0,
+        }
+
+
+class TestRepairableBlockedRows:
+    """A blocked row of ours carries what the page needs to repair it here."""
+
+    def _row(self, client, **over):
+        mine("t1", **over)
+        rows = client.get("/api/sync/shared-rows?period=2026-06").json()["rows"]
+        return next(r for r in rows if r["transaction_id"] == "t1")
+
+    def test_a_missing_split_is_kinded_so_the_page_can_offer_the_editor(self, client):
+        row = self._row(client, person_1_owes=0, person_2_owes=0)
+
+        assert row["publishable"] is False
+        assert row["blocked_kind"] == "split"
+
+    def test_an_unrecognised_payer_is_kinded(self, client):
+        row = self._row(client, who="Mom")
+
+        assert row["blocked_kind"] == "who"
+
+    def test_an_unreadable_date_is_kinded_and_listed_on_the_current_month(self, client):
+        # It belongs to no month, so it is surfaced on the current one rather
+        # than being invisible on every page that could report the problem.
+        mine("t1", date="not-a-date")
+        this_month = date.today().strftime("%Y-%m")
+
+        rows = client.get(f"/api/sync/shared-rows?period={this_month}").json()["rows"]
+        row = next(r for r in rows if r["transaction_id"] == "t1")
+
+        assert row["blocked_kind"] == "date"
+
+    def test_an_undated_row_is_not_repeated_on_other_months(self, client):
+        mine("t1", date="not-a-date")
+
+        rows = client.get("/api/sync/shared-rows?period=2026-06").json()["rows"]
+
+        assert [r["transaction_id"] for r in rows] == []
+
+    def test_an_unreadable_amount_is_kinded(self, client):
+        row = self._row(client, amount="lots")
+
+        assert row["blocked_kind"] == "amount"
+
+    def test_a_publishable_row_has_no_kind(self, client):
+        row = self._row(client)
+
+        assert row["publishable"] is True
+        assert row["blocked_kind"] is None
+
+    def test_our_row_carries_the_raw_fields_the_editor_writes_back(self, client):
+        row = self._row(client, person_1_owes=0, person_2_owes=0)
+
+        assert row["editable"] == {
+            "is_shared": True,
+            "what": "",
+            "person_1_owes": 0,
+            "person_2_owes": 0,
+            "raw_date": "06/15/2026",
+            "raw_amount": -112.25,
+        }
+
+    def test_a_peer_row_is_not_editable_from_here(self, client):
+        theirs()
+        rows = client.get("/api/sync/shared-rows?period=2026-06").json()["rows"]
+        peer_row = next(r for r in rows if r["owner"] == "peer")
+
+        # It lives on their instance; offering an editor would write nothing.
+        assert peer_row["editable"] is None
+        assert peer_row["blocked_kind"] is None
+
+
+class TestFixingABlockedRowInPlace:
+    """The repair goes through PUT /transactions/{id} and unblocks the row."""
+
+    def _rows(self, client):
+        return client.get("/api/sync/shared-rows?period=2026-06").json()
+
+    def _put(self, client, **patch):
+        body = {
+            "is_shared": True, "who": P1, "what": "", "notes": "",
+            "person_1_owes": 0, "person_2_owes": 0, "reviewed": False,
+        }
+        body.update(patch)
+        return client.put("/api/transactions/t1", json=body)
+
+    def test_setting_a_split_unblocks_the_row_and_moves_the_net(self, client):
+        mine("t1", person_1_owes=0, person_2_owes=0)
+        assert self._rows(client)["settlement"]["net"] == 0
+
+        assert self._put(client, person_2_owes=56.13).status_code == 200
+
+        body = self._rows(client)
+        row = next(r for r in body["rows"] if r["transaction_id"] == "t1")
+        assert row["publishable"] is True
+        assert row["blocked_kind"] is None
+        assert body["settlement"]["net"] == 56.13
+
+    def test_fixing_the_payer_unblocks_the_row(self, client):
+        mine("t1", who="Mom")
+        assert self._rows(client)["rows"][0]["blocked_kind"] == "who"
+
+        assert self._put(client, who=P1, person_2_owes=56.13).status_code == 200
+
+        assert self._rows(client)["rows"][0]["publishable"] is True
+
+    def test_fixing_the_date_is_stored_in_the_apps_own_format(self, client):
+        mine("t1", date="not-a-date")
+
+        assert self._put(client, date="2026-06-11", person_2_owes=56.13).status_code == 200
+
+        # Repairing the date is what files it under a month at all.
+        row = self._rows(client)["rows"][0]
+        assert row["publishable"] is True
+        assert row["date"] == "2026-06-11"
+        assert row["editable"]["raw_date"] == "06/11/2026"
+
+    def test_a_date_that_still_cannot_be_read_is_refused(self, client):
+        mine("t1", date="not-a-date")
+
+        response = self._put(client, date="still nonsense")
+
+        assert response.status_code == 422
+        # The stored value is untouched, so the row keeps reporting the problem.
+        this_month = date.today().strftime("%Y-%m")
+        rows = client.get(f"/api/sync/shared-rows?period={this_month}").json()["rows"]
+        assert rows[0]["blocked_kind"] == "date"
+
+    def test_fixing_the_amount_unblocks_the_row(self, client):
+        mine("t1", amount="lots")
+        assert self._rows(client)["rows"][0]["blocked_kind"] == "amount"
+
+        assert self._put(client, amount=-112.25, person_2_owes=56.13).status_code == 200
+
+        row = self._rows(client)["rows"][0]
+        assert row["publishable"] is True
+        assert row["amount"] == -112.25
+
+    def test_omitting_date_and_amount_leaves_them_untouched(self, client):
+        # Every existing caller sends neither; they must stay no-ops.
+        mine("t1")
+
+        assert self._put(client, person_2_owes=56.13).status_code == 200
+
+        row = self._rows(client)["rows"][0]
+        assert row["editable"]["raw_date"] == "06/15/2026"
+        assert row["amount"] == -112.25

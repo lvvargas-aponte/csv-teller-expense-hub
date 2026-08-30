@@ -102,3 +102,103 @@ class TestClaims:
         )
 
         assert sync_sheet.read_claims(gw) == []
+
+
+class TestPeriodRecords:
+    """``period`` rows — each instance's settlement position for one month."""
+
+    def _record(self, **over):
+        record = {
+            "period": "2026-06",
+            "user_id": ME.user_id,
+            "display_name": "Valeria",
+            "ready_at": "2026-07-01T10:00:00+00:00",
+            "net_amount": 56.13,
+            "debtor_user_id": PEER.user_id,
+        }
+        record.update(over)
+        return record
+
+    def test_a_written_record_reads_back(self):
+        gw = InMemoryGateway({})
+        sync_sheet.write_period_record(gw, self._record())
+
+        assert sync_sheet.read_period_records(gw) == [
+            {
+                "period": "2026-06",
+                "user_id": ME.user_id,
+                "display_name": "Valeria",
+                "ready_at": "2026-07-01T10:00:00+00:00",
+                "closed_at": None,
+                "net_amount": "56.13",
+                "debtor_user_id": PEER.user_id,
+                "pif_at": None,
+                "pif_note": None,
+            }
+        ]
+
+    def test_rewriting_the_same_month_updates_rather_than_appends(self):
+        gw = InMemoryGateway({})
+        sync_sheet.write_period_record(gw, self._record())
+        sync_sheet.write_period_record(gw, self._record(net_amount=61.00))
+
+        records = sync_sheet.read_period_records(gw)
+        assert len(records) == 1
+        assert records[0]["net_amount"] == "61.00"
+
+    def test_each_instance_keeps_its_own_row_for_the_same_month(self):
+        gw = InMemoryGateway({})
+        sync_sheet.write_period_record(gw, self._record())
+        sync_sheet.write_period_record(
+            gw, self._record(user_id=PEER.user_id, display_name="Christy")
+        )
+
+        assert {r["user_id"] for r in sync_sheet.read_period_records(gw)} == {
+            ME.user_id, PEER.user_id
+        }
+
+    def test_each_month_keeps_its_own_row_for_the_same_instance(self):
+        gw = InMemoryGateway({})
+        sync_sheet.write_period_record(gw, self._record())
+        sync_sheet.write_period_record(gw, self._record(period="2026-07"))
+
+        assert {r["period"] for r in sync_sheet.read_period_records(gw)} == {
+            "2026-06", "2026-07"
+        }
+
+    def test_clearing_pif_is_written_as_a_blank_not_skipped(self):
+        # Reopening a month IS writing an empty PIF At, so a blank must
+        # overwrite rather than leave the old timestamp standing.
+        gw = InMemoryGateway({})
+        sync_sheet.write_period_record(
+            gw, self._record(pif_at="2026-07-02T09:00:00+00:00", pif_note="Venmo")
+        )
+        sync_sheet.write_period_record(gw, self._record(pif_at=None, pif_note=None))
+
+        record = sync_sheet.read_period_records(gw)[0]
+        assert record["pif_at"] is None
+        assert record["pif_note"] is None
+
+    def test_a_period_record_never_overwrites_a_claim(self):
+        gw = InMemoryGateway({})
+        sync_sheet.write_claim(gw, ME)
+        sync_sheet.write_period_record(gw, self._record())
+
+        assert [c.user_id for c in sync_sheet.read_claims(gw)] == [ME.user_id]
+        assert len(sync_sheet.read_period_records(gw)) == 1
+
+    def test_claims_are_not_read_as_period_records(self):
+        gw = InMemoryGateway({})
+        sync_sheet.write_claim(gw, ME)
+
+        assert sync_sheet.read_period_records(gw) == []
+
+    def test_a_half_typed_row_is_skipped_rather_than_raising(self):
+        gw = InMemoryGateway({})
+        sync_sheet.ensure_sync_worksheet(gw)
+        gw.append_rows(sync_sheet.SYNC_TITLE, [["period", "", "", "", "", "", "", ""]])
+
+        assert sync_sheet.read_period_records(gw) == []
+
+    def test_an_absent_worksheet_reads_as_no_records(self):
+        assert sync_sheet.read_period_records(InMemoryGateway({})) == []

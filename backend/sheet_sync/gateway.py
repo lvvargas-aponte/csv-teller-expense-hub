@@ -45,6 +45,7 @@ class SheetGateway(Protocol):
     def create_worksheet(self, title: str, rows: int = 100, cols: int = 26) -> None: ...
     def clear_rows_from(self, title: str, start_row: int) -> None: ...
     def set_hidden(self, title: str, hidden: bool) -> None: ...
+    def rename_worksheet(self, title: str, new_title: str) -> None: ...
 
 
 class InMemoryGateway(SheetGateway):
@@ -131,6 +132,19 @@ class InMemoryGateway(SheetGateway):
         else:
             self.hidden.discard(title)
 
+    def rename_worksheet(self, title: str, new_title: str) -> None:
+        self.calls.append("rename_worksheet")
+        rows = self._sheet(title)
+        if new_title == title:
+            return
+        if new_title in self.data:
+            raise WorksheetExists(f"Worksheet {new_title!r} already exists")
+        self.data[new_title] = rows
+        del self.data[title]
+        if title in self.hidden:
+            self.hidden.discard(title)
+            self.hidden.add(new_title)
+
 
 class GspreadGateway(SheetGateway):
     """The production gateway. The only module that imports gspread directly."""
@@ -206,6 +220,13 @@ class GspreadGateway(SheetGateway):
         # start_row must never be 1: the Sheets API rejects a zero-row sheet.
         if ws.row_count >= start_row:
             ws.delete_rows(start_row, ws.row_count)
+
+    def rename_worksheet(self, title: str, new_title: str) -> None:
+        if new_title == title:
+            return
+        if new_title in self.list_worksheets():
+            raise WorksheetExists(f"Worksheet {new_title!r} already exists")
+        self._ws(title).update_title(new_title)
 
     def set_hidden(self, title: str, hidden: bool) -> None:
         ws = self._ws(title)

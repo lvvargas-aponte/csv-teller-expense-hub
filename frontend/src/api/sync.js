@@ -17,3 +17,17 @@ export const acknowledgeCorrection = (id) =>
 
 export const setDispute = (txnId, body) =>
   axios.put(`${API}/api/sync/peer-rows/${encodeURIComponent(txnId)}/dispute`, body);
+
+// Settling a month. Advisory on both sides: either instance may declare a
+// month paid, and either may reopen only its own declaration.
+export const markPeriodReady = (period) =>
+  axios.post(`${API}/api/sync/periods/${period}/ready`);
+
+export const withdrawPeriodReady = (period) =>
+  axios.delete(`${API}/api/sync/periods/${period}/ready`);
+
+export const markPeriodPaid = (period, note) =>
+  axios.post(`${API}/api/sync/periods/${period}/paid`, { note: note || null });
+
+export const reopenPeriod = (period) =>
+  axios.delete(`${API}/api/sync/periods/${period}/paid`);

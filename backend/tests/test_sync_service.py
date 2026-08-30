@@ -665,8 +665,9 @@ class TestStatus:
         out = service.status()
 
         assert set(out.keys()) == {
-            "enabled", "open_periods", "last_run", "last_successful_pull",
-            "publishable_rows", "refusal", "corrections", "disputes_against_me",
+            "enabled", "open_periods", "settled_periods", "last_run",
+            "last_successful_pull", "publishable_rows", "refusal", "corrections",
+            "disputes_against_me",
         }
         assert out["enabled"] is False
         assert isinstance(out["open_periods"], list)

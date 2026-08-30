@@ -122,6 +122,23 @@ def format_bool(value: bool) -> str:
     return "TRUE" if value else ""
 
 
+_FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+
+def escape_formula(value: str) -> str:
+    """Prefix a leading apostrophe so Sheets stores the value as literal text.
+
+    Every cell whose content a human typed freehand goes through this: the
+    gateway writes with ``USER_ENTERED``, so a value starting with ``=`` would
+    otherwise become a live formula in the peer's spreadsheet. Only the emitted
+    value is escaped — comparisons still use the raw desired value, since
+    Sheets' read-back of an escaped cell is the text with the apostrophe gone.
+    """
+    if value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def make_txn_id(owner_user_id: str, transaction_id: str) -> str:
     return f"{owner_user_id}:{transaction_id}"
 

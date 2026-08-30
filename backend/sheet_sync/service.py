@@ -20,7 +20,9 @@ from config import (
     SPREADSHEET_ID,
 )
 from db import identity_repo, peer_transactions_repo, sync_state_repo
-from sheet_sync import applier, contract, engine, guards, projection, sync_sheet, worksheet
+from sheet_sync import (
+    applier, contract, engine, guards, projection, settlement, sync_sheet, worksheet,
+)
 from sheet_sync.adoption import ADOPTED_ID_PREFIX
 from sheet_sync.gateway import SheetGateway
 from sheet_sync.guards import Claim
@@ -80,10 +82,10 @@ class SyncOutcome:
 
 
 def open_periods(today: Optional[date] = None) -> List[str]:
-    """Every month from the cutover to the current one.
+    """Every month from the cutover to the current one. Pure — no I/O.
 
-    Sub-project C will subtract closed periods here; until then every month
-    from the cutover forward is open by definition.
+    This is the calendar, not the work list: a settled month is still an open
+    period by this definition. ``syncable_periods`` is what a sweep iterates.
     """
     today = today or date.today()
     year, month = (int(p) for p in worksheet.CUTOVER_PERIOD.split("-"))
@@ -92,6 +94,18 @@ def open_periods(today: Optional[date] = None) -> List[str]:
         periods.append(f"{year:04d}-{month:02d}")
         year, month = (year + 1, 1) if month == 12 else (year, month + 1)
     return periods
+
+
+def syncable_periods(today: Optional[date] = None) -> List[str]:
+    """``open_periods`` minus the months somebody has marked paid in full.
+
+    A settled month is left alone by the every-month sweep so a closed book
+    stops being rewritten. Syncing one explicitly still works — that is how a
+    late row reaches a month that was settled early, and why reopening is not
+    a prerequisite for it.
+    """
+    settled = set(settlement.settled_periods())
+    return [p for p in open_periods(today) if p not in settled]
 
 
 def _my_claim() -> Claim:
@@ -346,6 +360,10 @@ def sync_period(
                  if r.row_number in set(delete_row_numbers)]
             )
 
+            # After the rows, so a settlement position always describes a month
+            # whose rows have just been exchanged. Never raises.
+            settlement.sync_records(gateway, period)
+
         sync_state_repo.finish_run(
             run_id,
             "ok",
@@ -384,7 +402,7 @@ def sync_all(
 ) -> List[SyncOutcome]:
     return [
         sync_period(gateway, period, dry_run=dry_run)
-        for period in (periods or open_periods())
+        for period in (periods or syncable_periods())
     ]
 
 
@@ -411,7 +429,7 @@ def status() -> Dict[str, Any]:
     refusal = last if last and last["status"] == "refused" else None
     mine = _my_claim()
     pending = 0
-    for period in open_periods():
+    for period in syncable_periods():
         desired, _ = projection.project_push(
             list(state.stored_transactions.items()),
             period,
@@ -424,7 +442,8 @@ def status() -> Dict[str, Any]:
 
     return {
         "enabled": SHEET_SYNC_ENABLED,
-        "open_periods": open_periods(),
+        "open_periods": syncable_periods(),
+        "settled_periods": settlement.settled_periods(),
         "last_run": last,
         "last_successful_pull": sync_state_repo.last_ok_run(),
         "publishable_rows": pending,

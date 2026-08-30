@@ -6,41 +6,47 @@ the shared-expenses page renders — than the push/pull cycle does.
 """
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 import identity_service
 import state
 from config import PERSON_1_NAME, PERSON_2_NAME
+from institution_normalizer import normalize as normalize_institution
 from db import identity_repo, peer_transactions_repo, sync_state_repo
-from sheet_sync import contract, projection
+from sheet_sync import contract, projection, settlement
 
 
-def _blocked_reason(
+def _blocked(
     txn: Dict[str, Any], person_1_name: str, person_2_name: str, my_slot: int
-) -> Optional[str]:
-    """Why ``project_push`` would withhold this row, or None if it would not.
+) -> tuple[Optional[str], Optional[str]]:
+    """``(kind, reason)`` for why ``project_push`` would withhold this row.
 
     Mirrors ``projection.project_push``'s checks in the same order (date, then
     who/slot, then amount, then split), so the page never disagrees with what a
     sync cycle actually does — including which reason it reports first when a
     row fails more than one check. ``reviewed`` is not among them: it is triage
     state, not a gate.
+
+    ``kind`` is the machine-readable half, so the page can offer the matching
+    repair without reading the prose of ``reason``.
     """
     when = contract.parse_date_loose(txn.get("date"))
     if when is None:
-        return f"Cannot read {txn.get('date')!r} as a date."
+        return "date", f"Cannot read {txn.get('date')!r} as a date."
 
     who = txn.get("who") or ""
     slot = projection.owned_payer_slot(who, person_1_name, person_2_name, my_slot)
     if slot is None:
-        return (
+        return "who", (
             f"Who is {who!r}, which is neither "
             f"{person_1_name!r} nor {person_2_name!r}, so sync cannot tell "
             f"whose owes cell to fill."
         )
 
     if projection._decimal(txn.get("amount")) is None:
-        return f"Cannot read {txn.get('amount')!r} as an amount."
+        return "amount", f"Cannot read {txn.get('amount')!r} as an amount."
 
     non_payer_owes = (
         projection._decimal(txn.get("person_2_owes"))
@@ -48,9 +54,9 @@ def _blocked_reason(
         else projection._decimal(txn.get("person_1_owes"))
     )
     if not non_payer_owes:
-        return "No split set — nothing to publish. Set a split in Transactions."
+        return "split", "No split set — nothing to publish."
 
-    return None
+    return None, None
 
 
 def _owes_by_slot(
@@ -75,6 +81,31 @@ def _owes_by_slot(
     return _num(my_owes), _num(their_owes)
 
 
+def _split_label(
+    amount: Any, you_owe: Optional[float], they_owe: Optional[float]
+) -> Optional[str]:
+    """e.g. ``"50 / 50 split"``, payer's share first, or None when there is none.
+
+    Once the payer's slot resolves only one side is owed anything, so a row
+    carrying figures on both sides (or on neither) has no split to describe.
+    """
+    owed = [v for v in (you_owe, they_owe) if v is not None]
+    total = projection._decimal(amount)
+    if len(owed) != 1 or total is None:
+        return None
+
+    total = abs(total)
+    share = Decimal(str(owed[0]))
+    if total <= 0 or share <= 0:
+        return None
+
+    # A share larger than the amount is a mis-entered split — exactly the kind
+    # of row this page exists to surface — so clamp rather than render
+    # "-20 / 120 split" and make the reader doubt the page instead of the row.
+    other_pct = min(100, max(0, int((share / total * 100).to_integral_value())))
+    return f"{100 - other_pct} / {other_pct} split"
+
+
 def _my_row(
     transaction_id: str,
     txn: Dict[str, Any],
@@ -92,7 +123,7 @@ def _my_row(
         my_slot, txn_slot, txn.get("person_1_owes"), txn.get("person_2_owes")
     )
     when = contract.parse_date_loose(txn.get("date"))
-    reason = _blocked_reason(txn, person_1_name, person_2_name, my_slot)
+    kind, reason = _blocked(txn, person_1_name, person_2_name, my_slot)
 
     row_state = sync_state_repo.get_row_state(
         contract.make_txn_id(my_user_id, transaction_id)
@@ -106,12 +137,30 @@ def _my_row(
         "description": txn.get("description") or "",
         "amount": txn.get("amount"),
         "who": who,
+        # Which person slot actually paid, as sync resolves it — a blank ``who``
+        # resolves to us, so the page must not re-derive this by matching names.
+        "payer_slot": txn_slot,
         "notes": txn.get("notes") or "",
+        "category": txn.get("category") or None,
+        "account": normalize_institution(txn.get("institution")) or None,
         "you_owe": you_owe,
         "they_owe": they_owe,
+        "split_label": _split_label(txn.get("amount"), you_owe, they_owe),
         "reviewed": bool(txn.get("reviewed")),
         "publishable": reason is None,
         "blocked_reason": reason,
+        "blocked_kind": kind,
+        # The raw fields behind the display ones, so the page can repair a
+        # blocked row in place. Only ours carry them: a peer row lives on
+        # their instance and is not ours to edit.
+        "editable": {
+            "is_shared": bool(txn.get("is_shared")),
+            "what": txn.get("what") or "",
+            "person_1_owes": txn.get("person_1_owes"),
+            "person_2_owes": txn.get("person_2_owes"),
+            "raw_date": txn.get("date"),
+            "raw_amount": txn.get("amount"),
+        },
         "dispute_flag": row_state.get("dispute_flag"),
         "dispute_by": row_state.get("dispute_by"),
         "dispute_note": row_state.get("dispute_note"),
@@ -143,12 +192,20 @@ def _peer_row(
         "description": peer_row.get("description") or "",
         "amount": peer_row.get("amount"),
         "who": who,
+        "payer_slot": txn_slot,
         "notes": peer_row.get("notes") or "",
+        # A peer row has no account or category columns to report, but it
+        # carries the keys anyway so both row shapes can be indexed alike.
+        "category": None,
+        "account": None,
         "you_owe": you_owe,
         "they_owe": they_owe,
+        "split_label": _split_label(peer_row.get("amount"), you_owe, they_owe),
         "reviewed": bool(peer_row.get("reviewed")),
         "publishable": True,
         "blocked_reason": None,
+        "blocked_kind": None,
+        "editable": None,
         "dispute_flag": peer_row.get("dispute_flag"),
         "dispute_by": peer_row.get("dispute_by"),
         "dispute_note": peer_row.get("dispute_note"),
@@ -156,26 +213,72 @@ def _peer_row(
     }
 
 
+def _settlement(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """The month's standing net, counting only rows a sync would publish.
+
+    Computed here rather than in the page so the settle-up card and the list
+    can never disagree about which rows count — the same reason
+    ``_blocked`` mirrors ``projection.project_push``.
+    """
+    counted = [r for r in rows if r["publishable"]]
+
+    you_owe_total = sum(Decimal(str(r["you_owe"])) for r in counted if r["you_owe"])
+    they_owe_total = sum(Decimal(str(r["they_owe"])) for r in counted if r["they_owe"])
+    counted_amount = sum(
+        abs(projection._decimal(r["amount"]) or Decimal(0)) for r in counted
+    )
+    net = they_owe_total - you_owe_total
+
+    if net > 0:
+        direction = "they_owe"
+    elif net < 0:
+        direction = "you_owe"
+    else:
+        direction = "even"
+
+    return {
+        "you_owe_total": float(round(Decimal(you_owe_total), 2)),
+        "they_owe_total": float(round(Decimal(they_owe_total), 2)),
+        "net": float(round(abs(Decimal(net)), 2)),
+        "direction": direction,
+        "counted_count": len(counted),
+        "counted_amount": float(round(Decimal(counted_amount), 2)),
+        "blocked_count": len(rows) - len(counted),
+    }
+
+
 def _iso(value) -> Optional[str]:
     return value.isoformat() if hasattr(value, "isoformat") else value
 
 
-def shared_rows(period: str) -> Dict[str, Any]:
+def shared_rows(period: str, today: Optional[date] = None) -> Dict[str, Any]:
     """Both sides' shared rows for ``period``, joined for display only.
 
     Yours come from ``state.stored_transactions`` (is_shared, any review
     state); theirs from ``peer_transactions_repo`` (already on the sheet, so
     always publishable). Never writes to either store.
+
+    ``today`` is injectable — same as ``service.open_periods`` — so the
+    undated-row fallback below can be exercised without freezing global time.
     """
     mine = identity_service.ensure_identity()
     peers = identity_repo.list_peers()
     my_slot = mine["person_slot"]
 
     rows: List[Dict[str, Any]] = []
+    current_period = (today or date.today()).strftime("%Y-%m")
     for transaction_id, txn in state.stored_transactions.items():
         if not txn.get("is_shared"):
             continue
-        if projection.period_of(txn) != period:
+        row_period = projection.period_of(txn)
+        # A row whose date cannot be read belongs to no month, so it would be
+        # invisible on every one of them — including the page that exists to
+        # report why sync will not publish it. It is listed on the current
+        # month instead, once, so it can be found and repaired.
+        if row_period is None:
+            if period != current_period:
+                continue
+        elif row_period != period:
             continue
         rows.append(
             _my_row(
@@ -196,6 +299,7 @@ def shared_rows(period: str) -> Dict[str, Any]:
         )
 
     rows.sort(key=lambda r: (r["date"] or "", r["description"], r["transaction_id"]))
+    block = _settlement(rows)
 
     return {
         "period": period,
@@ -210,4 +314,6 @@ def shared_rows(period: str) -> Dict[str, Any]:
             else None
         ),
         "rows": rows,
+        "settlement": block,
+        "settlement_state": settlement.describe(period, block),
     }

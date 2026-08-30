@@ -5,14 +5,14 @@ settled financial records, so a cycle happens when a person asks for one.
 """
 import logging
 import re
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
 import identity_service
 from db import peer_transactions_repo, sync_state_repo
-from sheet_sync import service, shared_view, worksheet
+from sheet_sync import service, settlement, shared_view, worksheet
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -41,6 +41,13 @@ def _reject_before_cutover(period: str) -> None:
                 "Earlier months are hand-maintained and are never touched by sync."
             ),
         )
+
+
+def _validate_period(period: str) -> None:
+    """Well-formed, and inside the range sync is allowed to touch."""
+    if not _PERIOD_RE.match(period):
+        raise HTTPException(status_code=422, detail="period must be YYYY-MM")
+    _reject_before_cutover(period)
 
 
 @router.post("/sync/shared")
@@ -76,6 +83,87 @@ async def shared_rows(period: str = Query(..., pattern=_PERIOD_RE.pattern)):
 @router.get("/sync/status")
 async def sync_status():
     return service.status()
+
+
+class PaidRequest(BaseModel):
+    note: Optional[str] = None
+
+
+def _settlement_state(period: str, block: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """The period's position, recomputed from the rows as they stand now.
+
+    ``block`` lets a handler that already projected the month reuse that work:
+    marking a period ready or paid changes the settlement *records*, never the
+    rows they were computed from, so only ``describe`` has to run again.
+    """
+    if block is None:
+        block = shared_view.shared_rows(period)["settlement"]
+    return {
+        "settlement": block,
+        "settlement_state": settlement.describe(period, block),
+    }
+
+
+@router.post("/sync/periods/{period}/ready")
+async def mark_period_ready(period: str) -> Dict[str, Any]:
+    """Declare this instance's rows for ``period`` complete.
+
+    Publishes the footer straight away rather than waiting for the next sync
+    cycle: the point of saying "I'm done" is that the other person can see it.
+    """
+    _validate_period(period)
+    block = shared_view.shared_rows(period)["settlement"]
+    settlement.mark_ready(period, block)
+    published = settlement.publish(period)
+    return {**_settlement_state(period, block), "published": published}
+
+
+@router.delete("/sync/periods/{period}/ready")
+async def withdraw_period_ready(period: str) -> Dict[str, Any]:
+    _validate_period(period)
+    settlement.withdraw_ready(period)
+    return _settlement_state(period)
+
+
+@router.post("/sync/periods/{period}/paid")
+async def mark_period_paid(period: str, req: Optional[PaidRequest] = None) -> Dict[str, Any]:
+    """Declare ``period`` paid in full.
+
+    Deliberately not gated on the peer agreeing, or on the two instances having
+    computed the same net: settlement here is advisory, and the person who
+    moved the money is the one who knows. A disagreement is reported on the
+    page, not enforced here.
+    """
+    _validate_period(period)
+
+    # Someone got here first — the peer's instance, or a hand-renamed tab.
+    # Say so instead of overwriting their record with ours.
+    already = settlement.who_settled(period)
+    if already or settlement.sheet_is_settled(period):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"This sheet is already marked paid in full by {already}."
+                if already
+                else "This sheet is already marked paid in full."
+            ),
+        )
+
+    note = req.note if req else None
+    block = shared_view.shared_rows(period)["settlement"]
+    settlement.mark_paid(period, block, note=note)
+    published = settlement.publish(period, settle=True, method=note)
+    return {**_settlement_state(period, block), "published": published}
+
+
+@router.delete("/sync/periods/{period}/paid")
+async def reopen_period(period: str) -> Dict[str, Any]:
+    """Undo this instance's "paid in full". Only ever clears our own record."""
+    _validate_period(period)
+    settlement.reopen(period)
+    # Drops the ``- PIF`` suffix again and refreshes the footer.
+    published = settlement.publish(period)
+    return {**_settlement_state(period), "published": published}
 
 
 @router.post("/sync/corrections/{correction_id}/acknowledge")
