@@ -39,3 +39,12 @@ csv_imports/
 
 # ── Docs (built site) ─────────────────────────────────────────────────────────
 /site/
+
+# ── Internal design docs ──────────────────────────────────────────────────────
+# Specs and implementation plans kept locally for reference. Not part of the
+# published help site and never committed.
+/docs/superpowers/
+/.superpowers/
+# Local Claude instructions and scratch, never committed.
+CLAUDE.local.md
+*.backup
