@@ -9,7 +9,7 @@ import FinancesPage from '../FinancesPage';
 import { getHealthScore, getRatios } from '../../../api/health';
 import { getBalancesSummary } from '../../../api/balances';
 import {
-  getDashboard, getIncomeVsExpenses, getAlerts, getCreditHealth, getCreditFactors,
+  getDashboard, getIncomeVsExpenses, getAlerts, getCreditHealth, getCreditFactors, getUpcomingBills,
 } from '../../../api/dashboard';
 import { getAfterTaxNetWorth, getContributionHeadroom } from '../../../api/tax';
 import { getCashflowProjection } from '../../../api/cashflow';
@@ -250,6 +250,11 @@ function mockApis() {
     },
   });
   getCreditFactors.mockResolvedValue({ data: { available: false, factors: [] } });
+  getUpcomingBills.mockResolvedValue({
+    data: {
+      total_due: 0, window_days: 30, total_due_by_kind: { credit: 0, recurring: 0 }, bills: [],
+    },
+  });
   getAfterTaxNetWorth.mockResolvedValue({ data: { available: false } });
   getContributionHeadroom.mockResolvedValue({ data: { available: false } });
   getCashflowProjection.mockResolvedValue({
@@ -309,9 +314,9 @@ function mockApis() {
   axios.put.mockResolvedValue({ data: {} });
 }
 
-async function renderTab(section) {
+async function renderTab(section, view, subView) {
   const { container } = render(
-    <MemoryRouter><FinancesPage section={section} /></MemoryRouter>,
+    <MemoryRouter><FinancesPage section={section} view={view} subView={subView} /></MemoryRouter>,
   );
   // Every card fetches for itself; axe has to run on settled content, not on
   // a grid of loading spinners.
@@ -358,6 +363,18 @@ test('the debt surface has no axe violations', async () => {
   const row = await screen.findByRole('group', { name: /manual card/i });
   expect(within(row).getByRole('button', { name: /edit balance/i })).toBeInTheDocument();
   expect(within(row).getByRole('button', { name: /remove/i })).toBeInTheDocument();
+  expect(await axe(document.body)).toHaveNoViolations();
+});
+
+// Phase 6 split Commitments and Ask into their own sub-tab strips
+// (FinancesPage's SubTabs); no axe run previously mounted either one.
+test('the commitments sub-tab strip has no axe violations', async () => {
+  await renderTab('plan', 'commitments', 'due');
+  expect(await axe(document.body)).toHaveNoViolations();
+});
+
+test('the ask sub-tab strip has no axe violations', async () => {
+  await renderTab('ask', 'chat');
   expect(await axe(document.body)).toHaveNoViolations();
 });
 

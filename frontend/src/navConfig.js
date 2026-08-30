@@ -41,6 +41,9 @@ export const NAV = [
     path: '/ask',
     label: 'Ask',
     icon: 'ask',
+    // Page-placed: rendered by the page's own sub-tab strip (FinancesPage's
+    // SubTabs), so the sidebar must not also render these as a sub-nav.
+    subnavPlacement: 'page',
     children: [
       { id: 'chat', path: '/ask', label: 'Advisor', end: true },
       { id: 'memory', path: '/ask/memory', label: 'Memory' },

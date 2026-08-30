@@ -87,6 +87,14 @@ test('Ask memory is its own route', async () => {
   expect(await screen.findByText('External library')).toBeInTheDocument();
 });
 
+test('Ask sub-nav renders exactly once, not once per nav surface', async () => {
+  renderAt('/ask');
+  const advisor = await screen.findAllByRole('link', { name: 'Advisor' });
+  expect(advisor).toHaveLength(1);
+  const memory = await screen.findAllByRole('link', { name: 'Memory' });
+  expect(memory).toHaveLength(1);
+});
+
 test('an unknown path falls back to Home rather than a blank page', async () => {
   renderAt('/nope');
   await waitFor(() => {

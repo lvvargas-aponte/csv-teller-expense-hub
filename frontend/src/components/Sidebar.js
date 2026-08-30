@@ -57,7 +57,8 @@ export default function Sidebar({ healthScore, healthSignals }) {
               <span className="eh-nav-text">{section.label}</span>
             </NavLink>
 
-            {active?.id === section.id && section.children && !collapsed && (
+            {active?.id === section.id && section.children
+              && section.subnavPlacement !== 'page' && !collapsed && (
               <div className="eh-sidebar-subnav">
                 {section.children.map((child) => (
                   <NavLink
