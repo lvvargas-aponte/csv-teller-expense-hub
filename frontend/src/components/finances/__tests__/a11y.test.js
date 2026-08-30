@@ -18,6 +18,7 @@ import {
 } from '../../../api/investments';
 import { getLatestDigest, markDigestRead } from '../../../api/digest';
 import { getAllAccountDetails } from '../../../api/accountDetails';
+import { getAllTransactions } from '../../../api/transactions';
 import { getSnapTradeConfig, listSnapTradeConnections } from '../../../api/snaptrade';
 import { getProjection } from '../../../api/retirement';
 
@@ -30,6 +31,7 @@ jest.mock('../../../api/cashflow');
 jest.mock('../../../api/investments');
 jest.mock('../../../api/digest');
 jest.mock('../../../api/accountDetails');
+jest.mock('../../../api/transactions');
 jest.mock('../../../api/snaptrade');
 jest.mock('../../../api/retirement');
 jest.mock('../../../api/profile');
@@ -293,6 +295,7 @@ function mockApis() {
   });
   markDigestRead.mockResolvedValue({ data: {} });
   getAllAccountDetails.mockResolvedValue({ data: {} });
+  getAllTransactions.mockResolvedValue({ data: { transactions: [] } });
 
   axios.get.mockImplementation((url) => {
     if (url.includes('/api/budgets')) {
