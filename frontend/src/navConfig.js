@@ -36,7 +36,16 @@ export const NAV = [
       },
     ],
   },
-  { id: 'ask', path: '/ask', label: 'Ask', icon: 'ask' },
+  {
+    id: 'ask',
+    path: '/ask',
+    label: 'Ask',
+    icon: 'ask',
+    children: [
+      { id: 'chat', path: '/ask', label: 'Advisor', end: true },
+      { id: 'memory', path: '/ask/memory', label: 'Memory' },
+    ],
+  },
   { id: 'settings', path: '/settings', label: 'Settings', icon: 'settings' },
 ];
 

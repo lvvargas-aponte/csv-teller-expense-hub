@@ -75,6 +75,18 @@ test.each([
   });
 });
 
+test('Ask shows the advisor by default', async () => {
+  renderAt('/ask');
+  expect(await screen.findByRole('heading', { level: 1, name: 'Ask' })).toBeInTheDocument();
+  expect(screen.queryByText('External library')).toBeNull();
+});
+
+test('Ask memory is its own route', async () => {
+  renderAt('/ask/memory');
+  expect(await screen.findByRole('heading', { level: 1, name: 'Ask' })).toBeInTheDocument();
+  expect(await screen.findByText('External library')).toBeInTheDocument();
+});
+
 test('an unknown path falls back to Home rather than a blank page', async () => {
   renderAt('/nope');
   await waitFor(() => {

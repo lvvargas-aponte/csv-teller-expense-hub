@@ -16,7 +16,7 @@ const TAB_TO_PATH = {
   bills: '/plan/commitments',
   subscriptions: '/plan/commitments',
   advisor: '/ask',
-  knowledge: '/ask',        // Knowledge was never a peer of Budgets; it is Fin's memory
+  knowledge: '/ask/memory', // Knowledge was never a peer of Budgets; it is Fin's memory
   settings: '/settings',
 };
 

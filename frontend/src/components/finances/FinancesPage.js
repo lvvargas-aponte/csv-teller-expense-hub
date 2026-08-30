@@ -21,6 +21,8 @@ const COMMITMENTS_TABS = NAV
   .find((s) => s.id === 'plan').children
   .find((c) => c.id === 'commitments').children;
 
+const ASK_TABS = NAV.find((s) => s.id === 'ask').children;
+
 export default function FinancesPage({ section, view, subView, healthScore, healthSignals }) {
   const navigate = useNavigate();
   const { pane } = useParams();
@@ -125,7 +127,7 @@ export default function FinancesPage({ section, view, subView, healthScore, heal
 
         {section === 'plan' && view === 'commitments' && (
           <SimplePage title="Commitments">
-            <SubTabs tabs={COMMITMENTS_TABS} />
+            <SubTabs tabs={COMMITMENTS_TABS} label="Commitments views" />
             {subView === 'due' && (
               <div style={{ display: 'grid', gap: 16 }}>
                 <UpcomingBillsCard onNavigateToAccounts={() => navigate('/debt')} />
@@ -138,8 +140,9 @@ export default function FinancesPage({ section, view, subView, healthScore, heal
 
         {section === 'ask' && (
           <SimplePage title="Ask">
-            <AdvisorChat />
-            <KnowledgeSection />
+            <SubTabs tabs={ASK_TABS} label="Ask views" />
+            {view === 'chat' && <AdvisorChat />}
+            {view === 'memory' && <KnowledgeSection />}
           </SimplePage>
         )}
 
@@ -161,13 +164,14 @@ export default function FinancesPage({ section, view, subView, healthScore, heal
 // address" all need an <a href>, which a button can never give them. Same
 // idiom as Sidebar.js's NavLink usage — NavLink supplies isActive and
 // aria-current itself, so there's no hand-rolled active-state tracking here.
-function SubTabs({ tabs }) {
+function SubTabs({ tabs, label }) {
   return (
-    <nav className="eh-subtabs" aria-label="Commitments views">
+    <nav className="eh-subtabs" aria-label={label}>
       {tabs.map((tab) => (
         <NavLink
           key={tab.id}
           to={tab.path}
+          end={tab.end}
           className={({ isActive }) => (isActive ? 'eh-subtab--active' : undefined)}
         >
           {tab.label}

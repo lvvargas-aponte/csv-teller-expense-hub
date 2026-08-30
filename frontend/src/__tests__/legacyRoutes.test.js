@@ -21,7 +21,7 @@ test.each([
   ['goals', '/plan/goals'],
   ['commitments', '/plan/commitments'],
   ['advisor', '/ask'],
-  ['knowledge', '/ask'],
+  ['knowledge', '/ask/memory'],
   ['settings', '/settings'],
 ])('maps the stored tab %s to %s', (stored, path) => {
   expect(resolveLegacyRoute(fakeStorage({ [ACTIVE_TAB_KEY]: stored }))).toBe(path);

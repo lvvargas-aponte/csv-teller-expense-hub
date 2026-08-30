@@ -83,7 +83,8 @@ export default function App() {
             <Route path="/plan/commitments" element={<Navigate to="/plan/commitments/due" replace />} />
             <Route path="/plan/commitments/due" element={<FinancesPage section="plan" view="commitments" subView="due" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/plan/commitments/recurring" element={<FinancesPage section="plan" view="commitments" subView="recurring" healthScore={healthScore} healthSignals={healthSignals} />} />
-            <Route path="/ask" element={<FinancesPage section="ask" healthScore={healthScore} healthSignals={healthSignals} />} />
+            <Route path="/ask" element={<FinancesPage section="ask" view="chat" healthScore={healthScore} healthSignals={healthSignals} />} />
+            <Route path="/ask/memory" element={<FinancesPage section="ask" view="memory" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/settings" element={<FinancesPage section="settings" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/settings/:pane" element={<FinancesPage section="settings" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/finances" element={<Navigate to="/" replace />} />
