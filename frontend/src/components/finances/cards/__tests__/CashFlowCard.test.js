@@ -97,3 +97,30 @@ test('passes months through to the income vs. expenses fetch', async () => {
 
   expect(getIncomeVsExpenses).toHaveBeenCalledWith(12);
 });
+
+// ── Important 2: an actuals error must not wipe the other two sections ─────
+test('a dashboard error still renders the outlook and income sections', async () => {
+  renderCard({ error: 'Could not load dashboard data.' });
+
+  expect(screen.getByText('Could not load dashboard data.')).toBeInTheDocument();
+  expect(screen.queryByText(/\$3,400/)).toBeNull();
+
+  expect(await screen.findByRole('heading', { name: '30-Day Outlook' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Income vs. Expenses' })).toBeInTheDocument();
+});
+
+test('an empty actuals window still renders the outlook and income sections', async () => {
+  renderCard({ dashboard: { monthly_totals: [] } });
+
+  expect(screen.getByText('No spending in this window.')).toBeInTheDocument();
+
+  expect(await screen.findByRole('heading', { name: '30-Day Outlook' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Income vs. Expenses' })).toBeInTheDocument();
+});
+
+test('the badge is honest when the actuals failed to load', async () => {
+  renderCard({ error: 'Could not load dashboard data.' });
+  expect(screen.getByText('Unavailable')).toBeInTheDocument();
+  expect(screen.queryByText('On track')).toBeNull();
+  expect(screen.queryByText('High')).toBeNull();
+});

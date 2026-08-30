@@ -1,16 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import DashboardCard from './DashboardCard';
 import Num from '../Num';
-
-const API = process.env.REACT_APP_BACKEND_URL || '';
+import { listBudgets } from '../../../api/budgets';
 
 export default function BudgetsCard({ onHide, index, kicker }) {
   const [budgets, setBudgets] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    axios.get(`${API}/api/budgets`)
+    listBudgets()
       .then((r) => setBudgets(r.data))
       .catch(() => setError('Could not load budgets.'));
   }, []);

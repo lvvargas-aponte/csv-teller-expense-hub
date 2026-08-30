@@ -1,4 +1,5 @@
 import { buildInsights } from '../insightBuilder';
+import { ICON_NAMES as ALL_ICON_NAMES } from '../../components/ui/Icon';
 
 const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
@@ -183,6 +184,61 @@ describe('buildInsights — digest', () => {
       digest: digest({ spending: { change_pct: 19.9, this_week: 119, prior_week: 100, top_categories: [] } }),
     });
     expect(out.find((i) => i.id === 'digest-spending-up')).toBeUndefined();
+  });
+
+  // ── A hike and its matching recurring-anomaly alert are the same underlying
+  // detect_recurring_charges() row surfaced twice — collapse to one.
+  test('a recurring alert that matches a subscription hike collapses to one row', () => {
+    const recurringAlert = alert(
+      'info', 'recurring',
+      'NETFLIX.COM charged $22.99 (25% up vs. usual $18.39)', 'commitments',
+    );
+    const out = buildInsights({
+      alerts: [recurringAlert],
+      digest: digest({
+        subscriptions: {
+          price_increases: [
+            { merchant_key: 'netflix', sample_description: 'NETFLIX.COM', price_change_pct: 25.0, latest_amount: 22.99 },
+          ],
+        },
+      }),
+    });
+    const netflixRows = out.filter((i) => i.body.includes('NETFLIX.COM') || i.title.includes('Subscription'));
+    expect(netflixRows).toHaveLength(1);
+    expect(netflixRows[0].id.startsWith('sub-hike')).toBe(true);
+  });
+
+  test('a recurring alert with no matching hike still appears', () => {
+    const recurringAlert = alert(
+      'info', 'recurring',
+      'SPOTIFY charged $12.99 (30% up vs. usual $9.99)', 'commitments',
+    );
+    const out = buildInsights({ alerts: [recurringAlert] });
+    expect(out.find((i) => i.body === recurringAlert.message)).toBeTruthy();
+  });
+
+  test('the digest narrative renders as its own low-priority row', () => {
+    const out = buildInsights({ digest: digest({ narrative: 'Spending was steady this week.' }) });
+    const row = out.find((i) => i.id === 'digest-narrative');
+    expect(row).toBeTruthy();
+    expect(row.body).toBe('Spending was steady this week.');
+    expect(ALL_ICON_NAMES).toContain(row.icon);
+  });
+
+  test('the digest narrative rule does not fire when narrative is missing or empty', () => {
+    expect(buildInsights({ digest: digest({}) }).find((i) => i.id === 'digest-narrative')).toBeUndefined();
+    expect(buildInsights({ digest: digest({ narrative: '' }) }).find((i) => i.id === 'digest-narrative')).toBeUndefined();
+    expect(buildInsights({ digest: digest({ narrative: null }) }).find((i) => i.id === 'digest-narrative')).toBeUndefined();
+  });
+});
+
+describe('buildInsights — duplicate alert keys', () => {
+  test('two byte-identical alerts get distinct, order-stable ids', () => {
+    const same = alert('warn', 'credit', 'Credit card utilization at 61% — consider paying down', 'debt');
+    const out1 = buildInsights({ alerts: [same, same] });
+    expect(out1[0].id).not.toBe(out1[1].id);
+    const out2 = buildInsights({ alerts: [same, same] });
+    expect(out1.map((i) => i.id)).toEqual(out2.map((i) => i.id));
   });
 });
 

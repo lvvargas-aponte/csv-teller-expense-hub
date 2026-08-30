@@ -46,11 +46,11 @@ function monthName(monthKey) {
 }
 
 export default function DashboardTab({
-  healthScore, healthSignals, onOpenSettings, onNavigate,
+  healthScore, healthSignals, onNavigate,
   // Balances are fetched once by FinancesPage, which needs them for the
   // sidebar anyway; the dashboard used to request the same payload again on
   // the landing view. The `months` range stays owned here.
-  summary, summaryLoading, summaryError, onInsightAction,
+  summary, onInsightAction,
 }) {
   const [months, setMonths] = useState(6);
   const [dashboard, setDashboard] = useState(null);
@@ -161,7 +161,7 @@ export default function DashboardTab({
   const greetingLine = `${greetingFor(today)}, ${formatToday(today)}`;
   const bannerMsg = (() => {
     if (netWorthDelta !== null && netWorthDelta > 0) {
-      return `Your net worth grew by ${fmt$(netWorthDelta)} this period 🎉`;
+      return `Your net worth grew by ${fmt$(netWorthDelta)} this period`;
     }
     if (netWorthDelta !== null && netWorthDelta < 0) {
       return `Net worth dipped ${fmt$(netWorthDelta)} this period — let's see why.`;

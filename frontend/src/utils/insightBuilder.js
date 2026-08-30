@@ -184,22 +184,41 @@ const ALERT_TAGS = {
   info:  { tag: 'For info',      color: 'blue',  priority: 30,  icon: 'info' },
 };
 
-function ruleAlerts(alerts) {
-  if (!Array.isArray(alerts)) return [];
-  return alerts.map((a) => {
-    const t = ALERT_TAGS[a.severity] || ALERT_TAGS.info;
-    return {
-      id: `alert-${a.severity}-${a.category}-${a.message}`,
-      icon: t.icon,
-      iconBg: TAG_COLORS[t.color].bg,
-      tag: t.tag,
-      tagClass: TAG_COLORS[t.color].cls,
-      title: a.category ? titleCase(a.category) : 'Alert',
-      body: a.message,
-      action: a.tab ? { label: 'Take a look →', target: { financesTab: a.tab } } : null,
-      priority: t.priority,
-    };
+// Backend's `_recurring_anomaly_alerts` (routers/alerts.py) phrases its message
+// as `f"{sample_description[:40]} charged ..."` — the same sample_description
+// a subscription price-hike entry carries. When a hike already covers a
+// merchant, the recurring-category alert for that merchant is a duplicate of
+// the same underlying detect_recurring_charges() row, just plainer and lower
+// priority, so it's dropped in favor of the hike.
+function isRecurringAlertCoveredByHike(alert, hikes) {
+  if (alert.category !== 'recurring' || typeof alert.message !== 'string') return false;
+  return hikes.some((h) => {
+    const prefix = String(h.sample_description || '').slice(0, 40);
+    return prefix && alert.message.startsWith(prefix);
   });
+}
+
+function ruleAlerts(alerts, hikes = []) {
+  if (!Array.isArray(alerts)) return [];
+  return alerts
+    .filter((a) => !isRecurringAlertCoveredByHike(a, hikes))
+    .map((a, i) => {
+      const t = ALERT_TAGS[a.severity] || ALERT_TAGS.info;
+      return {
+        // Index breaks ties between byte-identical alerts (e.g. two unnamed
+        // credit cards at the same rounded utilization). It's stable across
+        // re-renders as long as the alerts array's order doesn't change.
+        id: `alert-${a.severity}-${a.category}-${a.message}-${i}`,
+        icon: t.icon,
+        iconBg: TAG_COLORS[t.color].bg,
+        tag: t.tag,
+        tagClass: TAG_COLORS[t.color].cls,
+        title: a.category ? titleCase(a.category) : 'Alert',
+        body: a.message,
+        action: a.tab ? { label: 'Take a look →', target: { financesTab: a.tab } } : null,
+        priority: t.priority,
+      };
+    });
 }
 
 // The digest's own `alerts` array is collect_alerts() truncated — the same rows
@@ -219,6 +238,28 @@ function ruleSubscriptionPriceHikes(digest) {
     action: { label: 'Review subscriptions →', target: { route: '/plan/commitments/recurring' } },
     priority: 65,
   }));
+}
+
+// ── Weekly digest narrative ────────────────────────────────────────────────
+// The deleted WeeklyDigestCard rendered payload.narrative; nothing does now,
+// even though markDigestRead still fires on read. Surface it as the lowest-
+// priority informational row so the narrative is at least seen once.
+function ruleDigestNarrative(digest) {
+  const narrative = digest?.payload?.narrative;
+  if (typeof narrative !== 'string') return null;
+  const trimmed = narrative.trim();
+  if (!trimmed) return null;
+  return {
+    id: 'digest-narrative',
+    icon: 'info',
+    iconBg: TAG_COLORS.blue.bg,
+    tag: 'For info',
+    tagClass: TAG_COLORS.blue.cls,
+    title: 'Your weekly digest',
+    body: trimmed,
+    action: null,
+    priority: 5,
+  };
 }
 
 // ── Week-over-week spending jump (digest) ──────────────────────────────────
@@ -246,12 +287,14 @@ function ruleDigestSpending(digest) {
 
 export function buildInsights({ summary, dashboard, transactions, accountDetails, alerts, digest } = {}) {
   const out = [];
-  out.push(...ruleAlerts(alerts));
-  out.push(...ruleSubscriptionPriceHikes(digest));
+  const hikes = ruleSubscriptionPriceHikes(digest);
+  out.push(...ruleAlerts(alerts, digest?.payload?.subscriptions?.price_increases || []));
+  out.push(...hikes);
   const r1 = ruleUncategorized(transactions);   if (r1) out.push(r1);
   const r2 = ruleSpendingHigh(dashboard);        if (r2) out.push(r2);
   const r3 = ruleNetWorthUp(dashboard);          if (r3) out.push(r3);
   const r4 = ruleLargestBalance(summary, accountDetails); if (r4) out.push(r4);
   const r5 = ruleDigestSpending(digest);         if (r5) out.push(r5);
+  const r6 = ruleDigestNarrative(digest);        if (r6) out.push(r6);
   return out.sort((a, b) => b.priority - a.priority);
 }

@@ -214,9 +214,7 @@ function IncomeVsExpensesSection({ months }) {
   );
 }
 
-export default function CashFlowCard({
-  dashboard, loading, error, onHide, index, kicker, months,
-}) {
+export default function CashFlowCard({ dashboard, loading, error, months }) {
   const totals = dashboard?.monthly_totals || [];
   const empty = !loading && !error && totals.length === 0;
 
@@ -225,59 +223,77 @@ export default function CashFlowCard({
   const delta = (prev !== null && prev !== undefined) ? latest - prev : null;
   const high = latest >= 12000;
 
+  // Own badge for the actuals section only — Outlook and Income vs. Expenses
+  // fetch independently and stay silent about this section's state.
+  const badge = loading ? null : error
+    ? { text: 'Unavailable', bad: true }
+    : { text: high ? 'High' : 'On track', bad: high };
+
   return (
     <DashboardCard
       title="Cash Flow"
-      index={index}
-      kicker={kicker}
-      loading={loading}
-      error={error}
-      empty={empty}
-      emptyText="No spending in this window."
-      onHide={onHide}
-      headerExtra={
+      headerExtra={badge && (
         <span style={{
           fontSize: 10, fontWeight: 700,
           textTransform: 'uppercase', letterSpacing: '0.04em',
           padding: '2px 8px', borderRadius: 99,
-          background: high ? '#fee2e2' : '#d1fae5',
-          color: high ? 'var(--status-bad-text)' : 'var(--status-good-text)',
+          background: badge.bad ? '#fee2e2' : '#d1fae5',
+          color: badge.bad ? 'var(--status-bad-text)' : 'var(--status-good-text)',
         }}>
-          {high ? 'High' : 'On track'}
+          {badge.text}
         </span>
-      }
+      )}
     >
-      <section>
+      {/* This section owns its own loading/error/empty state — it depends on
+          the `dashboard` prop, unlike Outlook and Income vs. Expenses below,
+          which fetch their own data and must keep rendering even when this
+          one fails or the window is empty. */}
+      <section aria-busy={loading}>
         <h3 style={subHeadingStyle}>Monthly Spending</h3>
-        <div style={{ display: 'flex', gap: 16, marginBottom: 8, fontSize: 13 }}>
-          <div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>This month</div>
-            <div style={{ fontSize: 19, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>
-              <Num value={latest} />
-            </div>
+        {loading && (
+          <div className="eh-dcard-state"><Spin /> Loading…</div>
+        )}
+        {error && !loading && (
+          <div className="eh-dcard-state eh-dcard-state--error">{error}</div>
+        )}
+        {empty && !loading && !error && (
+          <div className="eh-dcard-state eh-dcard-state--empty">
+            No spending in this window.
           </div>
-          {(delta !== null && delta !== undefined) && (
-            <div>
-              <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>vs. last</div>
-              <div style={{
-                fontSize: 19, fontWeight: 700,
-                color: delta <= 0 ? 'var(--status-good-text)' : 'var(--status-bad-text)',
-                fontFamily: "'DM Mono', monospace",
-              }}>
-                <Num value={delta} prefix={delta >= 0 ? '+' : '-'} />
+        )}
+        {!loading && !error && !empty && (
+          <>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 8, fontSize: 13 }}>
+              <div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>This month</div>
+                <div style={{ fontSize: 19, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>
+                  <Num value={latest} />
+                </div>
               </div>
+              {(delta !== null && delta !== undefined) && (
+                <div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>vs. last</div>
+                  <div style={{
+                    fontSize: 19, fontWeight: 700,
+                    color: delta <= 0 ? 'var(--status-good-text)' : 'var(--status-bad-text)',
+                    fontFamily: "'DM Mono', monospace",
+                  }}>
+                    <Num value={delta} prefix={delta >= 0 ? '+' : '-'} />
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <ResponsiveContainer width="100%" height={140}>
-          <BarChart data={totals}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #d1fae5)" />
-            <XAxis dataKey="month" tick={AXIS} />
-            <YAxis tick={AXIS} tickFormatter={(v) => fmt$(v)} width={70} />
-            <Tooltip formatter={(v) => fmt$(v)} />
-            <Bar dataKey="total" fill="#6366f1" fillOpacity={0.8} radius={[3, 3, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart data={totals}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #d1fae5)" />
+                <XAxis dataKey="month" tick={AXIS} />
+                <YAxis tick={AXIS} tickFormatter={(v) => fmt$(v)} width={70} />
+                <Tooltip formatter={(v) => fmt$(v)} />
+                <Bar dataKey="total" fill="#6366f1" fillOpacity={0.8} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </>
+        )}
       </section>
 
       <OutlookSection />
