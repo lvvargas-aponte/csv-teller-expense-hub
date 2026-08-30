@@ -5,21 +5,16 @@ import {
   getIncomeVsExpenses,
 } from '../../api/dashboard';
 import { getAfterTaxNetWorth } from '../../api/tax';
+import { getRatios } from '../../api/health';
 import { fmt$, fmtSigned } from '../../utils/formatting';
 
 import NetWorthCard from './cards/NetWorthCard';
 import { liquidLabel } from '../../utils/netWorth';
 import CashFlowCard from './cards/CashFlowCard';
-import CashFlowOutlookCard from './cards/CashFlowOutlookCard';
 import SpendingByCategoryCard from './cards/SpendingByCategoryCard';
-import RecurringChargesCard from './cards/RecurringChargesCard';
-import BalancesCard from './cards/BalancesCard';
 import BudgetsCard from './cards/BudgetsCard';
-import AlertsCard from './cards/AlertsCard';
-import IncomeVsExpensesCard from './cards/IncomeVsExpensesCard';
-import WeeklyDigestCard from './cards/WeeklyDigestCard';
-import StandingCard from './cards/StandingCard';
-import SpendingInsights from './SpendingInsights';
+import UpcomingBillsCard from './cards/UpcomingBillsCard';
+import NeedsYouFeed from './NeedsYouFeed';
 import { BlurContext } from './Num';
 import InfoPopover from '../ui/InfoPopover';
 
@@ -92,6 +87,13 @@ export default function DashboardTab({
     getAfterTaxNetWorth().then((r) => setAfterTax(r.data)).catch(() => setAfterTax(null));
   }, []);
 
+  // "Where you stand" is absorbed into Needs You; only its headline figure —
+  // how long the cash on hand lasts — earns a spot beside the health score.
+  const [ratios, setRatios] = useState(null);
+  useEffect(() => {
+    getRatios().then((r) => setRatios(r.data)).catch(() => setRatios(null));
+  }, []);
+
   // ── Derived banner + KPI values ──────────────────────────────────
   const trend = dashboard?.balance_trend;
   const monthlyTotals = dashboard?.monthly_totals || [];
@@ -138,6 +140,11 @@ export default function DashboardTab({
   const availableCount = healthSignals?.filter((s) => s.available).length ?? 0;
   const coverageLine = signalCount
     ? `Based on ${availableCount} of ${signalCount} signals.`
+    : null;
+
+  const emergencyFund = ratios?.emergency_fund;
+  const runwayLine = (emergencyFund?.months_covered !== null && emergencyFund?.months_covered !== undefined)
+    ? `${emergencyFund.months_covered} months of runway`
     : null;
 
   const netWorth = summary?.net_worth ?? trend?.current_net_worth ?? 0;
@@ -200,8 +207,7 @@ export default function DashboardTab({
             <div className="eh-banner-actions">
               <button type="button" className="eh-banner-btn"
                       onClick={() => setBlurSensitive((b) => !b)}>
-                <span aria-hidden="true">{blurSensitive ? '👁' : '🙈'}</span>
-                {blurSensitive ? ' Show numbers' : ' Hide numbers'}
+                {blurSensitive ? 'Show numbers' : 'Hide numbers'}
               </button>
             </div>
           </div>
@@ -239,6 +245,9 @@ export default function DashboardTab({
             <div className="eh-banner-score-label">Health Score</div>
             {coverageLine && availableCount < signalCount && (
               <div className="eh-banner-score-coverage">{coverageLine}</div>
+            )}
+            {runwayLine && (
+              <div className="eh-banner-score-coverage">{runwayLine}</div>
             )}
           </div>
         </section>
@@ -285,42 +294,19 @@ export default function DashboardTab({
           />
         </section>
 
-        {/* Cards grid — narrative arc: Position → Flow → Trend → Assets →
-            Constraints → Commitments → Signals. Each card carries a section
-            number; some span both columns for editorial rhythm. */}
         <BlurContext.Provider value={blurSensitive}>
           <section className={`eh-cards-grid${blurSensitive ? ' eh-blur-numbers' : ''}`}>
-            {/* Where you stand — the answer the KPI row above only hints at. */}
+            {/* What needs you is what you read first. */}
             <div className="eh-card-full">
-              <StandingCard onOpenSettings={onOpenSettings} />
-            </div>
-            <div className="eh-card-full">
-              <WeeklyDigestCard />
+              <NeedsYouFeed summary={summary} dashboard={dashboard} onNavigate={onInsightAction} />
             </div>
             <div className="eh-card-full">
               <NetWorthCard dashboard={dashboard} summary={summary} afterTax={afterTax} loading={dashboardLoading} error={dashboardErr} />
             </div>
-            <CashFlowCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-            <CashFlowOutlookCard />
+            <CashFlowCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} months={months} />
             <SpendingByCategoryCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-            <div className="eh-card-full">
-              <IncomeVsExpensesCard months={months} />
-            </div>
-            <BalancesCard summary={summary} loading={summaryLoading} error={summaryError} />
             <BudgetsCard />
-            <div className="eh-card-full">
-              <RecurringChargesCard dashboard={dashboard} loading={dashboardLoading} error={dashboardErr} />
-            </div>
-            <div className="eh-card-full">
-              <AlertsCard onNavigate={onNavigate} />
-            </div>
-            <div className="eh-card-full">
-              <SpendingInsights
-                summary={summary}
-                dashboard={dashboard}
-                onNavigate={onInsightAction}
-              />
-            </div>
+            <UpcomingBillsCard onNavigateToAccounts={() => onNavigate?.('debt')} />
           </section>
         </BlurContext.Provider>
       </div>

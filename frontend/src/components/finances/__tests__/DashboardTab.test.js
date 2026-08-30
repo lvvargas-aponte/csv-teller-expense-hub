@@ -5,26 +5,23 @@ import DashboardTab from '../DashboardTab';
 import { getDashboard, getIncomeVsExpenses } from '../../../api/dashboard';
 import { getBalancesSummary } from '../../../api/balances';
 import { getAfterTaxNetWorth } from '../../../api/tax';
+import { getRatios } from '../../../api/health';
 
 jest.mock('axios');
 jest.mock('../../../api/dashboard');
 jest.mock('../../../api/balances');
 jest.mock('../../../api/tax');
+jest.mock('../../../api/health');
 
-// The cards each fetch for themselves; this test is about the KPI row only.
-jest.mock('../SpendingInsights', () => () => <div />);
-jest.mock('../cards/StandingCard', () => () => <div />);
-jest.mock('../cards/WeeklyDigestCard', () => () => <div />);
-jest.mock('../cards/NetWorthCard', () => () => <div />);
-jest.mock('../cards/CashFlowCard', () => () => <div />);
-jest.mock('../cards/CashFlowOutlookCard', () => () => <div />);
-jest.mock('../cards/SpendingByCategoryCard', () => () => <div />);
-jest.mock('../cards/IncomeVsExpensesCard', () => () => <div />);
-jest.mock('../cards/BalancesCard', () => () => <div />);
+// The cards each fetch for themselves; this test is about the KPI row and
+// the grid membership only.
+jest.mock('../NeedsYouFeed', () => () => <div><h2>Needs you</h2></div>);
+jest.mock('../cards/NetWorthCard', () => () => <div><h2>Net Worth</h2></div>);
+jest.mock('../cards/CashFlowCard', () => () => <div><h2>Cash Flow</h2></div>);
+jest.mock('../cards/SpendingByCategoryCard', () => () => <div><h2>Spending by Category</h2></div>);
+jest.mock('../cards/BudgetsCard', () => () => <div><h2>Budgets</h2></div>);
+jest.mock('../cards/UpcomingBillsCard', () => () => <div><h2>Upcoming Bills</h2></div>);
 jest.mock('../cards/CreditUtilizationCard', () => () => <div>Credit Utilization</div>);
-jest.mock('../cards/BudgetsCard', () => () => <div />);
-jest.mock('../cards/RecurringChargesCard', () => () => <div />);
-jest.mock('../cards/AlertsCard', () => () => <div />);
 
 const spendComparison = (over = {}) => ({
   as_of_day: 10,
@@ -51,6 +48,7 @@ const renderTab = ({ rows, comparison = spendComparison(), signals, summary = { 
   getIncomeVsExpenses.mockResolvedValue({ data: { months: [], rows } });
   getBalancesSummary.mockResolvedValue({ data: summary });
   getAfterTaxNetWorth.mockResolvedValue({ data: { available: false } });
+  getRatios.mockResolvedValue({ data: { emergency_fund: { months_covered: 3.2, target_months: 6 } } });
   return render(
     <DashboardTab healthScore={70} healthSignals={signals} summary={summary} />,
   );
@@ -159,4 +157,36 @@ test('the portfolio card has moved off Home', async () => {
   renderTab({ rows: [] });
   await waitFor(() => expect(kpi('This Month')).toHaveTextContent('$120.00'));
   expect(screen.queryByText(/portfolio/i)).toBeNull();
+});
+
+test('the grid renders exactly the six survivors', async () => {
+  renderTab({ rows: [] });
+  await waitFor(() => expect(kpi('This Month')).toHaveTextContent('$120.00'));
+
+  expect(screen.getByRole('heading', { name: 'Net Worth' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Cash Flow' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Spending by Category' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Budgets' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Upcoming Bills' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Needs you' })).toBeInTheDocument();
+
+  expect(screen.queryByText('Balances')).toBeNull();
+  expect(screen.queryByText('Recurring Charges')).toBeNull();
+  expect(screen.queryByText('Alerts')).toBeNull();
+  expect(screen.queryByText(/weekly digest/i)).toBeNull();
+  expect(screen.queryByText('Where you stand')).toBeNull();
+  expect(screen.queryByText(/-day outlook/i)).toBeNull();
+  expect(screen.queryByText('Income vs. Expenses')).toBeNull();
+});
+
+test('the health banner shows the emergency-runway headline beside the score', async () => {
+  renderTab({ rows: [] });
+  expect(await screen.findByText(/3\.2 months of runway/i)).toBeInTheDocument();
+});
+
+test('the blur toggle has no emoji and stays text-only', async () => {
+  renderTab({ rows: [] });
+  await waitFor(() => expect(kpi('This Month')).toHaveTextContent('$120.00'));
+  const toggle = screen.getByRole('button', { name: /hide numbers/i });
+  expect(toggle.textContent).toBe('Hide numbers');
 });
