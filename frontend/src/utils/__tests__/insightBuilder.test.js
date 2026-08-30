@@ -170,6 +170,20 @@ describe('buildInsights — digest', () => {
     expect(() => buildInsights({})).not.toThrow();
     expect(Array.isArray(buildInsights({}))).toBe(true);
   });
+
+  test('fires the week-over-week spending rule right at a 20% jump', () => {
+    const out = buildInsights({
+      digest: digest({ spending: { change_pct: 20, this_week: 120, prior_week: 100, top_categories: [] } }),
+    });
+    expect(out.find((i) => i.id === 'digest-spending-up')).toBeTruthy();
+  });
+
+  test('does not fire the week-over-week spending rule just under a 20% jump', () => {
+    const out = buildInsights({
+      digest: digest({ spending: { change_pct: 19.9, this_week: 119, prior_week: 100, top_categories: [] } }),
+    });
+    expect(out.find((i) => i.id === 'digest-spending-up')).toBeUndefined();
+  });
 });
 
 describe('buildInsights — presentation', () => {
