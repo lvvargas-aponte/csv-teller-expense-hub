@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { fmt$, fmtDate, channelLabel, formatCategory, formatAccountType } from '../../utils/formatting';
+import { fmt$, fmtDate, channelLabel, isBankChannel, formatCategory, formatAccountType } from '../../utils/formatting';
 import SplitPill from './SplitPill';
 import CategoryCombobox from './CategoryCombobox';
 
@@ -64,7 +64,7 @@ export default function TxnRow({
   const isShared = !!txn.is_shared;
   const isCredit = txn.transaction_type === 'credit';
   const sourceLabel = channelLabel(txn.source);
-  const sourceClass = txn.source === 'simplefin' ? 'tx-src-badge--bank' : 'tx-src-badge--csv';
+  const sourceClass = isBankChannel(txn.source) ? 'tx-src-badge--bank' : 'tx-src-badge--csv';
 
   const handleSplit = async (val) => {
     if (splitting) return;
@@ -135,7 +135,7 @@ export default function TxnRow({
       </td>
       {editableCategory && (
         <td className="tx-td-category">
-          <div className="tx-cat-cell" onClick={stop}>
+          <div className="tx-cat-cell" role="presentation" onClick={stop}>
             {catIcon && <span className="tx-cat-cell-icon" aria-hidden="true">{catIcon}</span>}
             <CategoryCombobox
               value={txn.category || ''}

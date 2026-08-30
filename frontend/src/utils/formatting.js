@@ -52,8 +52,19 @@ export function thisMonthRange() {
   return { from: toYMD(first), to: toYMD(now) };
 }
 
+// Sources that arrived over a bank connection rather than a parsed statement.
+// 'teller' is historical — the provider was discontinued — but its rows are
+// still bank-sourced and must not be mislabelled as CSV imports.
+const BANK_CHANNELS = {
+  simplefin: 'SimpleFIN',
+  teller:    'Teller',
+};
+
+export const isBankChannel = (source) =>
+  Object.prototype.hasOwnProperty.call(BANK_CHANNELS, source);
+
 export function channelLabel(source) {
-  return source === 'simplefin' ? 'SimpleFIN' : 'CSV';
+  return BANK_CHANNELS[source] || 'CSV';
 }
 
 export const calculateHalf = (amount) =>

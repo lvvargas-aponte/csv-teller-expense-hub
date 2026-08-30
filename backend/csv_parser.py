@@ -14,6 +14,7 @@ import logging
 from category_normalizer import normalize as normalize_category
 from config import PERSON_1_NAME, PERSON_2_NAME
 from helpers import derive_direction
+from institution_normalizer import normalize as normalize_institution
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,14 @@ class Transaction:
     account_type: str = ""            # "checking" | "savings" | "credit_card" | "credit" | ...
 
     def __post_init__(self):
-        """Generate transaction ID if not provided"""
+        """Generate transaction ID if not provided, and canonicalize the bank name.
+
+        Normalizing here — the one constructor every writer goes through —
+        is what keeps ``Chase`` and ``Chase Bank`` from rendering as two
+        institutions; readers get a canonical value without rewriting rows on
+        every request.
+        """
+        self.institution = normalize_institution(self.institution)
         if not self.transaction_id:
             self.transaction_id = self._generate_id()
 

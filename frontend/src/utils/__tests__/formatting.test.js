@@ -1,4 +1,4 @@
-import { fmt$, fmtDate, toYMD, prevMonthRange, thisMonthRange } from '../formatting';
+import { fmt$, fmtDate, toYMD, prevMonthRange, thisMonthRange, channelLabel, isBankChannel } from '../formatting';
 
 describe('fmt$', () => {
   test('formats positive number as USD currency', () => {
@@ -80,5 +80,33 @@ describe('thisMonthRange', () => {
   test('from is before or equal to to', () => {
     const { from, to } = thisMonthRange();
     expect(from <= to).toBe(true);
+  });
+});
+
+describe('channelLabel', () => {
+  test('names each bank-connected provider rather than collapsing to CSV', () => {
+    expect(channelLabel('simplefin')).toBe('SimpleFIN');
+    expect(channelLabel('teller')).toBe('Teller');
+  });
+
+  test('labels CSV-parsed sources as CSV', () => {
+    expect(channelLabel('discover')).toBe('CSV');
+    expect(channelLabel('barclays')).toBe('CSV');
+    expect(channelLabel('unknown')).toBe('CSV');
+    expect(channelLabel(undefined)).toBe('CSV');
+  });
+});
+
+describe('isBankChannel', () => {
+  test('is true only for bank-connected sources', () => {
+    expect(isBankChannel('simplefin')).toBe(true);
+    expect(isBankChannel('teller')).toBe(true);
+    expect(isBankChannel('discover')).toBe(false);
+    expect(isBankChannel(undefined)).toBe(false);
+  });
+
+  test('does not treat inherited Object properties as sources', () => {
+    expect(isBankChannel('toString')).toBe(false);
+    expect(isBankChannel('constructor')).toBe(false);
   });
 });
