@@ -168,6 +168,25 @@ class PgStore(MutableMapping):
             ).fetchall()
         return [r[0] for r in rows]
 
+    def count_by_field(self, field: str) -> Dict[str, int]:
+        """``{value: row_count}`` for one top-level field, counted in Postgres.
+
+        For "how many transactions carry each category" and its like: the
+        alternative is pulling every row across the wire to tally in Python.
+        Rows where the field is null or blank are not counted. Values are
+        returned exactly as stored — case folding is the caller's business.
+        """
+        with self._engine().connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT data->>:f AS value, COUNT(*) FROM json_stores "
+                    "WHERE store_name=:s AND COALESCE(TRIM(data->>:f), '') <> '' "
+                    "GROUP BY value"
+                ),
+                {"s": self._name, "f": field},
+            ).fetchall()
+        return {r[0]: int(r[1]) for r in rows}
+
     def clear(self) -> None:  # type: ignore[override]
         with self._engine().begin() as conn:
             conn.execute(
@@ -228,6 +247,16 @@ class InMemoryStore(MutableMapping):
 
     def keys(self):  # type: ignore[override]
         return list(self._dict.keys())
+
+    def count_by_field(self, field: str) -> Dict[str, int]:
+        counts: Dict[str, int] = {}
+        for value in self._dict.values():
+            raw = (value or {}).get(field) if isinstance(value, dict) else None
+            key = str(raw).strip() if raw is not None else ""
+            if not key:
+                continue
+            counts[key] = counts.get(key, 0) + 1
+        return counts
 
     def clear(self) -> None:  # type: ignore[override]
         self._dict.clear()

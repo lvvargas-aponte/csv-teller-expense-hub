@@ -257,7 +257,12 @@ async def upload_csv(
 
 @router.get("/transactions/all")
 async def get_all_transactions() -> List[Dict[str, Any]]:
-    """Get all transactions (CSV + SimpleFIN combined)."""
+    """Get all transactions (CSV + SimpleFIN combined).
+
+    Institution names are canonical in the store — ``csv_parser.Transaction``
+    normalizes on write, and ``scripts/normalize_institutions.py`` backfilled
+    the rows that predate that — so nothing is rewritten here.
+    """
     return list(state.stored_transactions.values())
 
 
@@ -444,9 +449,12 @@ async def bulk_suggest_categories(req: BulkSuggestRequest):
     fill-in-the-blanks tool, not a re-categorizer. Mutates nothing; the
     caller previews the suggestions and confirms via PUT /transactions/categories.
     """
+    import category_rules
     from categorizer import suggest_category, known_categories
 
     candidates = known_categories()
+    # Read once for the whole batch rather than per transaction.
+    rules = category_rules.rules_for_matching()
     results: List[Dict[str, Any]] = []
     skipped_ids: List[str] = []
     not_found: List[str] = []
@@ -470,14 +478,18 @@ async def bulk_suggest_categories(req: BulkSuggestRequest):
             description=txn.get("description", "") or "",
             amount=amount,
             known=candidates,
+            rules=rules,
         )
-        if not out["ai_available"]:
+        # A rule answered means Ollama was never asked, so its flag says
+        # nothing about the model's health and must not trip the banner.
+        if out["source"] != "rule" and not out["ai_available"]:
             ai_available = False
         results.append({
             "id": tid,
             "description": txn.get("description", "") or "",
             "amount": amount,
             "suggested_category": out["category"],
+            "source": out["source"],
         })
 
     return {
@@ -520,14 +532,27 @@ async def bulk_set_reviewed(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.get("/categories")
-async def list_categories() -> Dict[str, List[str]]:
+async def list_categories() -> Dict[str, Any]:
     """Return all known categories: union of distinct transaction categories,
     budget categories, and categorizer defaults. Case-insensitive dedup,
     sorted alphabetically.
+
+    ``counts`` carries how many transactions currently carry each label,
+    keyed by the same canonical casing as ``categories``. Categories that
+    exist only as a budget or a built-in default report 0.
     """
     from categorizer import known_categories
 
-    return {"categories": sorted(known_categories(), key=str.lower)}
+    names = sorted(known_categories(), key=str.lower)
+    counts = {name: 0 for name in names}
+    canonical = {name.lower(): name for name in names}
+    # Tallied in the store rather than by walking every transaction here.
+    for raw, n in state.stored_transactions.count_by_field("category").items():
+        name = canonical.get(raw.strip().lower())
+        if name:
+            counts[name] += n
+
+    return {"categories": names, "counts": counts}
 
 
 @router.delete("/categories/{name}")
@@ -590,11 +615,43 @@ async def apply_categories(req: ApplyCategoriesRequest):
     return {"updated": len(updated), "not_found": not_found}
 
 
+def _normalized_date(raw: str) -> str:
+    """Store a date the way the rest of the app writes them.
+
+    A date is only editable when sync could not read the one already there, so
+    there is no existing format to preserve — this writes the ``MM/DD/YYYY``
+    the CSV importers produce. Anything unparseable is refused rather than
+    written back as a second unreadable value.
+    """
+    from sheet_sync import contract
+
+    parsed = contract.parse_date_loose(raw)
+    if parsed is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot read {raw!r} as a date. Use MM/DD/YYYY or YYYY-MM-DD.",
+        )
+    return contract.format_date(parsed)
+
+
 @router.put("/transactions/{transaction_id}")
 async def update_transaction(transaction_id: str, update: TransactionUpdate):
     """Update transaction with shared expense info."""
     if transaction_id not in state.stored_transactions:
         raise HTTPException(status_code=404, detail="Transaction not found")
+
+    # Everything that can 422 is resolved first: the store hands back a live
+    # dict, so a validation error raised mid-way would leave the earlier fields
+    # already written on a request the client was told had failed.
+    normalized_date = _normalized_date(update.date) if update.date is not None else None
+    transfer_target = None
+    if update.transfer_to_account_id is not None:
+        transfer_target = update.transfer_to_account_id.strip()
+        if transfer_target and transfer_target not in state._manual_accounts:
+            raise HTTPException(
+                status_code=422,
+                detail=f"transfer_to_account_id '{transfer_target}' is not a manual account",
+            )
 
     transaction = state.stored_transactions[transaction_id]
     transaction["is_shared"] = update.is_shared
@@ -606,6 +663,12 @@ async def update_transaction(transaction_id: str, update: TransactionUpdate):
     # Any user-initiated update records intent → reviewed (client may override).
     transaction["reviewed"] = True if update.reviewed is None else bool(update.reviewed)
 
+    if normalized_date is not None:
+        transaction["date"] = normalized_date
+
+    if update.amount is not None:
+        transaction["amount"] = update.amount
+
     if update.category is not None:
         transaction["category"] = update.category
 
@@ -614,13 +677,7 @@ async def update_transaction(transaction_id: str, update: TransactionUpdate):
         transaction["direction"] = derive_direction(update.transaction_type)
 
     if update.transfer_to_account_id is not None:
-        target = update.transfer_to_account_id.strip()
-        if target and target not in state._manual_accounts:
-            raise HTTPException(
-                status_code=422,
-                detail=f"transfer_to_account_id '{target}' is not a manual account",
-            )
-        transaction["transfer_to_account_id"] = target or None
+        transaction["transfer_to_account_id"] = transfer_target or None
 
     state.stored_transactions[transaction_id] = transaction
     state._transactions_store.save()

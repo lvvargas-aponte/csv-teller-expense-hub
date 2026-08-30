@@ -19,8 +19,9 @@ Design choices:
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
+import category_rules
 import state
 from llm_client import ask_ollama
 
@@ -101,21 +102,54 @@ async def suggest_category(
     description: str,
     amount: float,
     known: Optional[List[str]] = None,
-) -> dict:
-    """Ask Ollama for a category suggestion.
+    rules: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Suggest a category — user rules first, then Ollama.
 
-    Returns ``{"category": str|None, "ai_available": bool, "candidates": list[str]}``.
-    ``candidates`` is the same list the LLM was constrained to, so the
-    client can also show it as a datalist for manual entry.
+    Returns ``{"category": str|None, "ai_available": bool, "source":
+    "rule"|"ai"|None, "candidates": list[str]}``. ``candidates`` is the
+    same list the LLM was constrained to, so the client can also show it
+    as a datalist for manual entry.
+
+    ``ai_available`` carries the same meaning as everywhere else in this
+    codebase (see ``llm_client``): whether Ollama answered. It says nothing
+    when the model was never consulted — ``source == "rule"`` is how a caller
+    knows that happened, and must not read the flag as a health signal then.
+
+    A matching rule short-circuits the model entirely: it's the answer
+    the user wrote down, it costs no round-trip, and it still works with
+    Ollama down. ``rules`` can be passed in so a bulk caller reads the table
+    once instead of once per transaction.
     """
     candidates = known if known is not None else known_categories()
+
+    ruled = category_rules.match(description, rules)
+    if ruled:
+        return {
+            "category": ruled,
+            "ai_available": False,
+            "source": "rule",
+            "candidates": candidates,
+        }
+
     if not candidates:
-        return {"category": None, "ai_available": False, "candidates": []}
+        return {
+            "category": None, "ai_available": False,
+            "source": None, "candidates": [],
+        }
 
     prompt = _build_prompt(description, amount, candidates)
     result = await ask_ollama(prompt)
     if not result["ai_available"]:
-        return {"category": None, "ai_available": False, "candidates": candidates}
+        return {
+            "category": None, "ai_available": False,
+            "source": None, "candidates": candidates,
+        }
 
     picked = _parse_response(result.get("text"), candidates)
-    return {"category": picked, "ai_available": True, "candidates": candidates}
+    return {
+        "category": picked,
+        "ai_available": True,
+        "source": "ai" if picked else None,
+        "candidates": candidates,
+    }

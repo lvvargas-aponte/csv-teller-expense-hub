@@ -6,6 +6,9 @@ import { API_BASE } from '../utils/formatting';
 // categories + categorizer defaults) from the backend.
 export function useCategories() {
   const [categories, setCategories] = useState([]);
+  // Transactions currently carrying each label. Categories that exist only
+  // as a budget or a built-in default report 0.
+  const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -14,6 +17,7 @@ export function useCategories() {
     try {
       const res = await axios.get(`${API_BASE}/api/categories`);
       setCategories(res.data.categories || []);
+      setCounts(res.data.counts || {});
     } catch {
       setError('Could not load categories.');
     } finally {
@@ -42,5 +46,5 @@ export function useCategories() {
 
   useEffect(() => { reload(); }, [reload]);
 
-  return { categories, loading, error, reload, addLocal, remove };
+  return { categories, counts, loading, error, reload, addLocal, remove };
 }
