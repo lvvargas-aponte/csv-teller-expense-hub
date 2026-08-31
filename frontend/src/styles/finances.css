@@ -21,8 +21,6 @@
 [data-theme='dark'] .tx-btn-secondary { background: var(--bg-card); color: var(--text-secondary); border-color: var(--border); }
 [data-theme='dark'] .tx-btn-secondary:hover:not(:disabled) { background: var(--bg-secondary); border-color: var(--border-mid); }
 
-[data-theme='dark'] .tx-bulk-bar { background: var(--surface-inverse); }
-
 [data-theme='dark'] .tx-filter-label { color: var(--text-muted); }
 [data-theme='dark'] .tx-sel-wrap select,
 [data-theme='dark'] .tx-sel-wrap input[list] { background: var(--bg-card); border-color: var(--border); color: var(--text-secondary); }
