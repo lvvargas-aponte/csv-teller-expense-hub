@@ -98,7 +98,7 @@ test('legacy aliases point at new primitives, not raw hex', () => {
 
 const APP_CSS = [
   'base.css', 'shell.css', 'transactions.css', 'debt.css',
-  'accounts.css', 'finances.css', 'settings.css', 'a11y.css',
+  'accounts.css', 'finances.css', 'settings.css', 'a11y.css', 'shared-page.css',
 ].map((f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).join('\n');
 
 describe('brand and semantic colours stay separate', () => {
