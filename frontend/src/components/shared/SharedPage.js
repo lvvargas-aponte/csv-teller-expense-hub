@@ -14,7 +14,6 @@ import {
 } from '../../api/sync';
 import { putTransactionFields, getPersonNames } from '../../api/transactions';
 import { userMessage } from '../../utils/errorMessage';
-import './SharedPage.css';
 
 const CUTOVER_PERIOD = '2026-06';
 

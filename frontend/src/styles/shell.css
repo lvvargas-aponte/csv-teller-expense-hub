@@ -1,0 +1,839 @@
+/* ── App navigation tabs ─────────────────────────── */
+/* Lives inside .header-inner — sits between brand and actions */
+.app-nav {
+  display: flex;
+  gap: 4px;
+  /* push actions to the right */
+  margin-left: auto;
+  margin-right: auto;
+}
+.nav-tab {
+  padding: 6px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.nav-tab:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.nav-tab--active { background: var(--bg-secondary); color: var(--text-primary); font-weight: 600; }
+
+/* ── Transaction page import/export bar ──────────── */
+.txn-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* ── Finances page ────────────────────────────────── */
+.finances-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+.finances-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+}
+.finances-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+/* ── Dashboard grid cards ─────────────────────────── */
+.dashboard-card {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  margin: 0;
+  /* Visible so Recharts hover tooltips can extend past the card edge. */
+  overflow: visible;
+  box-sizing: border-box;
+  position: relative;
+}
+.dashboard-card .finances-section-title { margin: 0; }
+.react-grid-item.react-grid-placeholder {
+  background: var(--bg-selected);
+  opacity: 0.4;
+  border-radius: 12px;
+}
+.react-grid-item > .react-resizable-handle::after {
+  border-right-color: var(--text-muted);
+  border-bottom-color: var(--text-muted);
+}
+
+/* ── Manual account form & badge ─────────────────── */
+.manual-acct-form {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+.manual-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ── Balances ─────────────────────────────────────── */
+.net-worth-card { border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; }
+.net-worth-card--positive { background: rgba(16,185,129,0.15); border: 1px solid #10b981; }
+.net-worth-card--negative { background: rgba(239,68,68,0.15);  border: 1px solid #ef4444; }
+.net-worth-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.net-worth-value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+.balance-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin: 16px 0 8px; }
+.balance-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.balance-row:last-child { border-bottom: none; }
+.balance-row-info { display: flex; flex-direction: column; gap: 2px; }
+.balance-row-name { font-size: 14px; font-weight: 500; }
+.balance-row-inst { font-size: 12px; color: var(--text-muted); }
+.balance-row-amounts { text-align: right; }
+.balance-available { font-size: 14px; font-weight: 600; }
+.balance-ledger { font-size: 11px; color: var(--text-muted); }
+
+/* ── Insights ─────────────────────────────────────── */
+.ai-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.ai-card--nudge { border-color: #0d9488; background: rgba(13,148,136,0.08); }
+.insight-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.insight-table th { text-align: left; padding: 6px 8px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+.insight-table td { padding: 8px; border-bottom: 1px solid var(--border); }
+.forecast-band { font-size: 11px; color: var(--text-muted); }
+
+/* ── Finances tabs (Overview / Advisor) ──────────── */
+.finances-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: -16px; }
+.finances-tab {
+  background: transparent; border: none; padding: 10px 16px; cursor: pointer;
+  color: var(--text-muted); font-size: 14px; font-weight: 600;
+  border-bottom: 2px solid transparent; transition: color .15s, border-color .15s;
+}
+.finances-tab:hover { color: var(--text); }
+.finances-tab--active { color: var(--text); border-bottom-color: #10b981; }
+
+/* ── Virtual advisor chat ────────────────────────── */
+.advisor-chat {
+  display: grid; grid-template-columns: 220px 1fr; gap: 16px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; height: calc(100vh - 240px); min-height: 500px;
+}
+@media (max-width: 720px) {
+  .advisor-chat { grid-template-columns: 1fr; height: calc(100vh - 220px); }
+  .advisor-sidebar { display: none; }
+}
+.advisor-sidebar { border-right: 1px solid var(--border); padding-right: 12px; overflow-y: auto; }
+.advisor-conv-list { display: flex; flex-direction: column; gap: 4px; }
+.advisor-conv-row { position: relative; display: flex; }
+.advisor-conv-item {
+  flex: 1; min-width: 0; text-align: left; background: transparent; border: 1px solid transparent;
+  border-radius: 8px; padding: 8px 28px 8px 10px; cursor: pointer; color: var(--text);
+}
+.advisor-conv-item:hover { background: var(--bg-secondary); }
+.advisor-conv-item--active { background: var(--bg-secondary); border-color: var(--border); }
+.advisor-conv-preview { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.advisor-conv-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.advisor-conv-delete {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  font-size: 12px; color: var(--text-muted); padding: 2px 6px; border-radius: 4px;
+  background: transparent; border: none; cursor: pointer;
+  opacity: 0; transition: opacity .1s;
+}
+.advisor-conv-row:hover .advisor-conv-delete,
+.advisor-conv-delete:focus-visible { opacity: 1; }
+.advisor-conv-delete:hover { background: rgba(239,68,68,0.2); color: #f87171; }
+
+.advisor-main { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.advisor-messages { flex: 1; overflow-y: auto; padding: 4px 8px 4px 0; display: flex; flex-direction: column; gap: 12px; }
+.advisor-msg { padding: 10px 14px; border-radius: 10px; max-width: 85%; }
+.advisor-msg--user     { align-self: flex-end;   background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); }
+.advisor-msg--assistant { align-self: flex-start; background: var(--bg-secondary);    border: 1px solid var(--border); }
+.advisor-msg-role { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 4px; font-weight: 700; }
+.advisor-msg-content { font-size: 14px; line-height: 1.55; }
+.advisor-msg--user .advisor-msg-content { white-space: pre-wrap; }
+.advisor-msg-content > :first-child { margin-top: 0; }
+.advisor-msg-content > :last-child { margin-bottom: 0; }
+.advisor-msg-content p { margin: 0 0 6px 0; }
+.advisor-msg-content p:last-child { margin-bottom: 0; }
+.advisor-msg-content ul,
+.advisor-msg-content ol { margin: 4px 0; padding-left: 20px; }
+.advisor-msg-content li { margin: 2px 0; }
+.advisor-msg-content li > p { margin: 0; }
+.advisor-msg-content h1,
+.advisor-msg-content h2,
+.advisor-msg-content h3,
+.advisor-msg-content h4 { margin: 8px 0 4px; font-size: 14px; font-weight: 600; }
+.advisor-msg-content pre { margin: 6px 0; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px; overflow-x: auto; }
+.advisor-msg-content code { font-size: 12px; }
+
+.advisor-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+.advisor-empty-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.advisor-empty-hint { font-size: 13px; margin-bottom: 16px; }
+.advisor-empty-examples { display: flex; flex-direction: column; gap: 6px; max-width: 460px; margin: 0 auto; }
+.advisor-example {
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 20px;
+  padding: 8px 14px; font-size: 13px; color: var(--text); cursor: pointer; text-align: left;
+}
+.advisor-example:hover { border-color: #10b981; }
+
+.advisor-input-row { display: flex; gap: 8px; align-items: flex-end; }
+.advisor-input { flex: 1; resize: vertical; min-height: 44px; }
+
+/* ── ExpensesHub Dashboard shell ──────────────────────────────────────── */
+.eh-app {
+  display: flex;
+  flex-direction: row;
+  min-height: 100vh;
+  background: var(--bg-root);
+  color: var(--text-primary);
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.eh-sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 0 16px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.18s ease, min-width 0.18s ease;
+}
+
+/* Collapsed rail: icons only. Toggle is fixed at the top-right of the rail. */
+.eh-sidebar--collapsed { width: 64px; min-width: 64px; }
+.eh-sidebar--collapsed .eh-sidebar-logo { padding: 0 0 24px; justify-content: center; }
+.eh-sidebar--collapsed .eh-sidebar-logo-text,
+.eh-sidebar--collapsed .eh-nav-text,
+.eh-sidebar--collapsed .eh-sidebar-footer { display: none; }
+.eh-sidebar--collapsed .eh-sidebar-nav { padding: 0 8px; }
+.eh-sidebar--collapsed .eh-nav-item {
+  justify-content: center;
+  padding: 9px 0;
+  gap: 0;
+}
+
+/* Collapse / expand toggle — small chevron pinned to the sidebar edge. */
+.eh-sidebar-toggle {
+  position: absolute;
+  top: 12px;
+  right: 8px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card, #fff);
+  color: var(--text-muted, #64748b);
+  font-size: 14px; font-weight: 700; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  z-index: 5;
+  padding: 0;
+}
+.eh-sidebar-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.eh-sidebar--collapsed .eh-sidebar-toggle { right: 50%; transform: translateX(50%); top: 8px; }
+.eh-sidebar--collapsed .eh-sidebar-logo { margin-top: 28px; }
+.eh-sidebar-logo {
+  padding: 0 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.eh-sidebar-logo-icon {
+  width: 34px; height: 34px;
+  background: var(--brand-gradient);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  color: #fff;
+}
+.eh-sidebar-logo-text {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+.eh-sidebar-nav { display: flex; flex-direction: column; padding: 0 12px; gap: 2px; }
+.eh-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+.eh-nav-item:hover { background: var(--accent-light); }
+.eh-nav-item--active { background: var(--brand-gradient); color: #ffffff; font-weight: 600; }
+.eh-nav-item--active:hover { background: var(--brand-gradient); }
+.eh-sidebar-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 6px 30px;
+}
+.eh-subnav-item {
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.eh-subnav-item:hover { background: var(--brand-wash); color: var(--text-secondary); }
+.eh-subnav-item--active { color: var(--brand); font-weight: 600; }
+.eh-nav-icon { font-size: 16px; width: 20px; display: inline-flex; justify-content: center; }
+.eh-nav-badge {
+  margin-left: auto;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 99px;
+}
+
+.eh-sidebar-footer { margin-top: auto; padding: 16px 12px 0; }
+.eh-health-card {
+  background: var(--accent-light);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.eh-health-card-label {
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.eh-health-card-score {
+  font-size: 28px; font-weight: 700; color: var(--accent); line-height: 1.1;
+  display: flex; align-items: center; gap: 8px;
+}
+/* The shared info bubble is styled for the dark banner; recolor it for the
+   light sidebar card and open it rightward so it clears the narrow rail. */
+.eh-health-card-score .eh-info-btn {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.eh-health-card-score .eh-info-panel { left: 0; right: auto; }
+.eh-health-card-sub { font-size: 11px; color: var(--text-muted); }
+
+/* Topbar */
+.eh-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.eh-topbar {
+  height: 60px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-root);
+  border-bottom: 1px solid var(--border);
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.eh-topbar-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+.eh-range-pill {
+  display: inline-flex;
+  background: var(--accent-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+.eh-range-pill button {
+  border: none;
+  background: transparent;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+.eh-range-pill button.eh-range-pill--active {
+  background: var(--bg-card);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(5,150,105,0.06);
+}
+
+/* Sub-tabs within a page (Commitments: Due soon / Recurring). Same pill
+   language as the dashboard range picker, one level down. These are real
+   routes, so the strip is a <nav> of <a>s (react-router NavLink), not
+   buttons — restored selectors target `a`, not the original `button`. */
+.eh-subtabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 16px;
+  background: var(--accent-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.eh-subtabs a {
+  border: none;
+  background: transparent;
+  padding: 5px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+.eh-subtabs a.eh-subtab--active {
+  background: var(--bg-card);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(5,150,105,0.06);
+}
+
+.eh-content { padding: 24px 28px; }
+
+/* Health banner */
+.eh-banner {
+  position: relative;
+  background: var(--brand-gradient);
+  border-radius: 14px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  /* Visible so the health-score info tooltip can extend below the banner.
+     Decorative circles are clipped by .eh-banner-decor instead. */
+  overflow: visible;
+}
+.eh-banner-decor {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+.eh-banner-decor::before, .eh-banner-decor::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  pointer-events: none;
+}
+.eh-banner-decor::before { width: 200px; height: 200px; right: -60px; top: -80px; }
+.eh-banner-decor::after  { width: 140px; height: 140px; right: 80px; bottom: -60px; background: rgba(255,255,255,0.04); }
+.eh-banner-left { position: relative; z-index: 1; flex: 1; min-width: 0; }
+.eh-banner-greet { font-size: 13px; opacity: 0.8; }
+.eh-banner-msg   { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; margin-top: 4px; }
+.eh-banner-sub   { font-size: 12px; opacity: 0.75; margin-top: 4px; }
+.eh-banner-actions { display: flex; gap: 8px; margin-top: 12px; }
+.eh-banner-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.eh-banner-btn:hover { background: rgba(255,255,255,0.22); }
+.eh-banner-right {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+  text-align: right;
+}
+.eh-banner-score { font-size: 40px; font-weight: 700; line-height: 1; display: inline-flex; align-items: center; gap: 8px; }
+.eh-banner-score-label { font-size: 11px; opacity: 0.7; margin-top: 4px; }
+.eh-banner-score-coverage { font-size: 10px; opacity: 0.6; margin-top: 2px; }
+
+/* Info popover — the one explain-this widget (components/ui/InfoPopover.js).
+   The panel only exists while open, so there is no hover-only variant to
+   copy into a new card. */
+.eh-info { position: relative; display: inline-flex; }
+.eh-info-btn {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.4);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  font-family: serif;
+  font-style: italic;
+}
+.eh-info-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  background: #0f2417;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  letter-spacing: 0;
+  text-align: left;
+  z-index: 1000;
+}
+.recharts-tooltip-wrapper { z-index: 1000 !important; }
+.recharts-default-tooltip {
+  border-radius: 10px !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  padding: 8px 12px !important;
+  overflow: hidden;
+}
+.recharts-tooltip-wrapper .recharts-tooltip-label {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+[data-theme='dark'] .recharts-default-tooltip {
+  background: var(--bg-card) !important;
+  border-color: var(--border-mid) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+}
+[data-theme='dark'] .recharts-default-tooltip .recharts-tooltip-label,
+[data-theme='dark'] .recharts-default-tooltip .recharts-tooltip-item,
+[data-theme='dark'] .recharts-default-tooltip .recharts-tooltip-item-name,
+[data-theme='dark'] .recharts-default-tooltip .recharts-tooltip-item-separator,
+[data-theme='dark'] .recharts-default-tooltip .recharts-tooltip-item-value,
+[data-theme='dark'] .recharts-default-tooltip .recharts-tooltip-item-unit {
+  color: var(--text-primary) !important;
+}
+.eh-info-panel-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; color: #34d399; }
+.eh-info-panel ul { margin: 4px 0 0 16px; padding: 0; }
+.eh-info-panel li { margin-bottom: 2px; }
+
+/* KPI row */
+.eh-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.eh-kpi {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  overflow: visible;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.eh-kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.eh-kpi-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-faint);
+  display: flex; align-items: center; gap: 6px;
+}
+.eh-info--kpi .eh-info-btn {
+  width: 14px; height: 14px;
+  background: transparent;
+  border: 1px solid var(--text-faint);
+  color: var(--text-faint);
+  font-size: 9px;
+  font-style: italic;
+  font-weight: 700;
+  text-transform: none;
+}
+.eh-info--kpi .eh-info-btn:hover,
+.eh-info--kpi .eh-info-btn:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.eh-info--kpi .eh-info-panel {
+  width: 240px;
+  right: auto; left: 0;
+  top: auto; bottom: calc(100% + 8px);
+}
+.eh-kpi-value {
+  font-size: 22px; font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-top: 6px;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  transition: filter 0.3s;
+}
+.eh-kpi-value--neg { color: var(--red); }
+.eh-kpi-value--pos { color: var(--good-text); }
+.eh-kpi-note {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.eh-kpi-delta {
+  font-size: 12px; font-weight: 700; margin-top: 4px;
+  display: inline-flex; gap: 4px; align-items: center;
+}
+.eh-kpi-delta-suffix { color: var(--text-muted); font-weight: 500; margin-left: 4px; }
+.eh-kpi-bar {
+  position: absolute; left: 16px; right: 16px; bottom: 8px;
+  height: 3px; border-radius: 99px;
+  opacity: 0.4;
+}
+
+.eh-blur { filter: blur(8px); }
+
+/* Blur Y-axis tick labels (money values) and tooltips inside cards when the
+   user toggles "Hide numbers". Targets SVG text and the tooltip wrapper only,
+   so chart shapes (areas, bars, lines) remain crisp. */
+.eh-blur-numbers .recharts-yAxis-tick-labels .recharts-cartesian-axis-tick-value,
+.eh-blur-numbers .recharts-tooltip-wrapper {
+  filter: blur(6px);
+}
+
+
+/* Responsive */
+@media (max-width: 900px) {
+  .eh-sidebar { display: none; }
+  .eh-kpi-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .eh-kpi-row { grid-template-columns: 1fr; }
+  .eh-content { padding: 16px; }
+  .eh-topbar { padding: 0 16px; }
+}
+
+/* Restyle DashboardCard for new design */
+.dashboard-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.dashboard-card:hover { box-shadow: 0 4px 16px rgba(5,150,105,0.08); }
+.dashboard-card .finances-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+/* Content body fills the card so short cards (e.g. PortfolioCard with few
+   positions) match the visual weight of taller siblings in the same row. */
+.eh-dcard-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.eh-dcard-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 16px 0;
+  text-align: center;
+}
+.eh-dcard-state--error { color: var(--red); }
+.eh-dcard-state--empty { font-style: italic; }
+
+/* "Where you stand" — the three advisory ratios, side by side on wide cards
+   and stacked when the grid narrows. */
+.eh-standing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+.eh-standing-stat-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.eh-standing-stat-value { font-size: 24px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
+.eh-standing-stat-reading { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.eh-standing-stat-action {
+  margin-top: 6px; padding: 0;
+  background: none; border: none;
+  font: inherit; font-size: 12px; font-weight: 600;
+  color: var(--accent); cursor: pointer; text-decoration: underline;
+}
+.eh-standing-note {
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--text-muted);
+}
+
+.eh-dcard-filter { position: relative; }
+.eh-dcard-filter > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #94a3b8);
+  padding: 4px 8px;
+  border: 1px solid var(--border, #334155);
+  border-radius: 6px;
+  user-select: none;
+}
+.eh-dcard-filter > summary::-webkit-details-marker { display: none; }
+.eh-dcard-filter > summary:hover { color: var(--text-primary, #e2e8f0); }
+.eh-dcard-filter[open] > summary { color: var(--text-primary, #e2e8f0); }
+.eh-dcard-filter-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 50;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-elevated, #1e293b);
+  border: 1px solid var(--border, #334155);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 8px;
+}
+.eh-dcard-filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #64748b);
+  padding: 4px 6px 6px;
+}
+.eh-dcard-filter-clear {
+  background: none;
+  border: none;
+  color: var(--accent, #6366f1);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+.eh-dcard-filter-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.eh-dcard-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.eh-dcard-filter-item:hover { background: var(--bg-hover, rgba(255,255,255,0.04)); }
+.eh-dcard-filter-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eh-dcard-filter-amt { color: var(--text-muted, #64748b); font-variant-numeric: tabular-nums; }
+
+/* KPI hover lifts above the banner so the info tooltip isn't clipped by it. */
+.eh-kpi { z-index: 1; }
+.eh-kpi:hover, .eh-kpi:focus-within { z-index: 1100; }
+.eh-banner { z-index: 0; }
+
+/* Recurring Charges — design-spec grid layout */
+.eh-recurring-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0 24px;
+}
+.eh-recurring-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.eh-recurring-row:last-child { border-bottom: none; }
+.eh-recurring-icon {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.eh-recurring-info { flex: 1; min-width: 0; }
+.eh-recurring-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.eh-recurring-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.eh-recurring-amount {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  color: var(--red);
+  flex-shrink: 0;
+}
+
+/* Static dashboard cards grid */
+.eh-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.eh-cards-grid > * { min-width: 0; }
+.eh-cards-grid .eh-card-full,
+.eh-card-full { grid-column: 1 / -1; }
+@media (max-width: 900px) {
+  .eh-cards-grid { grid-template-columns: 1fr; }
+  .eh-card-full { grid-column: 1; }
+}
+
