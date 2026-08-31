@@ -45,7 +45,7 @@ function FactRow({ fact, onConfirm, onReject, onDelete, onSave }) {
       style={{
         padding: '8px 10px',
         borderRadius: 6,
-        background: isProposed ? 'rgba(251, 191, 36, 0.08)' : 'var(--bg-subtle, transparent)',
+        background: isProposed ? 'var(--warn-tint)' : 'var(--surface-muted)',
         border: '1px solid var(--border)',
         opacity: isRejected ? 0.5 : 1,
       }}
@@ -54,7 +54,7 @@ function FactRow({ fact, onConfirm, onReject, onDelete, onSave }) {
         <span
           style={{
             fontSize: 10, padding: '2px 6px', borderRadius: 10,
-            background: 'var(--bg-muted, rgba(255,255,255,0.05))',
+            background: 'var(--surface-muted)',
             color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4,
           }}
         >
@@ -112,7 +112,7 @@ function FactRow({ fact, onConfirm, onReject, onDelete, onSave }) {
               key={t}
               style={{
                 fontSize: 10, padding: '1px 6px', borderRadius: 10,
-                background: 'var(--bg-muted, rgba(255,255,255,0.05))',
+                background: 'var(--surface-muted)',
                 color: 'var(--text-muted)',
               }}
             >

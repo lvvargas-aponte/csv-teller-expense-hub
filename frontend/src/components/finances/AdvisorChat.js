@@ -359,7 +359,7 @@ export default function AdvisorChat() {
             <div style={{ marginTop: 6 }}>
               <pre style={{
                 whiteSpace: 'pre-wrap', fontSize: 12,
-                background: 'var(--bg-subtle, transparent)',
+                background: 'var(--surface-muted)',
                 padding: 8, borderRadius: 6, margin: 0,
               }}>
                 {styleProfile?.style_notes
