@@ -104,12 +104,44 @@ test('rendering the page makes no aggregator calls', async () => {
   expect(urls[0]).toContain('/api/accounts/details');
 });
 
-test('credit is summarised and linked, not listed', async () => {
+test('credit accounts are listed here, and the link to Debt is kept', async () => {
   renderTab([creditAccount({ name: 'Chase Sapphire' })]);
 
-  const link = await screen.findByRole('link', { name: /debt/i });
+  // This page answers "what is linked?", so the account itself is on it...
+  const row = await screen.findByRole('group', { name: 'Chase Sapphire' });
+  // ...leading with what's owed (the ledger), with the bank's available
+  // credit demoted to the sub-line. Scoped to the row: with a single card
+  // the section total carries the same figure.
+  expect(within(row).getByText('$1,488.35')).toBeInTheDocument();
+  expect(within(row).getByText(/\$2,011\.65 available/)).toBeInTheDocument();
+
+  // ...and the route through to the editing surface survives alongside it.
+  const link = screen.getByRole('link', { name: /debt/i });
   expect(link).toHaveAttribute('href', '/debt');
-  expect(screen.queryByText(/chase sapphire/i)).toBeNull();
+});
+
+test('a manual card with no limit set hides available credit rather than showing $0', async () => {
+  // buildCreditRow derives available from the limit for manual cards, so a
+  // card with neither would print "$0.00 available" — indistinguishable from
+  // a genuinely maxed-out card.
+  renderTab([creditAccount({
+    name: 'Store Card', manual: true, available: null, ledger: 300,
+  })]);
+
+  const row = await screen.findByRole('group', { name: 'Store Card' });
+  expect(within(row).queryByText(/available/i)).toBeNull();
+});
+
+test('a listed credit row is read-only — editing still belongs to Debt', async () => {
+  renderTab([creditAccount({ name: 'Chase Sapphire', manual: true })]);
+
+  await screen.findByText('Chase Sapphire');
+  // No expand affordance, and none of the manual-account controls the cash
+  // rows offer: limit/APR/minimum are edited in Debt's drawer, not here.
+  expect(screen.queryByRole('button', { name: /edit balance/i })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^remove$/i })).toBeNull();
+  const row = screen.getByRole('group', { name: 'Chase Sapphire' });
+  expect(within(row).queryByRole('button', { expanded: false })).toBeNull();
 });
 
 test('the payoff planner has moved to Debt', async () => {
@@ -478,14 +510,27 @@ test('the balance-edit handler refuses a non-manual account, even called directl
   expect(refresh).not.toHaveBeenCalled();
 });
 
-test('investments are summarised, not listed twice', async () => {
+test('investment accounts are listed here, and the link to Invest is kept', async () => {
   renderAccountsTab({ accounts: [investmentAccount(), manualCashAccount()] });
 
-  const link = await screen.findByRole('link', { name: /invest/i });
+  expect(await screen.findByText('Employer 401(k)')).toBeInTheDocument();
+  // The holdings inside it still belong to /invest — this is the account,
+  // not its positions.
+  const link = screen.getByRole('link', { name: /invest/i });
   expect(link).toHaveAttribute('href', '/invest');
-  // The holdings themselves belong to /invest; the section header above
-  // still shows the total, so the link doesn't repeat it.
-  expect(screen.queryByText(/employer 401\(k\)/i)).toBeNull();
+});
+
+test('an investment row leads with position value, not settled cash', async () => {
+  // A fully-invested account reports available: 0 and its worth in ledger.
+  // Reading `available` here would print $0.00 under a section total of
+  // $100,000, because summarize() has always been ledger-first.
+  renderAccountsTab({
+    accounts: [investmentAccount({ available: 0, ledger: 100000 })],
+  });
+
+  const row = await screen.findByRole('group', { name: 'Employer 401(k)' });
+  expect(within(row).getByText('$100,000.00')).toBeInTheDocument();
+  expect(within(row).queryByText('$0.00')).toBeNull();
 });
 
 // The "paid off" text badge and the zero-balance-not-filtered behaviour it

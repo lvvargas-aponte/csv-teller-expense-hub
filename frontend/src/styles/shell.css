@@ -703,8 +703,10 @@
   letter-spacing: -0.2px;
 }
 
-/* Content body fills the card so short cards (e.g. PortfolioCard with few
-   positions) match the visual weight of taller siblings in the same row. */
+/* Column context for the card's content. The `flex: 1` is what lets an
+   .eh-dcard-state (loading / error / empty) centre itself in whatever height
+   the card has; it does NOT stretch the card to its row — .eh-cards-grid
+   sizes cards to their own content on purpose. */
 .eh-dcard-body {
   flex: 1;
   display: flex;
@@ -835,10 +837,16 @@
   flex-shrink: 0;
 }
 
-/* Static dashboard cards grid */
+/* Static dashboard cards grid.
+   align-items: start is load-bearing. Grid rows size to their tallest cell,
+   and the default `stretch` made every card in a row match it — so Spending
+   by Category, a 240px chart, was drawn as an ~800px card next to Cash Flow
+   (two charts plus the outlook) with the difference as empty card. Cards now
+   size to their own content and bottoms are allowed to be ragged. */
 .eh-cards-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
+  align-items: start;
   gap: var(--space-4);
 }
 .eh-cards-grid > * { min-width: 0; }

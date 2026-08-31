@@ -11,8 +11,13 @@ function toNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-// Read-only row for cash and investment accounts — same grid as the credit
-// row, but not expandable via click (there is no un-synced metadata to edit).
+// Read-only row for cash, investment and credit accounts — same grid as the
+// expandable credit row, but not expandable via click.
+//
+// `amount` / `amountClass` / `subAmount` override the figure on the right for
+// account kinds whose headline number isn't "available cash": a card leads
+// with what's owed, a brokerage with its position value. Left unset, the row
+// behaves exactly as it did for cash accounts.
 //
 // A manual account additionally offers "Edit balance" and "Remove" — a
 // synced balance comes from the bank and must never be hand-edited, so those
@@ -27,6 +32,9 @@ export default function SimpleAccountRow({
   cacheFetchedAt,
   onEditBalance,
   onDelete,
+  amount,
+  amountClass = 'is-positive',
+  subAmount,
 }) {
   const palette = chipColorFor(row.institution);
   const [editingBalance, setEditingBalance] = useState(false);
@@ -82,10 +90,16 @@ export default function SimpleAccountRow({
           <MetaLine items={meta} />
         </div>
         <div className="acct-row-amount">
-          <div className="acct-row-balance is-positive">{fmt$(row.available)}</div>
-          {row.showLedger && (
-            <div className="acct-row-subamount">{fmt$(row.ledger)} ledger</div>
-          )}
+          <div className={`acct-row-balance ${amountClass}`.trimEnd()}>
+            {fmt$(amount === undefined ? row.available : amount)}
+          </div>
+          {subAmount === undefined
+            ? row.showLedger && (
+              <div className="acct-row-subamount">{fmt$(row.ledger)} ledger</div>
+            )
+            : subAmount && (
+              <div className="acct-row-subamount">{subAmount}</div>
+            )}
         </div>
         {hasActions && (
           <div className="acct-row-actions">

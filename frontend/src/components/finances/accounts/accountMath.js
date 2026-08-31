@@ -87,6 +87,14 @@ export function buildAssetRow(account) {
   };
 }
 
+// What a brokerage or retirement account is worth. `ledger` is the position
+// value; `available` is the cash that happens to be settled and uninvested,
+// which is 0 for a fully-invested account. Ledger-first, so a row and the
+// section total that sums it can never disagree.
+export function investmentValue(account) {
+  return num(account.ledger) ?? num(account.available) ?? 0;
+}
+
 // Per-section totals shown on each group header. Net worth, utilization and
 // the next payment deliberately live on the Overview and Dashboard pages
 // instead — this page lists accounts, it doesn't summarize the household.
@@ -94,9 +102,7 @@ export function summarize(creditRows, cashRows, investmentRows = [], assetRows =
   return {
     totalOwed: creditRows.reduce((s, r) => s + r.owed, 0),
     totalCash: cashRows.reduce((s, r) => s + r.available, 0),
-    totalInvestments: investmentRows.reduce(
-      (s, a) => s + (num(a.ledger) ?? num(a.available) ?? 0), 0,
-    ),
+    totalInvestments: investmentRows.reduce((s, a) => s + investmentValue(a), 0),
     totalAssets: assetRows.reduce((s, r) => s + r.value, 0),
   };
 }

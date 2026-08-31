@@ -13,8 +13,10 @@ import SimpleAccountRow from './accounts/SimpleAccountRow';
 import AddAccountModal from './accounts/AddAccountModal';
 import AssetRow from './accounts/AssetRow';
 import useConnectionHealth from './accounts/useConnectionHealth';
-import { buildCreditRow, buildCashRow, buildAssetRow, summarize } from './accounts/accountMath';
-import { toYMD } from '../../utils/formatting';
+import {
+  buildCreditRow, buildCashRow, buildAssetRow, investmentValue, summarize,
+} from './accounts/accountMath';
+import { fmt$, toYMD } from '../../utils/formatting';
 import { classifyAccountBucket, loadInvestmentSubtypes } from '../../utils/accountBucket';
 import { userMessage } from '../../utils/errorMessage';
 
@@ -229,14 +231,41 @@ export default function AccountsTab({
         </div>
       )}
 
+      {/* Credit and Investments list their accounts here so this page answers
+          "what is linked?" on its own, but stay read-only — the drawer that
+          edits limit/APR lives on Debt, positions on Invest, and the link
+          below each list is the way through to them. */}
       <AccountSection
         title="Credit cards & loans"
         count={countLabel(creditRows.length)}
         total={stats.totalOwed}
       >
+        {creditRows.length === 0 ? (
+          <div className="acct-empty-note">
+            Add a card or a loan to track what you owe.
+          </div>
+        ) : creditRows.map((row) => (
+          // Available credit needs a real source: a limit the user set, or a
+          // synced card where the bank reports one. A manual card with no
+          // limit derives 0, which would read as "maxed out".
+          <SimpleAccountRow
+            key={row.id}
+            row={row}
+            glyph="💳"
+            needsReconnect={!row.manual && brokenNames.has(row.institution)}
+            cacheFetchedAt={cacheFetchedAt}
+            amount={row.owed}
+            amountClass={row.owed === 0 ? 'is-zero' : ''}
+            subAmount={(row.limit !== null || !row.manual)
+              ? `${fmt$(row.available)} available`
+              : null}
+          />
+        ))}
         <Link to="/debt" className="acct-add-row">
           <span>
-            {countLabel(creditRows.length)} — view in Debt
+            {creditRows.length
+              ? 'Edit limits, APR and payoff in Debt'
+              : 'Open Debt'}
           </span>
         </Link>
       </AccountSection>
@@ -273,11 +302,22 @@ export default function AccountsTab({
             Connect a brokerage or retirement account to track it here.
           </div>
         ) : (
-          <Link to="/invest" className="acct-add-row">
-            <span>
-              {countLabel(investmentRows.length)} — view in Invest
-            </span>
-          </Link>
+          <>
+            {investmentRows.map((row) => (
+              <SimpleAccountRow
+                key={row.id}
+                row={row}
+                glyph="📈"
+                needsReconnect={!row.manual && brokenNames.has(row.institution)}
+                cacheFetchedAt={cacheFetchedAt}
+                amount={investmentValue(row)}
+                subAmount={row.showLedger ? `${fmt$(row.available)} uninvested` : null}
+              />
+            ))}
+            <Link to="/invest" className="acct-add-row">
+              <span>View holdings and performance in Invest</span>
+            </Link>
+          </>
         )}
       </AccountSection>
 
