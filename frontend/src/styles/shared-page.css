@@ -578,11 +578,11 @@
 .sh-btn--primary {
   background: var(--accent-solid);
   border-color: var(--accent-solid-hover);
-  color: #fff;
+  color: var(--text-inverse);
 }
 .sh-btn--primary:hover:not(:disabled) {
   background: var(--accent-solid-hover);
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 .sh-settle-actions {
