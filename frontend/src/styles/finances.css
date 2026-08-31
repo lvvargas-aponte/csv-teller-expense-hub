@@ -51,44 +51,35 @@
 [data-theme='dark'] .tx-search-icon { color: var(--text-faint); }
 [data-theme='dark'] .tx-filter-count { color: var(--text-faint); }
 
-[data-theme='dark'] .tx-error-banner { background: #2a0e0e; border-color: #5b1a1a; color: #fca5a5; }
-[data-theme='dark'] .tx-error-close { color: #fca5a5; }
-
 [data-theme='dark'] .tx-table-card { background: var(--bg-card); border-color: var(--border); }
 [data-theme='dark'] .tx-table thead tr { background: var(--bg-secondary); border-bottom-color: var(--border); }
 [data-theme='dark'] .tx-table thead th { color: var(--text-muted); }
 [data-theme='dark'] .tx-row { border-bottom-color: var(--border); }
 [data-theme='dark'] .tx-row:hover { background: var(--bg-secondary); }
 [data-theme='dark'] .tx-row.tx-row--selected { background: var(--bg-selected); }
-[data-theme='dark'] .tx-row.tx-row--shared { background: rgba(245,158,11,0.10); }
-[data-theme='dark'] .tx-row.tx-row--shared:hover { background: rgba(245,158,11,0.16); }
-[data-theme='dark'] .tx-row.tx-row--shared.tx-row--selected { background: rgba(245,158,11,0.22); }
+[data-theme='dark'] .tx-row.tx-row--shared { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+[data-theme='dark'] .tx-row.tx-row--shared.tx-row--selected { background: color-mix(in srgb, var(--warn) 22%, transparent); }
 
 [data-theme='dark'] .tx-td-date { color: var(--text-muted); }
-[data-theme='dark'] .tx-desc-main { color: var(--text-primary); }
 [data-theme='dark'] .tx-desc-cat { color: var(--text-faint); }
 
-[data-theme='dark'] .tx-amt-val--debit { color: var(--text-primary); }
 [data-theme='dark'] .tx-amt-badge--cr { background: var(--accent-light); color: var(--accent); }
 [data-theme='dark'] .tx-amt-badge--dr { background: var(--bg-secondary); color: var(--text-faint); }
 
 [data-theme='dark'] .tx-src-bank { color: var(--text-secondary); }
 [data-theme='dark'] .tx-src-type { color: var(--text-faint); }
-[data-theme='dark'] .tx-src-badge--csv    { background: #2e1a4b; color: #c4b5fd; }
 [data-theme='dark'] .tx-src-badge--bank   { background: var(--accent-light); color: var(--accent); }
 
 [data-theme='dark'] .tx-split-pill { background: var(--bg-secondary); border-color: var(--border); }
 [data-theme='dark'] .tx-split-pill:hover { border-color: var(--border-mid); }
 [data-theme='dark'] .tx-sp-opt { color: var(--text-faint); }
 [data-theme='dark'] .tx-sp-opt--active-personal { background: var(--bg-card); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,0.35); }
-[data-theme='dark'] .tx-sp-opt--active-shared { background: rgba(245,158,11,0.22); color: #fbbf24; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
-[data-theme='dark'] .tx-split-detail { color: #fbbf24; }
+[data-theme='dark'] .tx-sp-opt--active-shared { background: color-mix(in srgb, var(--warn) 22%, transparent); box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
 
 [data-theme='dark'] .tx-act-btn { color: var(--text-faint); }
 
 [data-theme='dark'] .tx-layout { background: var(--bg-root); }
 [data-theme='dark'] tr.tx-detail-row > td { background: var(--bg-secondary); border-color: var(--border); }
-[data-theme='dark'] .tx-detail-amount { color: var(--text-primary); }
 [data-theme='dark'] .tx-detail-sub { color: var(--text-muted); }
 [data-theme='dark'] .tx-detail-meta { background: var(--bg-card); border-color: var(--border); }
 [data-theme='dark'] .tx-detail-meta-val { color: var(--text-secondary); }
@@ -124,9 +115,11 @@
 [data-theme='dark'] .ov-btn-ghost { color: var(--text-muted); }
 [data-theme='dark'] .ov-btn-ghost:hover:not(:disabled) { background: var(--bg-secondary); color: var(--text-primary); }
 
-[data-theme='dark'] .ov-tag-red   { background: #3b1414; color: #fca5a5; }
-[data-theme='dark'] .ov-tag-amber { background: #3b2a08; color: #fbbf24; }
-[data-theme='dark'] .ov-tag-blue  { background: #14233b; color: #93c5fd; }
+[data-theme='dark'] .ov-tag-red   { background: var(--bad-tint); color: var(--bad-text); }
+[data-theme='dark'] .ov-tag-amber { background: var(--warn-tint); color: var(--warn-text); }
+/* Brand, not chart-blue — insightBuilder's "blue" tag tone already maps to
+   var(--brand-wash), not a data-series colour. */
+[data-theme='dark'] .ov-tag-blue  { background: var(--brand-wash); color: var(--brand); }
 [data-theme='dark'] .ov-tag-manual { background: var(--bg-secondary); color: var(--text-muted); }
 
 [data-theme='dark'] .ov-section-header { color: var(--text-faint); border-bottom-color: var(--border); }
@@ -138,7 +131,7 @@
 [data-theme='dark'] .ov-bal-secondary { color: var(--text-muted); }
 [data-theme='dark'] .ov-icon-btn { color: var(--text-faint); }
 [data-theme='dark'] .ov-icon-btn:hover { background: var(--bg-secondary); color: var(--accent); }
-[data-theme='dark'] .ov-icon-btn--danger:hover { background: #3b1414; color: #fca5a5; }
+[data-theme='dark'] .ov-icon-btn--danger:hover { background: var(--bad-tint); color: var(--bad-text); }
 
 [data-theme='dark'] .ov-add-form { background: var(--bg-secondary); border-color: var(--border); }
 
@@ -158,8 +151,8 @@
 [data-theme='dark'] .ov-debt-input-prefix { color: var(--text-muted); }
 
 [data-theme='dark'] .ov-apr-badge--low  { background: var(--accent-light); color: var(--accent); }
-[data-theme='dark'] .ov-apr-badge--med  { background: #3b2a08; color: #fbbf24; }
-[data-theme='dark'] .ov-apr-badge--high { background: #3b1414; color: #fca5a5; }
+[data-theme='dark'] .ov-apr-badge--med  { background: var(--warn-tint); color: var(--warn-text); }
+[data-theme='dark'] .ov-apr-badge--high { background: var(--bad-tint); color: var(--bad-text); }
 [data-theme='dark'] .ov-apr-edit-input { background: var(--bg-card); border-color: var(--border-mid); color: var(--text-primary); }
 [data-theme='dark'] .ov-apr-empty { color: var(--text-faint); }
 [data-theme='dark'] .ov-apr-empty:hover { color: var(--accent); }
