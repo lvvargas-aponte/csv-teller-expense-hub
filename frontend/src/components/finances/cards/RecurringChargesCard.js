@@ -5,17 +5,19 @@ import { getDashboard } from '../../../api/dashboard';
 
 // Match a transaction description / category to an emoji + tinted background.
 // Order matters — first match wins.
+const CHART_WASH = (n) => `color-mix(in srgb, var(--chart-${n}) 18%, transparent)`;
+
 const ICON_RULES = [
-  { test: /mortgage|rent|housing/i,             icon: '🏠', color: '#dbeafe' },
-  { test: /savings|transfer|invest/i,           icon: '💰', color: '#d1fae5' },
-  { test: /amex|payment|card|visa|mastercard/i, icon: '💳', color: '#fef3c7' },
-  { test: /health|medical|insurance.*health/i,  icon: '🏥', color: '#fce7f3' },
-  { test: /therapy|psych|counsel/i,             icon: '🧠', color: '#ede9fe' },
-  { test: /car|auto|progressive|geico/i,        icon: '🚗', color: '#e0f2fe' },
-  { test: /utilit|electric|gas|water|power/i,   icon: '⚡', color: '#fef9c3' },
-  { test: /spotify|netflix|hulu|disney|stream/i,icon: '🎬', color: '#fce7f3' },
-  { test: /gym|fitness|peloton/i,               icon: '🏋️', color: '#d1fae5' },
-  { test: /phone|wireless|verizon|att|t.?mobile/i, icon: '📱', color: '#dbeafe' },
+  { test: /mortgage|rent|housing/i,             icon: '🏠', color: CHART_WASH(1) },
+  { test: /savings|transfer|invest/i,           icon: '💰', color: 'var(--good-wash)' },
+  { test: /amex|payment|card|visa|mastercard/i, icon: '💳', color: CHART_WASH(3) },
+  { test: /health|medical|insurance.*health/i,  icon: '🏥', color: CHART_WASH(5) },
+  { test: /therapy|psych|counsel/i,             icon: '🧠', color: CHART_WASH(2) },
+  { test: /car|auto|progressive|geico/i,        icon: '🚗', color: CHART_WASH(4) },
+  { test: /utilit|electric|gas|water|power/i,   icon: '⚡', color: 'var(--warn-wash)' },
+  { test: /spotify|netflix|hulu|disney|stream/i,icon: '🎬', color: CHART_WASH(5) },
+  { test: /gym|fitness|peloton/i,               icon: '🏋️', color: CHART_WASH(6) },
+  { test: /phone|wireless|verizon|att|t.?mobile/i, icon: '📱', color: CHART_WASH(1) },
 ];
 
 export function pickIcon(description = '', category = '') {
@@ -23,7 +25,7 @@ export function pickIcon(description = '', category = '') {
   for (const rule of ICON_RULES) {
     if (rule.test.test(haystack)) return { icon: rule.icon, color: rule.color };
   }
-  return { icon: '🔁', color: '#d1fae5' };
+  return { icon: '🔁', color: CHART_WASH(6) };
 }
 
 // Try to extract a friendly name + institution detail from the description.
@@ -126,7 +128,7 @@ export default function RecurringChargesCard({ dashboard, loading, error, index,
             fontSize: 10, fontWeight: 700,
             textTransform: 'uppercase', letterSpacing: '0.04em',
             padding: '2px 8px', borderRadius: 99,
-            background: '#fef3c7', color: '#f59e0b',
+            background: 'var(--warn-wash)', color: 'var(--warn-text)',
           }}>
             {charges.length} detected
           </span>
@@ -169,7 +171,7 @@ export default function RecurringChargesCard({ dashboard, loading, error, index,
                 const daysLabel = next ? (next.daysUntil === 0 ? 'today' : `in ${next.daysUntil}d`) : '';
                 const urgent = next && next.daysUntil <= 5;
                 return (
-                  <tr key={`${c.merchant_key}-${i}`} style={{ borderTop: '1px solid var(--border, #334155)' }}>
+                  <tr key={`${c.merchant_key}-${i}`} style={{ borderTop: '1px solid var(--border)' }}>
                     <td style={{ padding: '8px 8px 8px 0' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{

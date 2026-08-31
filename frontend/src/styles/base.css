@@ -550,6 +550,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   letter-spacing: 0.02em;
   flex-shrink: 0;
 }
+/* Connection-status chips stay dark regardless of page theme (invariant
+   inverse), matching the "Manual"/"Active"/error family already fixed-dark
+   elsewhere in the app. */
+.account-chip--neutral { background: var(--neutral-inverse-bg); color: var(--neutral-inverse-text); }
+.account-chip--warn    { background: var(--warn-inverse-bg);    color: var(--warn-inverse-text); }
+.account-chip--bad     { background: var(--bad-inverse-bg);     color: var(--bad-inverse-text); }
+.account-chip--good    { background: var(--good-inverse-bg);    color: var(--good-inverse-text); }
 
 /* ── Account groups (Linked Accounts modal) ──────────────────────────────── */
 .account-group + .account-group { margin-top: 18px; }

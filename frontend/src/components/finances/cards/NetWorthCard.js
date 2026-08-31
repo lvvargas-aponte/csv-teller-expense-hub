@@ -8,7 +8,7 @@ import Num from '../Num';
 import { liquidLabel, netWorthComposition } from '../../../utils/netWorth';
 import InfoPopover from '../../ui/InfoPopover';
 
-const AXIS = { fontSize: 11, fill: 'var(--text-secondary, #94a3b8)' };
+const AXIS = { fontSize: 11, fill: 'var(--text-faint)' };
 
 const WHOLE_DOLLARS = new Intl.NumberFormat('en-US', {
   style: 'currency', currency: 'USD', maximumFractionDigits: 0,
@@ -112,16 +112,16 @@ export default function NetWorthCard({
           <AreaChart data={series}>
             <defs>
               <linearGradient id="nw-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgba(5,150,105,0.18)" />
-                <stop offset="100%" stopColor="rgba(5,150,105,0.02)" />
+                <stop offset="0%" stopColor="color-mix(in srgb, var(--good) 18%, transparent)" />
+                <stop offset="100%" stopColor="color-mix(in srgb, var(--good) 2%, transparent)" />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #d1fae5)" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis dataKey="date" tick={AXIS} minTickGap={30} />
             <YAxis tick={AXIS} tickFormatter={(v) => fmt$(v)} width={70} />
             <Tooltip formatter={(v) => fmtSigned(v)} />
             <Area type="monotone" dataKey="net_worth"
-                  stroke="#059669" strokeWidth={2.5}
+                  stroke="var(--good)" strokeWidth={2.5}
                   fill="url(#nw-fill)" />
           </AreaChart>
         </ResponsiveContainer>

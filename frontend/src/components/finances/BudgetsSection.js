@@ -131,8 +131,8 @@ export default function BudgetsSection() {
 // budget health in bar colour alone, which says nothing to a colour-blind
 // reader and nothing at all to someone scanning the list.
 const PACE_CHIP = {
-  over_budget: { label: 'Over budget', color: '#b91c1c', bg: '#fee2e2' },
-  over_pace:   { label: 'Over pace',   color: '#92400e', bg: '#fef3c7' },
+  over_budget: { label: 'Over budget', color: 'var(--bad-text)', bg: 'var(--bad-wash)' },
+  over_pace:   { label: 'Over pace',   color: 'var(--warn-text)', bg: 'var(--warn-wash)' },
 };
 
 function BudgetRow({ budget, onDelete }) {
@@ -200,7 +200,7 @@ function BudgetRow({ budget, onDelete }) {
           <div style={{ width: `${pct}%`, height: '100%', background: barColor, transition: 'width .3s' }} />
           {overflow > 0 && (
             <div style={{ width: `${Math.min(overflow, 100)}%`, height: '100%',
-                          background: '#dc2626', marginTop: -6, opacity: 0.7 }} />
+                          background: 'var(--bad)', marginTop: -6, opacity: 0.7 }} />
           )}
         </div>
         {/* Elapsed month: spend to the left of this mark is ahead of time. */}

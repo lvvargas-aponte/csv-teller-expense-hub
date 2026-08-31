@@ -3,14 +3,14 @@ import Spin from '../ui/Spin';
 import { formatAccountType } from '../../utils/formatting';
 
 function statusChipFor(acct, isManual) {
-  if (isManual) return { label: 'Manual', bg: '#1e293b', color: '#94a3b8' };
+  if (isManual) return { label: 'Manual', variant: 'neutral' };
   if (acct._connection_error) {
     return acct._error_status === 429
-      ? { label: 'Rate Limited',     bg: '#422006', color: '#fbbf24' }
-      : { label: 'Connection Error', bg: '#450a0a', color: '#fca5a5' };
+      ? { label: 'Rate Limited',     variant: 'warn' }
+      : { label: 'Connection Error', variant: 'bad' };
   }
-  if (acct.status === 'closed') return { label: 'Closed', bg: '#1f2937', color: '#9ca3af' };
-  return { label: 'Active', bg: '#052e16', color: '#86efac' };
+  if (acct.status === 'closed') return { label: 'Closed', variant: 'neutral' };
+  return { label: 'Active', variant: 'good' };
 }
 
 /**
@@ -40,7 +40,7 @@ export default function AccountRow({
       <div className="account-row-info">
         <div className="account-row-name">
           {acct.name}
-          <span className="account-chip" style={{ background: chip.bg, color: chip.color }}>
+          <span className={`account-chip account-chip--${chip.variant}`}>
             {chip.label}
           </span>
         </div>

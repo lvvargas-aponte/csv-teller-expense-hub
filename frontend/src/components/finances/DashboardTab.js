@@ -259,7 +259,7 @@ export default function DashboardTab({
             value={fmtSigned(netWorth)}
             valueClass={netWorth < 0 ? 'eh-kpi-value--neg' : 'eh-kpi-value--pos'}
             delta={netWorthDelta}
-            barColor={netWorth < 0 ? '#ef4444' : '#059669'}
+            barColor={netWorth < 0 ? 'var(--bad)' : 'var(--good)'}
             blur={blurSensitive}
             note={netWorthLiquid}
             help={netWorthHelp}
@@ -269,7 +269,7 @@ export default function DashboardTab({
             value={fmt$(thisMonth)}
             delta={thisMonthDelta}
             deltaInverse
-            barColor="#6366f1"
+            barColor="var(--accent)"
             blur={blurSensitive}
             help={thisMonthHelp}
           />
@@ -277,7 +277,7 @@ export default function DashboardTab({
             label="Income"
             value={fmt$(incomeAmt)}
             delta={incomeDelta}
-            barColor="#059669"
+            barColor="var(--good)"
             blur={blurSensitive}
             inProgress={incomeIsPartial}
             help={incomeHelp}
@@ -287,7 +287,7 @@ export default function DashboardTab({
             value={fmtSigned(netCashFlow)}
             valueClass={netCashFlow < 0 ? 'eh-kpi-value--neg' : 'eh-kpi-value--pos'}
             delta={cashFlowDelta}
-            barColor={netCashFlow < 0 ? '#ef4444' : '#059669'}
+            barColor={netCashFlow < 0 ? 'var(--bad)' : 'var(--good)'}
             blur={blurSensitive}
             inProgress={incomeIsPartial}
             help={cashFlowHelp}

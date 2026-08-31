@@ -30,7 +30,7 @@ export default function TransferExpandRow({ txn, colSpan, onSave, onClose }) {
         <div className="tx-note-inner">
           <span className="tx-note-label">Transfer to</span>
           {manualAccounts === null && !error && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading accounts…</span>}
-          {error && <span style={{ fontSize: 12, color: '#dc2626' }}>{error}</span>}
+          {error && <span style={{ fontSize: 12, color: 'var(--bad-text)' }}>{error}</span>}
           {manualAccounts !== null && (
             <select
               className="tx-note-input"

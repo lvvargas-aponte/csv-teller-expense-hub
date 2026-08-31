@@ -6,12 +6,11 @@ import DashboardCard from './DashboardCard';
 import { fmt$ } from '../../../utils/formatting';
 
 const PALETTE = [
-  '#059669', '#6366f1', '#f59e0b', '#ef4444',
-  '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16',
-  '#94a3b8',
+  'var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)',
+  'var(--chart-4)', 'var(--chart-5)', 'var(--chart-6)',
 ];
 const TOP_N = 8;
-const AXIS = { fontSize: 11, fill: 'var(--text-secondary, #94a3b8)' };
+const AXIS = { fontSize: 11, fill: 'var(--text-faint)' };
 const HIDDEN_KEY = 'dashboard.spendByCat.hidden';
 
 const loadHidden = () => {
@@ -135,7 +134,7 @@ export default function SpendingByCategoryCard({ dashboard, loading, error, onHi
     >
       <ResponsiveContainer width="100%" height={240}>
         <BarChart data={rows}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #334155)" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis dataKey="month" tick={AXIS} />
           <YAxis tick={AXIS} tickFormatter={(v) => fmt$(v)} width={70} />
           <Tooltip formatter={(v) => fmt$(v)} />

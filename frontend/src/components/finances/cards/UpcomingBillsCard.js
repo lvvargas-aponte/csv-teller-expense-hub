@@ -29,7 +29,7 @@ export default function UpcomingBillsCard({ onHide, onNavigateToAccounts }) {
         style={{
           alignSelf: 'flex-start',
           padding: '6px 12px', borderRadius: 6,
-          border: '1px solid var(--border, #334155)',
+          border: '1px solid var(--border)',
           background: 'transparent', cursor: 'pointer',
           fontSize: 12, fontWeight: 600,
         }}
@@ -67,7 +67,7 @@ export default function UpcomingBillsCard({ onHide, onNavigateToAccounts }) {
               style={{
                 display: 'flex', justifyContent: 'space-between',
                 padding: '6px 0', fontSize: 13,
-                borderBottom: '1px solid var(--border, #334155)',
+                borderBottom: '1px solid var(--border)',
               }}
             >
               <div>

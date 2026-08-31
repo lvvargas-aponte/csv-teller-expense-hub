@@ -47,12 +47,12 @@ const ASSET_LABEL = {
 };
 
 const ALLOC_COLORS = {
-  stock: '#6366f1',
-  etf: '#0ea5e9',
-  crypto: '#f59e0b',
-  option: '#a855f7',
-  cash: '#10b981',
-  other: '#94a3b8',
+  stock: 'var(--chart-1)',
+  etf: 'var(--chart-4)',
+  crypto: 'var(--chart-3)',
+  option: 'var(--chart-2)',
+  cash: 'var(--chart-6)',
+  other: 'var(--text-faint)',
 };
 
 // Avg-cost cell. Brokerages often report no average purchase price, which is
@@ -122,7 +122,7 @@ function CostBasisCell({ holding, onSaved }) {
           <button
             type="button"
             onClick={startEdit}
-            style={{ fontSize: 11, background: 'none', border: 'none', color: '#0ea5e9', cursor: 'pointer', padding: 0 }}
+            style={{ fontSize: 11, background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0 }}
           >
             Add cost basis
           </button>
@@ -614,7 +614,7 @@ export default function InvestmentsTab({ onOpenSettings }) {
                 key={c.id}
                 style={{
                   fontSize: 12, padding: '3px 10px', borderRadius: 12,
-                  background: 'var(--border, #334155)',
+                  background: 'var(--border)',
                   color: c.disabled ? 'var(--status-bad-text)' : 'var(--text, inherit)',
                 }}
               >
@@ -764,12 +764,12 @@ export default function InvestmentsTab({ onOpenSettings }) {
                 const isLoss = (g$ ?? 0) < 0;
                 const gColor = isLoss ? 'var(--status-bad-text)' : 'var(--status-good-text)';
                 return (
-                  <tr key={`${h.account_id}-${h.symbol}`} style={{ borderTop: '1px solid var(--border, #334155)' }}>
+                  <tr key={`${h.account_id}-${h.symbol}`} style={{ borderTop: '1px solid var(--border)' }}>
                     <td style={{ padding: '6px 0' }}>
                       <span style={{ fontWeight: 600 }}>{h.symbol}</span>
                       <span style={{
                         fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 8,
-                        background: ALLOC_COLORS[h.asset_type] || ALLOC_COLORS.other, color: '#fff',
+                        background: ALLOC_COLORS[h.asset_type] || ALLOC_COLORS.other, color: 'var(--text-inverse)',
                       }}
                       >
                         {ASSET_LABEL[h.asset_type] || h.asset_type}

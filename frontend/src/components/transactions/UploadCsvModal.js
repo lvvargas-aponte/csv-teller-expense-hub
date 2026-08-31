@@ -154,7 +154,7 @@ export default function UploadCsvModal({ file, onSubmit, onClose }) {
             )}
 
             {err && (
-              <div style={{ color: '#f87171', fontSize: 13, marginTop: 8 }}>{err}</div>
+              <div style={{ color: 'var(--bad-text)', fontSize: 13, marginTop: 8 }}>{err}</div>
             )}
           </div>
 

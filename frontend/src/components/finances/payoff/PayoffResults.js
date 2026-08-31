@@ -51,7 +51,7 @@ export default function PayoffResults({ results, strategy, totalMonths, totalPai
             const pct = totalMonths > 0 ? Math.min(100, (months / totalMonths) * 100) : 0;
             const color = a.never_amortizes
               ? 'var(--red)'
-              : i === 0 ? '#ef4444' : i === 1 ? '#f59e0b' : '#059669';
+              : i === 0 ? 'var(--bad)' : i === 1 ? 'var(--warn)' : 'var(--good)';
             return (
               <div key={i} className="ov-payoff-debt-item">
                 <span className="ov-order-badge" style={{ background: color }}>{i + 1}</span>

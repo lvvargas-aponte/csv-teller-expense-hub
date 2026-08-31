@@ -130,6 +130,15 @@
   --brand-inverse-text: #60a5fa;
   --good-inverse-bg:    #0f2417;
   --good-inverse-text:  #34d399;
+  /* Same invariant-dark-chip pattern as --good-inverse-* above, for the
+     account-status chips (AccountRow, BrokerageRow) that stay dark
+     regardless of page theme. */
+  --bad-inverse-bg:     #450a0a;
+  --bad-inverse-text:   #fca5a5;
+  --warn-inverse-bg:    #422006;
+  --warn-inverse-text:  #fbbf24;
+  --neutral-inverse-bg:   #1e293b;
+  --neutral-inverse-text: #94a3b8;
   /* Translucent fills for the two financial-positive pill/button pairs that
      live on an inverse surface (bulk bar's "Mark 50/50", the rail card's
      "Send to sheet"). Derived from --good-inverse-text via color-mix rather

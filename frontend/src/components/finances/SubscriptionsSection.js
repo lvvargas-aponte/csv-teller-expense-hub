@@ -22,10 +22,10 @@ const DECISION_LABELS = { keep: 'Keeping', cancel: 'Canceling', ignore: 'Not a s
 
 function Badge({ children, tone = 'muted' }) {
   const tones = {
-    muted: { background: 'var(--surface-2, #1e293b)', color: 'var(--text-muted)' },
-    warn: { background: '#fef3c7', color: '#b45309' },
-    danger: { background: '#fee2e2', color: '#b91c1c' },
-    ok: { background: '#d1fae5', color: '#047857' },
+    muted: { background: 'var(--surface-muted)', color: 'var(--text-muted)' },
+    warn: { background: 'var(--warn-wash)', color: 'var(--warn-text)' },
+    danger: { background: 'var(--bad-wash)', color: 'var(--bad-text)' },
+    ok: { background: 'var(--good-wash)', color: 'var(--good-text)' },
   };
   return (
     <span style={{
@@ -108,7 +108,7 @@ export default function SubscriptionsSection() {
               style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
                 borderRadius: 10,
-                border: `1px solid ${s.needs_review ? '#f59e0b' : 'var(--border, #334155)'}`,
+                border: `1px solid ${s.needs_review ? 'var(--warn)' : 'var(--border)'}`,
                 opacity: decision === 'ignore' || decision === 'cancel' ? 0.6 : 1,
               }}
             >

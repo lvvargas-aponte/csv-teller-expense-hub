@@ -36,7 +36,7 @@ export function AprCell({ value, onChange }) {
           onKeyDown={onKey}
           aria-label="APR percent"
         />
-        <span style={{ fontSize: 11, color: '#9ca3af' }}>%</span>
+        <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>%</span>
       </div>
     );
   }

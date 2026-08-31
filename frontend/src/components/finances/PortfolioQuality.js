@@ -3,7 +3,7 @@ import { fmt$ } from '../../utils/formatting';
 import { getPortfolioQuality, getPortfolioFees, getMixBacktest } from '../../api/investments';
 
 const CLASS_LABEL = { equity: 'Equity', bond: 'Bonds', cash: 'Cash' };
-const CLASS_COLOR = { equity: '#6366f1', bond: '#0ea5e9', cash: '#10b981' };
+const CLASS_COLOR = { equity: 'var(--chart-1)', bond: 'var(--chart-4)', cash: 'var(--chart-6)' };
 const PERIOD_LABEL = { '1mo': 'Past month', '1y': 'Past year', '5y': 'Past 5 years' };
 
 // Fees are decided in dollars, not basis points — cents on an annual estimate
@@ -24,17 +24,17 @@ function DriftBar({ row }) {
           {row.actual}% <span aria-hidden="true">·</span> target {row.target}%
         </span>
       </div>
-      <div style={{ position: 'relative', height: 10, borderRadius: 5, background: 'var(--border, #334155)' }}>
+      <div style={{ position: 'relative', height: 10, borderRadius: 5, background: 'var(--border)' }}>
         <div style={{
           width: `${width}%`, height: '100%', borderRadius: 5,
-          background: CLASS_COLOR[row.class] || '#94a3b8',
+          background: CLASS_COLOR[row.class] || 'var(--text-faint)',
         }}
         />
         <div
           title={`Target ${row.target}%`}
           style={{
             position: 'absolute', top: -3, bottom: -3, left: `${Math.min(row.target, 100)}%`,
-            width: 2, background: 'var(--text, #e2e8f0)',
+            width: 2, background: 'var(--text)',
           }}
         />
       </div>
@@ -112,7 +112,7 @@ export default function PortfolioQuality({ refreshKey = 0 }) {
       )}
 
       {fees && fees.available && (
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border, #334155)' }}>
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <div style={{ fontSize: 18, fontWeight: 700 }}>
             {fmtWhole(fees.annual_fee_cost)}/year in fund fees
           </div>
@@ -145,7 +145,7 @@ export default function PortfolioQuality({ refreshKey = 0 }) {
       )}
 
       {backtest && backtest.available && (
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border, #334155)' }}>
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>
             How your current mix would have performed
           </div>

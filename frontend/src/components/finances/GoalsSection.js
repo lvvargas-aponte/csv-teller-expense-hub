@@ -162,14 +162,14 @@ export default function GoalsSection() {
 }
 
 const KIND_BADGE = {
-  emergency_fund: { label: 'Emergency',    color: '#3b82f6' },
-  travel:         { label: 'Travel',       color: '#8b5cf6' },
+  emergency_fund: { label: 'Emergency',    color: 'var(--chart-1)' },
+  travel:         { label: 'Travel',       color: 'var(--chart-2)' },
   big_purchase:   { label: 'Big purchase', color: 'var(--status-warn-text)' },
 };
 const KIND_BAR_COLOR = {
-  emergency_fund: '#3b82f6',
-  travel:         '#8b5cf6',
-  big_purchase:   '#f59e0b',
+  emergency_fund: 'var(--chart-1)',
+  travel:         'var(--chart-2)',
+  big_purchase:   'var(--warn)',
 };
 
 const PACE_WORD = {

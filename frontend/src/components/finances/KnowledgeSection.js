@@ -22,12 +22,12 @@ const PERSONAL_CATEGORIES = [
 ];
 
 const STATUS_BADGE = {
-  pending:    { color: '#92400e', bg: '#fef3c7', label: 'Pending' },
-  embedding:  { color: '#1e40af', bg: '#dbeafe', label: 'Embedding…' },
-  ready:      { color: '#065f46', bg: '#d1fae5', label: 'Ready' },
-  failed:     { color: '#991b1b', bg: '#fee2e2', label: 'Failed' },
-  duplicate:  { color: '#6b7280', bg: '#f3f4f6', label: 'Duplicate' },
-  superseded: { color: '#6b7280', bg: '#f3f4f6', label: 'Superseded' },
+  pending:    { color: 'var(--warn-text)', bg: 'var(--warn-wash)', label: 'Pending' },
+  embedding:  { color: 'var(--brand)', bg: 'var(--brand-wash)', label: 'Embedding…' },
+  ready:      { color: 'var(--good-text)', bg: 'var(--good-wash)', label: 'Ready' },
+  failed:     { color: 'var(--bad-text)', bg: 'var(--bad-wash)', label: 'Failed' },
+  duplicate:  { color: 'var(--text-muted)', bg: 'var(--surface-muted)', label: 'Duplicate' },
+  superseded: { color: 'var(--text-muted)', bg: 'var(--surface-muted)', label: 'Superseded' },
 };
 
 export default function KnowledgeSection() {
@@ -61,7 +61,7 @@ export default function KnowledgeSection() {
   return (
     <div style={{ display: 'grid', gap: 24 }}>
       {error && (
-        <div style={{ color: '#991b1b', background: '#fee2e2', padding: 12, borderRadius: 6 }}>
+        <div style={{ color: 'var(--bad-text)', background: 'var(--bad-wash)', padding: 12, borderRadius: 6 }}>
           {error}
         </div>
       )}
@@ -186,7 +186,7 @@ function UploadPanel({ title, subtitle, scope, categories, onUploaded }) {
       </div>
 
       <button type="submit" disabled={!file || submitting} style={{
-        background: 'var(--accent)', color: '#fff', border: 0, borderRadius: 6,
+        background: 'var(--accent)', color: 'var(--text-inverse)', border: 0, borderRadius: 6,
         padding: '8px 16px', cursor: file && !submitting ? 'pointer' : 'not-allowed',
       }}>
         {submitting ? 'Uploading…' : 'Upload'}

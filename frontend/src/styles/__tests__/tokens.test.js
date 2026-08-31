@@ -183,3 +183,58 @@ describe('the brand gradient lives in one token', () => {
     expect(APP_CSS).not.toMatch(/linear-gradient\([^)]*#(059669|065f46)/i);
   });
 });
+
+// Phase 8 Task 3: the last raw hex sitting in component JSX/inline styles,
+// tokenized by role (brand vs good/bad/warn vs border/faint text). This is
+// the guard that stops the next feature from reintroducing a literal hex
+// where a token belongs.
+//
+// components/settings/categoryColor.js and utils/institutionColor.js are
+// EXCLUDED ON PURPOSE: they are generated data palettes that assign an
+// arbitrary distinguishable colour per category/institution. That's data,
+// not theme — tokenizing them would collapse distinct categories onto the
+// same six chart hues, which is a regression, not a fix. They are never
+// read by this test.
+const COMPONENT_FILES = [
+  'components/accounts/AccountRow.js',
+  'components/accounts/BrokerageRow.js',
+  'components/finances/BudgetPresetModal.js',
+  'components/finances/BudgetsSection.js',
+  'components/finances/DashboardTab.js',
+  'components/finances/GoalsSection.js',
+  'components/finances/InvestmentsTab.js',
+  'components/finances/KnowledgeSection.js',
+  'components/finances/PortfolioQuality.js',
+  'components/finances/SubscriptionsSection.js',
+  'components/finances/cards/BudgetsCard.js',
+  'components/finances/cards/CashFlowCard.js',
+  'components/finances/cards/CreditUtilizationCard.js',
+  'components/finances/cards/GoalsCard.js',
+  'components/finances/cards/NetWorthCard.js',
+  'components/finances/cards/RecurringChargesCard.js',
+  'components/finances/cards/SpendingByCategoryCard.js',
+  'components/finances/cards/UpcomingBillsCard.js',
+  'components/finances/payoff/AprCell.js',
+  'components/finances/payoff/PayoffForm.js',
+  'components/finances/payoff/PayoffResults.js',
+  'components/transactions/ControlBar.js',
+  'components/transactions/SuggestPreviewModal.js',
+  'components/transactions/TransferExpandRow.js',
+  'components/transactions/UploadCsvModal.js',
+];
+
+describe('no raw hex or rgb() literals remain in the tokenized components', () => {
+  // A hex guard alone misses rgb()/rgba() forms of the same colours — round
+  // 1 of the CSS-sheet pass (tokens.test.js above) found a dozen of those
+  // hiding in translucent fills the hex scan never saw. Cover both forms
+  // here too, even though none of these 25 files currently use rgba() —
+  // color-mix(var(--token) ..., transparent) replaced every translucent fill.
+  const HEX_RE = /#[0-9a-fA-F]{3,6}\b/;
+  const RGB_LITERAL_RE = /rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+/;
+
+  test.each(COMPONENT_FILES)('%s has no raw hex or rgb() literal', (relPath) => {
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', relPath), 'utf8');
+    expect(src).not.toMatch(HEX_RE);
+    expect(src).not.toMatch(RGB_LITERAL_RE);
+  });
+});

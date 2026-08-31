@@ -20,13 +20,13 @@ export default function ControlBar({
           <span>total</span>
         </div>
         <div className="tx-stat-pill">
-          <span className="tx-pill-dot" style={{ background: '#059669' }} />
+          <span className="tx-pill-dot" style={{ background: 'var(--good)' }} />
           <strong className="tx-green">{sharedCount}</strong>
           <span>shared</span>
           <strong className="tx-green">{fmt$(sharedAmt)}</strong>
         </div>
         <div className="tx-stat-pill" data-testid="stat-pill-unreviewed">
-          <span className="tx-pill-dot" style={{ background: '#d97706' }} />
+          <span className="tx-pill-dot" style={{ background: 'var(--warn)' }} />
           <strong className="tx-amber">{unreviewedCount}</strong>
           <span>unreviewed</span>
         </div>

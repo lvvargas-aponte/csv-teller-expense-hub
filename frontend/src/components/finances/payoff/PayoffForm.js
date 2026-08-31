@@ -46,7 +46,7 @@ export default function PayoffForm({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ padding: '24px 14px', color: '#6b7280', fontSize: 13, textAlign: 'center' }}>
+                <td colSpan={6} style={{ padding: '24px 14px', color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
                   No debts yet. Click <strong>+ Add debt</strong> below to get started.
                 </td>
               </tr>

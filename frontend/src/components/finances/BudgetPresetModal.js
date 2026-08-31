@@ -18,7 +18,9 @@ const RULES = [
 
 const BUCKETS = ['needs', 'wants', 'savings', 'skip'];
 const BUCKET_LABEL = { needs: 'Needs', wants: 'Wants', savings: 'Savings', skip: 'Skip' };
-const BUCKET_COLOR = { needs: '#3b82f6', wants: '#f59e0b', savings: '#10b981', skip: '#64748b' };
+const BUCKET_COLOR = {
+  needs: 'var(--chart-1)', wants: 'var(--chart-3)', savings: 'var(--good)', skip: 'var(--text-muted)',
+};
 
 const NEEDS_HINTS = [
   'mortgage', 'rent', 'utilit', 'electric', 'gas', 'water', 'internet', 'phone',
@@ -220,9 +222,9 @@ export default function BudgetPresetModal({ categories, existingBudgets, onClose
                       style={{
                         display: 'flex', gap: 12, alignItems: 'flex-start',
                         padding: 12,
-                        border: `1px solid ${selected ? 'var(--accent, #6366f1)' : 'var(--border, #334155)'}`,
+                        border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
                         borderRadius: 8,
-                        background: selected ? 'rgba(99,102,241,0.08)' : 'transparent',
+                        background: selected ? 'color-mix(in srgb, var(--brand) 8%, transparent)' : 'transparent',
                         cursor: 'pointer',
                       }}
                     >
@@ -265,7 +267,7 @@ export default function BudgetPresetModal({ categories, existingBudgets, onClose
                       padding: 10,
                       border: `1px solid ${BUCKET_COLOR[b]}`,
                       borderRadius: 8,
-                      background: 'rgba(99,102,241,0.04)',
+                      background: 'color-mix(in srgb, var(--brand) 4%, transparent)',
                     }}>
                       <div style={{ fontSize: 12, color: BUCKET_COLOR[b], fontWeight: 600 }}>
                         {BUCKET_LABEL[b]} · target {fmt$(bucketTotals[b])}
@@ -282,7 +284,7 @@ export default function BudgetPresetModal({ categories, existingBudgets, onClose
               {overwriteCount > 0 && (
                 <div style={{
                   fontSize: 12, color: 'var(--status-warn-text)', marginBottom: 12,
-                  padding: 8, border: '1px solid #fbbf24', borderRadius: 6,
+                  padding: 8, border: '1px solid var(--warn)', borderRadius: 6,
                 }}>
                   {overwriteCount} existing budget{overwriteCount === 1 ? '' : 's'} will be overwritten.
                 </div>
@@ -321,9 +323,9 @@ export default function BudgetPresetModal({ categories, existingBudgets, onClose
                                       flex: 1,
                                       padding: '4px 6px',
                                       fontSize: 11,
-                                      border: `1px solid ${selected ? BUCKET_COLOR[b] : 'var(--border, #334155)'}`,
+                                      border: `1px solid ${selected ? BUCKET_COLOR[b] : 'var(--border)'}`,
                                       background: selected ? BUCKET_COLOR[b] : 'transparent',
-                                      color: selected ? '#fff' : 'var(--text-secondary)',
+                                      color: selected ? 'var(--text-inverse)' : 'var(--text-secondary)',
                                       borderRadius: 4,
                                       cursor: 'pointer',
                                     }}

@@ -45,7 +45,7 @@ export default function BudgetsCard({ onHide, index, kicker }) {
                 </span>
               </div>
               <div
-                style={{ height: 6, background: 'var(--border, #334155)', borderRadius: 3, marginTop: 3 }}
+                style={{ height: 6, background: 'var(--border)', borderRadius: 3, marginTop: 3 }}
                 role="progressbar"
                 aria-label={`${b.category} budget`}
                 aria-valuenow={Math.round(pct)}

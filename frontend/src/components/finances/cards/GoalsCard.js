@@ -46,8 +46,8 @@ export default function GoalsCard({ onHide }) {
                   {fmt$(g.current_balance)} / {fmt$(g.target_amount)}
                 </span>
               </div>
-              <div style={{ height: 6, background: 'var(--border, #334155)', borderRadius: 3, marginTop: 3 }}>
-                <div style={{ height: '100%', width: `${pct}%`, background: '#6366f1', borderRadius: 3 }} />
+              <div style={{ height: 6, background: 'var(--border)', borderRadius: 3, marginTop: 3 }}>
+                <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: 3 }} />
               </div>
               {g.pace_status && (
                 <div style={{ fontSize: 11, color: paceColor, marginTop: 2, textTransform: 'capitalize' }}>

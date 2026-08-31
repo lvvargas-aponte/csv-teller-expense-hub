@@ -9,8 +9,8 @@ import { getIncomeVsExpenses } from '../../../api/dashboard';
 import { fmt$ } from '../../../utils/formatting';
 import Num, { BlurMoney } from '../Num';
 
-const AXIS = { fontSize: 11, fill: 'var(--text-faint, #9ca3af)' };
-const AXIS_IVE = { fontSize: 11, fill: 'var(--text-secondary, #94a3b8)' };
+const AXIS = { fontSize: 11, fill: 'var(--text-faint)' };
+const AXIS_IVE = { fontSize: 11, fill: 'var(--text-faint)' };
 
 // Bars keep the saturated fill; the figures beside them use the text-grade
 // sibling, which is the only one that clears 4.5:1 on the white card.
@@ -101,7 +101,7 @@ function OutlookSection() {
                   </span>
                 </div>
                 <div
-                  style={{ height: 6, background: 'var(--border, #334155)', borderRadius: 3, marginTop: 3 }}
+                  style={{ height: 6, background: 'var(--border)', borderRadius: 3, marginTop: 3 }}
                   aria-hidden="true"
                 >
                   <div style={{
@@ -199,13 +199,13 @@ function IncomeVsExpensesSection({ months }) {
           )}
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={rows}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #334155)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="month" tick={AXIS_IVE} />
               <YAxis tick={AXIS_IVE} tickFormatter={(v) => fmt$(v)} width={70} />
               <Tooltip formatter={(v) => fmt$(v)} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="income" fill="#059669" fillOpacity={0.85} radius={[3, 3, 0, 0]} />
-              <Bar dataKey="expenses" fill="#ef4444" fillOpacity={0.75} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="income" fill="var(--good)" fillOpacity={0.85} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="expenses" fill="var(--bad)" fillOpacity={0.75} radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </>
@@ -237,7 +237,7 @@ export default function CashFlowCard({ dashboard, loading, error, months }) {
           fontSize: 10, fontWeight: 700,
           textTransform: 'uppercase', letterSpacing: '0.04em',
           padding: '2px 8px', borderRadius: 99,
-          background: badge.bad ? '#fee2e2' : '#d1fae5',
+          background: badge.bad ? 'var(--bad-wash)' : 'var(--good-wash)',
           color: badge.bad ? 'var(--status-bad-text)' : 'var(--status-good-text)',
         }}>
           {badge.text}
@@ -285,11 +285,11 @@ export default function CashFlowCard({ dashboard, loading, error, months }) {
             </div>
             <ResponsiveContainer width="100%" height={140}>
               <BarChart data={totals}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #d1fae5)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="month" tick={AXIS} />
                 <YAxis tick={AXIS} tickFormatter={(v) => fmt$(v)} width={70} />
                 <Tooltip formatter={(v) => fmt$(v)} />
-                <Bar dataKey="total" fill="#6366f1" fillOpacity={0.8} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="total" fill="var(--accent)" fillOpacity={0.8} radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </>

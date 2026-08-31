@@ -12,15 +12,15 @@ export default function BrokerageRow({
   conn, accountCount, isConfirming, isDeleting, onConfirm, onCancelConfirm, onDisconnect,
 }) {
   const chip = conn.disabled
-    ? { label: 'Needs Reconnect', bg: '#450a0a', color: '#fca5a5' }
-    : { label: 'Active',          bg: '#052e16', color: '#86efac' };
+    ? { label: 'Needs Reconnect', variant: 'bad' }
+    : { label: 'Active',          variant: 'good' };
 
   return (
     <div className="account-row">
       <div className="account-row-info">
         <div className="account-row-name">
           {conn.brokerage}
-          <span className="account-chip" style={{ background: chip.bg, color: chip.color }}>
+          <span className={`account-chip account-chip--${chip.variant}`}>
             {chip.label}
           </span>
         </div>

@@ -48,8 +48,8 @@ export default function SuggestPreviewModal({ result, onApply, onClose }) {
         <div className="modal-body">
           {!aiAvailable && (
             <div style={{
-              color: '#f87171', fontSize: 13, marginBottom: 12,
-              padding: 8, border: '1px solid #f87171', borderRadius: 6,
+              color: 'var(--bad-text)', fontSize: 13, marginBottom: 12,
+              padding: 8, border: '1px solid var(--bad)', borderRadius: 6,
             }}>
               Ollama is not running — start it to get suggestions. You can still
               type categories manually below.
