@@ -4,14 +4,18 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { NAV, findSection } from '../navConfig';
 import { useSidebarCollapsed } from '../hooks/useSidebarCollapsed';
 import { useUnsavedChanges } from '../contexts/UnsavedChangesContext';
+import { API_BASE } from '../utils/formatting';
 import Icon from './ui/Icon';
 import InfoPopover from './ui/InfoPopover';
 
-export default function Sidebar({ healthScore, healthSignals }) {
+export default function Sidebar({
+  healthScore, healthSignals, isDark, onToggleTheme,
+}) {
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const { pathname } = useLocation();
   const active = findSection(pathname);
   const { unsaved } = useUnsavedChanges();
+  const helpHref = `${API_BASE || ''}/help/`;
 
   const confirmLeave = (e) => {
     // eslint-disable-next-line no-alert
@@ -105,6 +109,39 @@ export default function Sidebar({ healthScore, healthSignals }) {
               : healthScore >= 50 ? 'On track'
               : 'Room to improve'}
           </div>
+        </div>
+
+        {/* Global chrome — help and theme. Quieter than the nav on purpose:
+            these are set-once controls and shouldn't compete with it. They
+            survive the collapse; the health card above them doesn't. */}
+        <div className="eh-sidebar-utils">
+          <a
+            href={helpHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="eh-sidebar-util"
+            title={collapsed ? 'Help & documentation' : undefined}
+            aria-label="Open help and documentation"
+          >
+            <span className="eh-nav-icon" aria-hidden="true">
+              <Icon name="help" size={18} />
+            </span>
+            <span className="eh-nav-text">Help</span>
+          </a>
+          <button
+            type="button"
+            className="eh-sidebar-util"
+            onClick={onToggleTheme}
+            title={collapsed
+              ? (isDark ? 'Switch to light mode' : 'Switch to dark mode')
+              : undefined}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            <span className="eh-nav-icon" aria-hidden="true">
+              <Icon name={isDark ? 'sun' : 'moon'} size={18} />
+            </span>
+            <span className="eh-nav-text">{isDark ? 'Light mode' : 'Dark mode'}</span>
+          </button>
         </div>
       </div>
     </aside>

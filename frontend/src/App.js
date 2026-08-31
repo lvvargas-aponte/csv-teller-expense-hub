@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { resolveLegacyRoute } from './legacyRoutes';
-import AppHeader        from './components/AppHeader';
 import Sidebar          from './components/Sidebar';
 import FinancesPage     from './components/finances/FinancesPage';
 import TransactionsPage from './components/transactions/TransactionsPage';
@@ -61,14 +60,17 @@ export default function App() {
 
   return (
     <div className="app-root">
-      <AppHeader isDark={isDark} onToggleTheme={() => setIsDark((d) => !d)} />
-
       <LegacyTabRedirect />
       <UnsavedChangesContext.Provider value={unsavedChangesValue}>
       <SyncContext.Provider value={syncValue}>
         <div className="eh-app">
           <a className="eh-skip-link" href="#eh-main">Skip to main content</a>
-          <Sidebar healthScore={healthScore} healthSignals={healthSignals} />
+          <Sidebar
+            healthScore={healthScore}
+            healthSignals={healthSignals}
+            isDark={isDark}
+            onToggleTheme={() => setIsDark((d) => !d)}
+          />
           <Routes>
             <Route path="/" element={<FinancesPage section="home" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/transactions" element={<TransactionsPage view="current" />} />

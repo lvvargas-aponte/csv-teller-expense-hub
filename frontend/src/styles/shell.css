@@ -234,7 +234,11 @@
 .eh-sidebar--collapsed .eh-sidebar-logo { padding: 0 0 var(--space-5); justify-content: center; }
 .eh-sidebar--collapsed .eh-sidebar-logo-text,
 .eh-sidebar--collapsed .eh-nav-text,
-.eh-sidebar--collapsed .eh-sidebar-footer { display: none; }
+/* The health card needs its label and number to mean anything, so it goes;
+   the utility row survives as centred icons. */
+.eh-sidebar--collapsed .eh-health-card { display: none; }
+.eh-sidebar--collapsed .eh-sidebar-utils { padding-top: var(--space-3); }
+.eh-sidebar--collapsed .eh-sidebar-util { justify-content: center; gap: 0; padding: 9px 0; }
 .eh-sidebar--collapsed .eh-sidebar-nav { padding: 0 var(--space-2); }
 .eh-sidebar--collapsed .eh-nav-item {
   justify-content: center;
@@ -354,6 +358,37 @@
 }
 .eh-health-card-score .eh-info-panel { left: 0; right: auto; }
 .eh-health-card-sub { font-size: var(--text-xs); color: var(--text-muted); }
+
+/* Utility row — help and theme. Shares the nav's icon rail and label
+   mechanics (.eh-nav-icon / .eh-nav-text, which the collapsed rules already
+   handle) but stays neutral on hover so it reads as ambient chrome, not as
+   another destination. */
+.eh-sidebar-utils {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.eh-sidebar-util {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px var(--space-3);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+.eh-sidebar-util:hover { background: var(--surface-muted); color: var(--text-primary); }
 
 /* Topbar */
 .eh-main {

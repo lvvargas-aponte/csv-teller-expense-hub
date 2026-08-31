@@ -1,13 +1,15 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from '../Sidebar';
 import { NAV } from '../../navConfig';
 import { UnsavedChangesContext } from '../../contexts/UnsavedChangesContext';
 
-const renderAt = (path) => render(
-  <MemoryRouter initialEntries={[path]}><Sidebar healthScore={72} /></MemoryRouter>,
+const renderAt = (path, props = {}) => render(
+  <MemoryRouter initialEntries={[path]}>
+    <Sidebar healthScore={72} isDark={false} onToggleTheme={() => {}} {...props} />
+  </MemoryRouter>,
 );
 
 test('renders one link per top-level destination', () => {
@@ -80,6 +82,43 @@ test('the collapse control is reachable and states what it does', () => {
   renderAt('/');
   const toggle = screen.getByRole('button', { name: /collapse sidebar/i });
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});
+
+// ── Global chrome, moved here from the deleted top bar ────────────────────
+test('help opens the docs in a new tab without leaking the opener', () => {
+  renderAt('/');
+  const help = screen.getByRole('link', { name: /open help/i });
+  expect(help).toHaveAttribute('href', expect.stringContaining('/help/'));
+  expect(help).toHaveAttribute('target', '_blank');
+  expect(help).toHaveAttribute('rel', expect.stringContaining('noopener'));
+});
+
+test('the theme control toggles and names the mode it switches to', async () => {
+  const onToggleTheme = jest.fn();
+  renderAt('/', { onToggleTheme });
+
+  await userEvent.click(screen.getByRole('button', { name: /switch to dark mode/i }));
+
+  expect(onToggleTheme).toHaveBeenCalledTimes(1);
+});
+
+test('the theme control flips its label and icon once dark is on', () => {
+  renderAt('/', { isDark: true });
+  expect(screen.getByRole('button', { name: /switch to light mode/i })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /switch to dark mode/i })).toBeNull();
+});
+
+test('the utility controls sit outside the navigation landmark', () => {
+  // They are chrome, not destinations — inside <nav> they would inflate the
+  // list of places a screen-reader user can go. Asserted positively at the
+  // sidebar level first, so the two absences below can't pass vacuously.
+  renderAt('/');
+  expect(screen.getByRole('link', { name: /open help/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /switch to/i })).toBeInTheDocument();
+
+  const nav = within(screen.getByRole('navigation', { name: 'Main' }));
+  expect(nav.queryByRole('link', { name: /open help/i })).toBeNull();
+  expect(nav.queryByRole('button', { name: /switch to/i })).toBeNull();
 });
 
 // The in-app unsaved-settings guard: SettingsPage flags `unsaved` via
