@@ -73,7 +73,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.btn-green     { background: #10b981; color: #fff; }
+.btn-green     { background: var(--accent); color: #fff; }
 .btn-secondary { background: var(--bg-secondary); color: var(--text-primary); }
 .btn-primary   { background: var(--brand-gradient); color: #fff; }
 .btn-ghost     { background: transparent; color: var(--text-subtle); border: none; }
@@ -207,7 +207,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 .td-amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 
 .txn-desc        { font-weight: 500; }
-.txn-desc-sub    { font-size: 12px; color: #10b981; }
+.txn-desc-sub    { font-size: 12px; color: var(--accent); }
 .txn-desc-note   { font-size: 12px; color: var(--text-muted); }
 .txn-desc-cat    { font-size: 12px; color: var(--text-muted); }
 
@@ -220,7 +220,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   border-radius: 4px;
 }
 
-.txn-type-badge--credit { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+.txn-type-badge--credit { background: rgba(16, 185, 129, 0.15); color: var(--good-text); }
 .txn-type-badge--debit  { background: rgba(100, 116, 139, 0.15); color: var(--text-muted); }
 
 .account-type-label { font-size: 11px; color: var(--text-muted); margin: 1px 0 3px; }
@@ -244,7 +244,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   font-size: 11px;
   font-weight: 700;
   background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  color: var(--accent);
   text-transform: uppercase;
 }
 
@@ -285,7 +285,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
 .toggle-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .toggle-btn--personal { background: var(--bg-secondary); color: var(--text-primary); }
-.toggle-btn--shared   { background: #10b981; color: #fff; }
+.toggle-btn--shared   { background: var(--accent); color: #fff; }
 
 .icon-btn {
   background: none;
@@ -617,7 +617,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cur
   justify-content: space-between;
   gap: 8px;
 }
-.account-connect-status--success { background: #064e3b; color: #6ee7b7; }
+.account-connect-status--success { background: var(--good-inverse-bg); color: var(--good-inverse-text); }
 .account-connect-status--error   { background: #450a0a; color: #fca5a5; }
 .account-connect-dismiss {
   background: none;

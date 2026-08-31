@@ -480,6 +480,6 @@
   overflow: hidden;
   margin: 4px 0 3px;
 }
-.ret-headroom-fill { display: block; height: 100%; background: #059669; }
+.ret-headroom-fill { display: block; height: 100%; background: var(--good); }
 .ret-headroom-note { font-size: 11.5px; color: var(--text-muted); }
 

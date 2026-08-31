@@ -7,12 +7,12 @@
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 14px;
-  box-shadow: 0 1px 3px rgba(5,150,105,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
   transition: box-shadow .2s;
   margin-bottom: 16px;
 }
-.ov-card:hover { box-shadow: 0 4px 16px rgba(5,150,105,0.08), 0 1px 4px rgba(0,0,0,0.04); }
+.ov-card:hover { box-shadow: var(--shadow); }
 .ov-card-header {
   padding: 16px 20px 14px;
   display: flex; align-items: center; justify-content: space-between;
@@ -183,7 +183,7 @@
   margin-top: 2px;
   font-style: italic;
 }
-[data-theme='dark'] .ov-balance-linked-meta { color: #6ee7b7; }
+[data-theme='dark'] .ov-balance-linked-meta { color: var(--accent-strong); }
 .ov-balance-amounts {
   display: flex; align-items: center; gap: 16px;
   flex-shrink: 0;
@@ -255,7 +255,7 @@
 .ov-strategy-tab.ov-strategy-tab--active {
   background: var(--bg-card);
   color: var(--accent);
-  box-shadow: 0 1px 3px rgba(5,150,105,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  box-shadow: var(--shadow-sm);
 }
 .ov-debt-table-wrap {
   overflow-x: auto;
@@ -309,7 +309,7 @@
 .ov-debt-input:focus {
   background: var(--bg-card);
   border-color: var(--border-mid);
-  box-shadow: 0 0 0 3px rgba(5,150,105,0.08);
+  box-shadow: 0 0 0 3px var(--accent-light);
 }
 .ov-debt-input.ov-num {
   text-align: right;
@@ -361,7 +361,7 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   background: var(--bg-card);
   outline: none;
 }
-.ov-apr-edit-input:focus { box-shadow: 0 0 0 3px rgba(5,150,105,0.08); }
+.ov-apr-edit-input:focus { box-shadow: 0 0 0 3px var(--accent-light); }
 .ov-apr-empty {
   font-size: 11px; color: var(--text-faint);
   background: none; border: none;
@@ -385,7 +385,7 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   position: absolute;
   top: calc(100% + 4px); right: 0;
   z-index: 100;
-  background: #0f2417;
+  background: var(--surface-inverse);
   color: #fff;
   border-radius: 8px;
   padding: 10px 12px;

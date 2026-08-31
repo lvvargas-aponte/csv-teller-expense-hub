@@ -116,6 +116,20 @@
   --status-good-text:   var(--good-text);
   --status-warn-text:   var(--warn-text);
   --status-bad-text:    var(--bad-text);
+
+  /* Invariant "inverse" fills — a handful of chrome elements (the bulk
+     action bar, the APR/info tooltips, the "Shared" segmented pill) and one
+     financial-positive spotlight card (the transactions "owed to you" rail
+     card, the bank-connected success banner) are deliberately dark
+     regardless of page theme, the same way --accent-solid is above. They
+     duplicate the dark-theme literals without being redefined under
+     [data-theme="dark"] so they never flip. */
+  --surface-inverse:    #0f172a;
+  --border-inverse:     #2c3a51;
+  --text-inverse:       #f8fafc;
+  --brand-inverse-text: #60a5fa;
+  --good-inverse-bg:    #0f2417;
+  --good-inverse-text:  #34d399;
 }
 
 [data-theme="dark"] {

@@ -101,7 +101,7 @@
 
 /* ── Balances ─────────────────────────────────────── */
 .net-worth-card { border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; }
-.net-worth-card--positive { background: rgba(16,185,129,0.15); border: 1px solid #10b981; }
+.net-worth-card--positive { background: rgba(16,185,129,0.15); border: 1px solid var(--good); }
 .net-worth-card--negative { background: rgba(239,68,68,0.15);  border: 1px solid #ef4444; }
 .net-worth-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
 .net-worth-value { font-size: 28px; font-weight: 700; margin-top: 4px; }
@@ -131,7 +131,7 @@
   border-bottom: 2px solid transparent; transition: color .15s, border-color .15s;
 }
 .finances-tab:hover { color: var(--text); }
-.finances-tab--active { color: var(--text); border-bottom-color: #10b981; }
+.finances-tab--active { color: var(--text); border-bottom-color: var(--accent); }
 
 /* ── Virtual advisor chat ────────────────────────── */
 .advisor-chat {
@@ -195,7 +195,7 @@
   background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 20px;
   padding: 8px 14px; font-size: 13px; color: var(--text); cursor: pointer; text-align: left;
 }
-.advisor-example:hover { border-color: #10b981; }
+.advisor-example:hover { border-color: var(--accent); }
 
 .advisor-input-row { display: flex; gap: 8px; align-items: flex-end; }
 .advisor-input { flex: 1; resize: vertical; min-height: 44px; }
@@ -400,7 +400,7 @@
 .eh-range-pill button.eh-range-pill--active {
   background: var(--bg-card);
   color: var(--accent);
-  box-shadow: 0 1px 3px rgba(5,150,105,0.06);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Sub-tabs within a page (Commitments: Due soon / Recurring). Same pill
@@ -432,7 +432,7 @@
 .eh-subtabs a.eh-subtab--active {
   background: var(--bg-card);
   color: var(--accent);
-  box-shadow: 0 1px 3px rgba(5,150,105,0.06);
+  box-shadow: var(--shadow-sm);
 }
 
 .eh-content { padding: 24px 28px; }
@@ -518,7 +518,7 @@
   top: calc(100% + 8px);
   right: 0;
   width: 320px;
-  background: #0f2417;
+  background: var(--surface-inverse);
   color: #fff;
   font-size: 12px;
   font-weight: 400;
@@ -556,7 +556,7 @@
 [data-theme='dark'] .recharts-default-tooltip .recharts-tooltip-item-unit {
   color: var(--text-primary) !important;
 }
-.eh-info-panel-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; color: #34d399; }
+.eh-info-panel-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; color: var(--brand-inverse-text); }
 .eh-info-panel ul { margin: 4px 0 0 16px; padding: 0; }
 .eh-info-panel li { margin-bottom: 2px; }
 
@@ -658,7 +658,7 @@
   border-radius: 14px;
   transition: box-shadow 0.15s, transform 0.15s;
 }
-.dashboard-card:hover { box-shadow: 0 4px 16px rgba(5,150,105,0.08); }
+.dashboard-card:hover { box-shadow: var(--shadow); }
 .dashboard-card .finances-section-title {
   font-size: 13px;
   font-weight: 700;

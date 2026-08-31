@@ -291,7 +291,7 @@
 .ifield:focus {
   border-color: var(--accent);
   background: var(--bg-card);
-  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+  box-shadow: 0 0 0 3px var(--accent-light);
 }
 .ifield.due-urgent { color: var(--red); font-weight: 700; }
 .ifield.due-soon   { color: var(--amber); font-weight: 700; }

@@ -97,7 +97,7 @@
 [data-theme='dark'] .tx-detail-btn--delete { background: none; border-color: transparent; color: var(--text-faint); }
 [data-theme='dark'] .tx-detail-btn--save:disabled { background: var(--bg-secondary); border-color: var(--border); color: var(--text-faint); }
 [data-theme='dark'] .tx-detail-grid .seg--active { background: var(--bg-card); color: var(--text-primary); }
-[data-theme='dark'] .tx-detail-grid .segmented--shared .seg--active { background: #0f2417; color: #34d399; }
+[data-theme='dark'] .tx-detail-grid .segmented--shared .seg--active { background: var(--surface-inverse); color: var(--brand-inverse-text); }
 [data-theme='dark'] .tx-switch { background: var(--border-mid); }
 [data-theme='dark'] .tx-switch--on { background: var(--accent); }
 [data-theme='dark'] .tx-rail-card { background: var(--bg-card); border-color: var(--border); }
@@ -108,8 +108,8 @@
 [data-theme='dark'] .tx-rail-merchant { background: var(--bg-secondary); border-color: var(--border); color: var(--text-secondary); }
 [data-theme='dark'] .tx-rail-catline,
 [data-theme='dark'] .tx-rail-catline b { color: var(--text-secondary); }
-[data-theme='dark'] .tx-rail-card--dark { background: #0f2417; border-color: #1a3a27; }
-[data-theme='dark'] .tx-rail-card--dark .tx-rail-big { color: #34d399; }
+[data-theme='dark'] .tx-rail-card--dark { background: var(--good-inverse-bg); border-color: var(--border-inverse); }
+[data-theme='dark'] .tx-rail-card--dark .tx-rail-big { color: var(--good-inverse-text); }
 [data-theme='dark'] .tx-rail-card--dark .tx-rail-hint { color: rgba(255,255,255,0.5); }
 
 /* Overview / Finances cards */

@@ -118,6 +118,46 @@ describe('brand and semantic colours stay separate', () => {
   });
 });
 
+// Every sheet except tokens.css, which is excluded on purpose: it legitimately
+// holds #059669/#ecfdf5/#34d399/#6ee7b7 (and their dark counterparts) as the
+// literal definitions of --good/--good-wash/--good-text. It's the one file
+// whose entire job is to hold literals; retiring green as brand doesn't mean
+// retiring it as the financial-positive colour, which still lives here.
+const ALL_SHEETS = [
+  'base.css', 'shell.css', 'transactions.css', 'debt.css',
+  'accounts.css', 'finances.css', 'settings.css', 'a11y.css', 'shared-page.css',
+].map((f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).join('\n');
+
+describe('the emerald brand residue does not come back', () => {
+  const GREEN_LITERALS = [
+    '#34d399', '#10b981', '#6ee7b7', '#ecfdf5', '#064e3b',
+    '#0f2417', '#1a3a27', '#a7f3d0', '#d1fae5', '#f0fdf4', '#059669',
+  ];
+
+  // .tx-adj-quick is the one deliberate exception: tokenising the fill would
+  // leave mint text on a near-white background in dark mode, so it stays
+  // literal in both themes. Strip it out before scanning for the rest.
+  const SCAN_TARGET = ALL_SHEETS.replace(
+    /\.tx-adj-quick\s*\{[^}]*\}/,
+    '',
+  ).replace(
+    /\.tx-adj-quick:hover\s*\{[^}]*\}/,
+    '',
+  );
+
+  test.each(GREEN_LITERALS)('%s does not appear outside the pale-green-pill exception', (hex) => {
+    expect(SCAN_TARGET).not.toContain(hex);
+  });
+
+  test('the exception itself is still there, so the strip above is real', () => {
+    expect(ALL_SHEETS).toContain('#ecfdf5'); // .tx-adj-quick fill
+  });
+
+  test('no emerald-tinted shadow survives', () => {
+    expect(ALL_SHEETS).not.toMatch(/rgba\(\s*5,\s*150,\s*105/);
+  });
+});
+
 describe('the brand gradient lives in one token', () => {
   test('no rule hand-rolls a blue-violet gradient', () => {
     const handRolled = APP_CSS.match(/linear-gradient\([^)]*#(2563eb|7c3aed|60a5fa|a78bfa)/gi);
