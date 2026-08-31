@@ -147,9 +147,9 @@
 .set-segment--on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--text-inverse);
 }
-.set-segment--on:hover { color: #fff; }
+.set-segment--on:hover { color: var(--text-inverse); }
 
 /* Institution rows */
 .set-inst-row {
@@ -160,7 +160,7 @@
   padding: 15px 20px;
   border-bottom: 1px solid var(--bg-root);
 }
-.set-inst-row--warn { background: var(--amber-wash, var(--amber-light)); }
+.set-inst-row--warn { background: var(--amber-wash); }
 .set-inst-icon {
   width: 40px;
   height: 40px;
@@ -187,7 +187,7 @@
   color: var(--text-muted);
 }
 .set-inst-sep { color: var(--border-mid); }
-.set-inst-warn { color: var(--amber-text, var(--amber)); font-weight: 600; }
+.set-inst-warn { color: var(--amber-text); font-weight: 600; }
 .set-inst-fix {
   margin-top: 6px;
   font-size: 11.5px;
@@ -354,7 +354,7 @@
   margin-bottom: 14px;
   border-radius: 8px;
   background: var(--red-light);
-  color: var(--red-text, var(--red));
+  color: var(--red-text);
   font-size: 12.5px;
 }
 .set-dialog-list {
