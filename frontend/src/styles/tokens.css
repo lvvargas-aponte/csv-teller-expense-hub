@@ -55,6 +55,13 @@
   --chart-4: #0891b2;
   --chart-5: #db2777;
   --chart-6: #65a30d;
+  /* Extended for stacked-bar series that outgrow six categories (e.g.
+     Spending by Category's TOP_N=8 + an explicit "Other" bucket). Indigo
+     and fuchsia fill the one remaining safe hue gap - red/green/amber stay
+     reserved for --bad/--good/--warn so a chart series never reads as a
+     financial-positive/negative or warning signal by accident. */
+  --chart-7: #4338ca;
+  --chart-8: #a21caf;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -195,6 +202,8 @@
   --chart-4: #22d3ee;
   --chart-5: #f472b6;
   --chart-6: #a3e635;
+  --chart-7: #818cf8;
+  --chart-8: #e879f9;
 
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
   --shadow:    0 4px 16px rgba(0,0,0,0.5);

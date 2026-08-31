@@ -5,10 +5,15 @@ import {
 import DashboardCard from './DashboardCard';
 import { fmt$ } from '../../../utils/formatting';
 
+// TOP_N (8) categories + an explicit 'Other' bucket = up to 9 series in the
+// same stacked bar. Eight distinct hues so no two categories ever collide;
+// 'Other' gets its own neutral token rather than falling out of the
+// positional index, so it stays distinct even if TOP_N changes.
 const PALETTE = [
-  'var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)',
-  'var(--chart-4)', 'var(--chart-5)', 'var(--chart-6)',
+  'var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)',
+  'var(--chart-5)', 'var(--chart-6)', 'var(--chart-7)', 'var(--chart-8)',
 ];
+const OTHER_COLOR = 'var(--text-faint)';
 const TOP_N = 8;
 const AXIS = { fontSize: 11, fill: 'var(--text-faint)' };
 const HIDDEN_KEY = 'dashboard.spendByCat.hidden';
@@ -140,7 +145,7 @@ export default function SpendingByCategoryCard({ dashboard, loading, error, onHi
           <Tooltip formatter={(v) => fmt$(v)} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           {keys.map((cat, i) => (
-            <Bar key={cat} dataKey={cat} stackId="spend" fill={PALETTE[i % PALETTE.length]} />
+            <Bar key={cat} dataKey={cat} stackId="spend" fill={cat === 'Other' ? OTHER_COLOR : PALETTE[i % PALETTE.length]} />
           ))}
         </BarChart>
       </ResponsiveContainer>
