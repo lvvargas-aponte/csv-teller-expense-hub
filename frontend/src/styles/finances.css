@@ -165,7 +165,6 @@
 [data-theme='dark'] .ov-apr-empty:hover { color: var(--accent); }
 [data-theme='dark'] .ov-apr-info-btn { color: var(--text-faint); }
 [data-theme='dark'] .ov-apr-info-btn:hover { color: var(--accent); }
-[data-theme='dark'] .ov-apr-tooltip { background: #050d08; color: var(--text-primary); }
 
 [data-theme='dark'] .ov-extra-row { border-top-color: var(--border); }
 [data-theme='dark'] .ov-extra-label { color: var(--text-secondary); }
