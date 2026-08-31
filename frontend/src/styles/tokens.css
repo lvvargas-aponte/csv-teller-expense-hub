@@ -130,6 +130,14 @@
   --brand-inverse-text: #60a5fa;
   --good-inverse-bg:    #0f2417;
   --good-inverse-text:  #34d399;
+  /* Translucent fills for the two financial-positive pill/button pairs that
+     live on an inverse surface (bulk bar's "Mark 50/50", the rail card's
+     "Send to sheet"). Derived from --good-inverse-text via color-mix rather
+     than a fresh rgba literal, so there's one source hue for both the solid
+     text and its tints. */
+  --good-inverse-wash:       color-mix(in srgb, var(--good-inverse-text) 14%, transparent);
+  --good-inverse-wash-hover: color-mix(in srgb, var(--good-inverse-text) 24%, transparent);
+  --good-inverse-border:     color-mix(in srgb, var(--good-inverse-text) 28%, transparent);
 }
 
 [data-theme="dark"] {

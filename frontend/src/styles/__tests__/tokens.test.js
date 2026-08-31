@@ -156,6 +156,15 @@ describe('the emerald brand residue does not come back', () => {
   test('no emerald-tinted shadow survives', () => {
     expect(ALL_SHEETS).not.toMatch(/rgba\(\s*5,\s*150,\s*105/);
   });
+
+  // rgba forms of the same emerald family (tailwind emerald-500 and
+  // emerald-400) can carry the hue just as well as a hex literal and the
+  // checks above are blind to them. #34d399 == rgb(52,211,153) and
+  // #10b981 == rgb(16,185,129) — round 1 of review found a dozen of these
+  // hiding in translucent fills the hex scan never saw.
+  test.each(['16, *185, *129', '52, *211, *153'])('no rgba(%s, …) emerald tint survives', (channels) => {
+    expect(SCAN_TARGET).not.toMatch(new RegExp(`rgba\\(\\s*${channels}`));
+  });
 });
 
 describe('the brand gradient lives in one token', () => {

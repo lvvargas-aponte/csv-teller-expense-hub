@@ -21,7 +21,7 @@
 [data-theme='dark'] .tx-btn-secondary { background: var(--bg-card); color: var(--text-secondary); border-color: var(--border); }
 [data-theme='dark'] .tx-btn-secondary:hover:not(:disabled) { background: var(--bg-secondary); border-color: var(--border-mid); }
 
-[data-theme='dark'] .tx-bulk-bar { background: #050d08; }
+[data-theme='dark'] .tx-bulk-bar { background: var(--surface-inverse); }
 
 [data-theme='dark'] .tx-filter-label { color: var(--text-muted); }
 [data-theme='dark'] .tx-sel-wrap select,
@@ -59,7 +59,7 @@
 [data-theme='dark'] .tx-table thead th { color: var(--text-muted); }
 [data-theme='dark'] .tx-row { border-bottom-color: var(--border); }
 [data-theme='dark'] .tx-row:hover { background: var(--bg-secondary); }
-[data-theme='dark'] .tx-row.tx-row--selected { background: rgba(52,211,153,0.10); }
+[data-theme='dark'] .tx-row.tx-row--selected { background: var(--bg-selected); }
 [data-theme='dark'] .tx-row.tx-row--shared { background: rgba(245,158,11,0.10); }
 [data-theme='dark'] .tx-row.tx-row--shared:hover { background: rgba(245,158,11,0.16); }
 [data-theme='dark'] .tx-row.tx-row--shared.tx-row--selected { background: rgba(245,158,11,0.22); }

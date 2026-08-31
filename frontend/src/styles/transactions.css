@@ -3,9 +3,11 @@
    See design_handoff_transactions/ExpensesHub Transactions.html.
    ════════════════════════════════════════════════════════════════════════ */
 
-/* Header — global controls only; navigation lives in the sidebar. Same
-   tokenisation exemption note applies to .tx-sync-btn, .tx-bulk-bar,
-   .tx-rail-card--dark and .ov-apr-tooltip. */
+/* Header — global controls only; navigation lives in the sidebar.
+   .tx-sync-btn is theme-following now (var(--bg-secondary)/var(--accent)).
+   .tx-bulk-bar, .tx-rail-card--dark and .ov-apr-tooltip are still
+   deliberately dark regardless of page theme — see --surface-inverse /
+   --good-inverse-* in tokens.css. */
 .tx-header {
   background: var(--surface-sidebar);
   border-bottom: 1px solid var(--border);
@@ -213,10 +215,10 @@
 }
 .tx-bulk-btn--ghost:hover { background: rgba(255,255,255,0.12); color: white; }
 .tx-bulk-btn--green {
-  background: rgba(52,211,153,0.12); color: var(--brand-inverse-text);
-  border-color: rgba(52,211,153,0.25);
+  background: var(--good-inverse-wash); color: var(--good-inverse-text);
+  border-color: var(--good-inverse-border);
 }
-.tx-bulk-btn--green:hover { background: rgba(52,211,153,0.22); }
+.tx-bulk-btn--green:hover { background: var(--good-inverse-wash-hover); }
 .tx-bulk-btn--deselect {
   background: none; color: rgba(255,255,255,0.35); border-color: transparent;
 }
@@ -939,11 +941,11 @@ tr.tx-detail-row > td {
 .tx-rail-card--dark .tx-rail-big small { color: rgba(255,255,255,0.45); }
 .tx-rail-card--dark .tx-rail-hint { color: rgba(255,255,255,0.5); margin-top: 8px; }
 .tx-rail-btn--sheet {
-  background: rgba(52,211,153,0.14);
-  border-color: rgba(52,211,153,0.28);
+  background: var(--good-inverse-wash);
+  border-color: var(--good-inverse-border);
   color: var(--good-inverse-text);
 }
-.tx-rail-btn--sheet:hover:not(:disabled) { background: rgba(52,211,153,0.24); }
+.tx-rail-btn--sheet:hover:not(:disabled) { background: var(--good-inverse-wash-hover); }
 
 /* Rail stacks below the table when there's no room beside it — never hidden.
    The handoff spec says 1180px, but that assumed no app sidebar; ours is
