@@ -549,7 +549,7 @@ function AddSeedForm({ onCancel, onSubmit, error }) {
           borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer',
         }}>Cancel</button>
         <button type="submit" style={{
-          background: 'var(--accent)', color: '#fff', border: 0,
+          background: 'var(--accent-solid)', color: 'var(--text-inverse)', border: 0,
           borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer',
         }}>Add seed</button>
       </div>

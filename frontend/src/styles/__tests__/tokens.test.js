@@ -218,56 +218,169 @@ describe('the brand gradient lives in one token', () => {
 });
 
 // Phase 8 Task 3: the last raw hex sitting in component JSX/inline styles,
-// tokenized by role (brand vs good/bad/warn vs border/faint text). This is
-// the guard that stops the next feature from reintroducing a literal hex
-// where a token belongs.
+// tokenized by role (brand vs good/bad/warn vs border/faint text). This
+// guard used to scan a hard-coded 25-file list — a real instance
+// (SuggestedSeeds.js's `color: '#fff'`) sat one directory below that list
+// and passed CI for the rest of the phase. Widen the scope to every
+// component file instead of growing the list, so the *next* stray literal
+// can't hide by simply living outside whatever files someone remembered to
+// name.
 //
-// components/settings/categoryColor.js and utils/institutionColor.js are
-// EXCLUDED ON PURPOSE: they are generated data palettes that assign an
-// arbitrary distinguishable colour per category/institution. That's data,
-// not theme — tokenizing them would collapse distinct categories onto the
-// same six chart hues, which is a regression, not a fix. They are never
-// read by this test.
-const COMPONENT_FILES = [
-  'components/accounts/AccountRow.js',
-  'components/accounts/BrokerageRow.js',
-  'components/finances/BudgetPresetModal.js',
-  'components/finances/BudgetsSection.js',
-  'components/finances/DashboardTab.js',
-  'components/finances/GoalsSection.js',
-  'components/finances/InvestmentsTab.js',
-  'components/finances/KnowledgeSection.js',
-  'components/finances/PortfolioQuality.js',
-  'components/finances/SubscriptionsSection.js',
-  'components/finances/cards/BudgetsCard.js',
-  'components/finances/cards/CashFlowCard.js',
-  'components/finances/cards/CreditUtilizationCard.js',
-  'components/finances/cards/GoalsCard.js',
-  'components/finances/cards/NetWorthCard.js',
-  'components/finances/cards/RecurringChargesCard.js',
-  'components/finances/cards/SpendingByCategoryCard.js',
-  'components/finances/cards/UpcomingBillsCard.js',
-  'components/finances/payoff/AprCell.js',
-  'components/finances/payoff/PayoffForm.js',
-  'components/finances/payoff/PayoffResults.js',
-  'components/transactions/ControlBar.js',
-  'components/transactions/SuggestPreviewModal.js',
-  'components/transactions/TransferExpandRow.js',
-  'components/transactions/UploadCsvModal.js',
-];
+// components/settings/categoryColor.js is EXCLUDED ON PURPOSE: it's a
+// generated data palette that assigns an arbitrary distinguishable colour
+// per category. That's data, not theme — tokenizing it would collapse
+// distinct categories onto the same six chart hues, which is a regression,
+// not a fix. (utils/institutionColor.js is the same kind of exception, but
+// it lives outside src/components entirely, so this components-scoped scan
+// never reaches it.)
+function collectComponentFiles(dir, out) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === '__tests__') continue;
+    const p = path.join(dir, entry.name);
+    if (entry.isDirectory()) collectComponentFiles(p, out);
+    else if (/\.jsx?$/.test(entry.name)) out.push(p);
+  }
+  return out;
+}
+
+const COMPONENTS_ROOT = path.join(__dirname, '..', '..', 'components');
+const EXCLUDED_COMPONENT_FILES = new Set([
+  path.join(COMPONENTS_ROOT, 'settings', 'categoryColor.js'),
+]);
+const COMPONENT_FILES = collectComponentFiles(COMPONENTS_ROOT, [])
+  .filter((f) => !EXCLUDED_COMPONENT_FILES.has(f))
+  .map((f) => path.relative(path.join(__dirname, '..', '..'), f));
 
 describe('no raw hex or rgb() literals remain in the tokenized components', () => {
   // A hex guard alone misses rgb()/rgba() forms of the same colours — round
   // 1 of the CSS-sheet pass (tokens.test.js above) found a dozen of those
   // hiding in translucent fills the hex scan never saw. Cover both forms
-  // here too, even though none of these 25 files currently use rgba() —
+  // here too, even though none of these files currently use rgba() —
   // color-mix(var(--token) ..., transparent) replaced every translucent fill.
   const HEX_RE = /#[0-9a-fA-F]{3,6}\b/;
   const RGB_LITERAL_RE = /rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+/;
+
+  test('scan covers every non-excluded component file (guard against an empty walk)', () => {
+    expect(COMPONENT_FILES.length).toBeGreaterThan(24);
+  });
 
   test.each(COMPONENT_FILES)('%s has no raw hex or rgb() literal', (relPath) => {
     const src = fs.readFileSync(path.join(__dirname, '..', '..', relPath), 'utf8');
     expect(src).not.toMatch(HEX_RE);
     expect(src).not.toMatch(RGB_LITERAL_RE);
+  });
+});
+
+// Phase 8 final fix wave — Important 3: the general hex/rgb guards above are
+// each scoped to a hue or a value form. Named CSS colour keywords (`white`,
+// `black`, …) are neither, so the literal `color: white` on .tx-note-save
+// sailed through every one of them. Scope this to declaration *values* only
+// (selectors and property names — e.g. `white-space`, `.acct-status-red` —
+// are stripped first) and to values with `var(...)` references removed
+// first too, since `color: var(--red)` legitimately contains the word "red".
+describe('no CSS named colour keyword remains in the nine stylesheets', () => {
+  const NAMED_COLOURS = /\b(white|black|red|blue|green|yellow|orange|purple|gray|grey|navy|teal|pink|brown|cyan|magenta|indigo|violet|silver|gold)\b/i;
+
+  function declarationValues(css) {
+    const blocks = css.match(/\{[^{}]*\}/g) || [];
+    const values = [];
+    for (const b of blocks) {
+      for (const decl of b.slice(1, -1).split(';')) {
+        const idx = decl.indexOf(':');
+        if (idx !== -1) values.push(decl.slice(idx + 1));
+      }
+    }
+    return values.join('\n').replace(/var\([^)]*\)/g, '');
+  }
+
+  test('no declaration value uses a bare colour keyword', () => {
+    expect(declarationValues(ALL_SHEETS)).not.toMatch(NAMED_COLOURS);
+  });
+});
+
+// Important 3(b): the emerald-family rgba() guard above only recognises two
+// specific channel triples. It's blind to an rgba() of any other hue (e.g.
+// a stray rgba(59,130,246,…) blue) landing as a literal instead of a token.
+// Widen it to assert every rgb()/rgba() triple in the sheets is achromatic
+// (pure black or pure white, used for shadows/overlays that don't carry
+// brand or semantic meaning) — anything else is a colour that should be a
+// token. transactions.css's .tx-detail-grid .seg--active shadow used to be
+// rgba(15,23,42,0.14) — a literal near-black-navy tint that skipped the
+// dark-theme shadow flip in tokens.css — and is the live instance this
+// closes; it now reads var(--shadow-sm).
+describe('no non-achromatic rgb()/rgba() literal remains in the nine stylesheets', () => {
+  const ALLOWED_TRIPLES = new Set(['0,0,0', '255,255,255']);
+
+  test('every rgb()/rgba() triple is black or white', () => {
+    const found = new Set();
+    const re = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/g;
+    let m;
+    while ((m = re.exec(ALL_SHEETS))) found.add(`${m[1]},${m[2]},${m[3]}`);
+    const unexpected = [...found].filter((t) => !ALLOWED_TRIPLES.has(t));
+    expect(unexpected).toEqual([]);
+  });
+});
+
+// Important 3(c) — the highest-value hole: nothing previously checked that a
+// var(--x) referenced anywhere actually resolves to a real definition in
+// tokens.css. This is the guard that would have caught --bg-muted and
+// --bg-subtle (defined nowhere, silently falling back to their inline
+// fallback value) the moment they were introduced, instead of at a
+// whole-phase review four instances later.
+describe('every var(--x) reference resolves to a token definition', () => {
+  // --chart- is a documented exception: RecurringChargesCard.js builds the
+  // reference dynamically (`var(--chart-${n})`), so the static scan below
+  // only ever sees the literal prefix, not a real property name. --chart-1
+  // through --chart-8 are separately locked by "defines the full chart
+  // ramp" above.
+  const ALLOWED_UNRESOLVED = new Set(['--chart-']);
+
+  function stripComments(src, isJs) {
+    let out = src.replace(/\/\*[\s\S]*?\*\//g, '');
+    if (isJs) out = out.replace(/\/\/.*$/gm, '');
+    return out;
+  }
+
+  // __tests__ is skipped: this describe block's own title strings contain
+  // the literal text "var(--x)" for documentation purposes, which isn't a
+  // real reference — scanning test files would flag the guard's own prose.
+  function collectSrcFiles(dir, out) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === '__tests__') continue;
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) collectSrcFiles(p, out);
+      else if (/\.(jsx?|css)$/.test(entry.name)) out.push(p);
+    }
+    return out;
+  }
+
+  test('every referenced custom property is defined in tokens.css', () => {
+    const srcRoot = path.join(__dirname, '..', '..');
+    const files = collectSrcFiles(srcRoot, []);
+    const used = new Set();
+    for (const f of files) {
+      const raw = fs.readFileSync(f, 'utf8');
+      const src = stripComments(raw, /\.jsx?$/.test(f));
+      const re = /var\(\s*(--[\w-]+)/g;
+      let m;
+      while ((m = re.exec(src))) used.add(m[1]);
+    }
+
+    const defined = new Set();
+    const defRe = /(--[\w-]+)\s*:/g;
+    let m;
+    while ((m = defRe.exec(CSS))) defined.add(m[1]);
+
+    const missing = [...used].filter(
+      (v) => !defined.has(v) && !ALLOWED_UNRESOLVED.has(v),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  test('the allow-list exception is still exercised, so the strip above is real', () => {
+    expect(fs.readFileSync(
+      path.join(__dirname, '..', '..', 'components', 'finances', 'cards', 'RecurringChargesCard.js'),
+      'utf8',
+    )).toContain('var(--chart-${');
   });
 });
