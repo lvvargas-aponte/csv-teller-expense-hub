@@ -183,10 +183,3 @@
 [data-theme='dark'] .ov-payoff-bar-wrap { background: var(--bg-root); }
 [data-theme='dark'] .ov-payoff-debt-months { color: var(--text-muted); }
 
-[data-theme='dark'] .ov-insights-empty-title { color: var(--text-primary); }
-[data-theme='dark'] .ov-insights-empty-sub { color: var(--text-muted); }
-[data-theme='dark'] .ov-insight-card { border-bottom-color: var(--border); }
-[data-theme='dark'] .ov-insight-title { color: var(--text-primary); }
-[data-theme='dark'] .ov-insight-body { color: var(--text-secondary); }
-[data-theme='dark'] .ov-insight-meta { color: var(--text-faint); }
-
