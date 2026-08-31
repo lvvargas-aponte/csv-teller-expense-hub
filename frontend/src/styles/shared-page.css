@@ -14,7 +14,7 @@
   width: 100%;
   max-width: 1240px;
   margin: 0 auto;
-  padding: 20px clamp(16px, 3vw, 48px) 60px;
+  padding: 20px clamp(var(--space-4), 3vw, var(--space-7)) 60px;
 }
 
 .sh-sr-only {
@@ -56,7 +56,7 @@
   border: 1px solid var(--border);
   background: var(--bg-card);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -104,7 +104,7 @@
 .sh-net-amt--even { color: var(--text-faint); }
 
 .sh-net-sub {
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--text-muted);
 }
@@ -128,8 +128,8 @@
 .sh-bar-top {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 .sh-bar-top .sh-who { font-weight: 600; color: var(--text-primary); }
@@ -180,7 +180,7 @@
   flex-wrap: wrap;
   gap: 9px;
   padding: 0 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 .sh-status .sh-lead {
@@ -199,7 +199,7 @@
   background: none;
   padding: 0;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--accent);
   cursor: pointer;
@@ -241,13 +241,13 @@
 .sh-corrections {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .sh-corr {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   background: var(--amber-light);
   border: 1px solid var(--amber);
   border-radius: var(--radius);
@@ -255,7 +255,7 @@
 }
 .sh-corr-text {
   flex-grow: 1;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--amber-text);
 }
@@ -267,7 +267,7 @@
 .sh-chips {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .sh-chip {
@@ -275,11 +275,11 @@
   align-items: center;
   gap: 7px;
   height: 30px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--bg-card);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   font-family: inherit;
   color: var(--text-muted);
@@ -297,7 +297,7 @@
 }
 .sh-chip .sh-n {
   font-family: 'DM Mono', ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--text-xs);
   opacity: 0.7;
 }
 
@@ -328,7 +328,7 @@
   border-bottom: 1px solid var(--rule);
 }
 .sh-dayhead .sh-d {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -383,7 +383,7 @@
 }
 
 .sh-desc {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 500;
   line-height: 1.35;
 }
@@ -403,7 +403,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   border-radius: 6px;
   font-size: 10.5px;
   font-weight: 700;
@@ -413,12 +413,12 @@
 .sh-tag--pend { background: var(--bg-secondary); color: var(--text-secondary); }
 
 .sh-note {
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--amber-text);
   background: var(--amber-light);
   border-radius: 7px;
-  padding: 9px 12px;
+  padding: 9px var(--space-3);
   margin-top: 2px;
   max-width: 520px;
 }
@@ -432,7 +432,7 @@
   text-align: right;
   font-family: 'DM Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--text-primary);
 }
 
@@ -445,16 +445,16 @@
   gap: 2px;
   text-align: right;
 }
-.sh-owes-l { font-size: 11px; color: var(--text-muted); }
+.sh-owes-l { font-size: var(--text-xs); color: var(--text-muted); }
 .sh-owes-v {
   font-family: 'DM Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--accent);
 }
 .sh-owes-v--out { color: var(--text-secondary); }
-.sh-owes-none { font-size: 12px; color: var(--text-faint); }
+.sh-owes-none { font-size: var(--text-sm); color: var(--text-faint); }
 
 .sh-row-act {
   flex-shrink: 0;
@@ -474,7 +474,7 @@
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   font-family: inherit;
   white-space: nowrap;
@@ -510,7 +510,7 @@
 }
 .sh-dform-label {
   flex-basis: 100%;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: var(--amber-text);
 }
@@ -520,7 +520,7 @@
   border: 1px solid var(--border-mid);
   border-radius: 6px;
   padding: 7px 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-family: inherit;
   color: var(--text-primary);
   background: var(--bg-card);
@@ -546,13 +546,13 @@
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
 }
-.sh-empty b { font-size: 14px; font-weight: 600; }
+.sh-empty b { font-size: var(--text-md); font-weight: 600; }
 .sh-empty span { font-size: 12.5px; color: var(--text-muted); }
 
 .sh-legend {
   display: flex;
   gap: 22px;
-  padding: 4px 6px 0;
+  padding: var(--space-1) 6px 0;
   font-size: 11.5px;
   color: var(--text-muted);
 }
@@ -604,8 +604,8 @@
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  font-size: 12px;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
@@ -628,7 +628,7 @@
   align-items: flex-start;
   gap: 7px;
   flex-basis: 100%;
-  padding: 8px 11px;
+  padding: var(--space-2) 11px;
   border-radius: 8px;
   background: var(--amber-light);
   color: var(--amber-text);
@@ -640,7 +640,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 11px;
+  padding: var(--space-1) 11px;
   border-radius: 999px;
   background: var(--accent-light);
   color: var(--accent);
@@ -648,7 +648,7 @@
   font-weight: 700;
 }
 
-.sh-settled-who { font-size: 12px; color: var(--text-secondary); }
+.sh-settled-who { font-size: var(--text-sm); color: var(--text-secondary); }
 .sh-settled-hint { font-size: 11.5px; color: var(--text-faint); margin-left: auto; }
 .sh-settle-actions--done .sh-mini { margin-left: auto; }
 
@@ -667,7 +667,7 @@
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-left: auto;
 }
 
@@ -677,7 +677,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 9px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-family: inherit;
   color: var(--text-primary);
   background: var(--bg-input);
@@ -702,8 +702,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 9px;
-  margin-top: 4px;
-  padding: 12px 13px;
+  margin-top: var(--space-1);
+  padding: var(--space-3) 13px;
   border: 1px solid var(--red);
   border-radius: 9px;
   background: var(--red-wash);
@@ -724,18 +724,18 @@
 }
 
 .sh-fix-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-muted);
 }
 
-.sh-fix-note { font-size: 11px; color: var(--text-muted); }
+.sh-fix-note { font-size: var(--text-xs); color: var(--text-muted); }
 
 .sh-fix-input {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 9px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-family: 'DM Mono', ui-monospace, monospace;
   color: var(--text-primary);
   background: var(--bg-card);
@@ -760,25 +760,25 @@ select.sh-fix-input { width: auto; font-family: inherit; }
 }
 
 @media (max-width: 820px) {
-  .shared-page { gap: 16px; }
+  .shared-page { gap: var(--space-4); }
   .sh-head { flex-wrap: wrap; }
-  .sh-head h2 { font-size: 20px; }
+  .sh-head h2 { font-size: var(--text-xl); }
 
   .sh-settle { flex-direction: column; }
-  .sh-settle-net { min-width: 0; padding: 18px 20px 16px; }
-  .sh-net-amt { font-size: 32px; }
+  .sh-settle-net { min-width: 0; padding: 18px 20px var(--space-4); }
+  .sh-net-amt { font-size: var(--text-3xl); }
   .sh-settle-bars,
   .sh-settle-side {
     border-left: none;
     border-top: 1px solid var(--rule);
-    padding: 16px 20px;
+    padding: var(--space-4) 20px;
   }
-  .sh-settle-side { flex-direction: row; gap: 24px; }
+  .sh-settle-side { flex-direction: row; gap: var(--space-5); }
 
   .sh-chips { flex-wrap: wrap; }
   .sh-chips .sh-spacer { display: none; }
 
-  .sh-row { flex-wrap: wrap; padding: 16px 18px; gap: 14px; }
+  .sh-row { flex-wrap: wrap; padding: var(--space-4) 18px; gap: 14px; }
   .sh-row-amt { width: auto; margin-left: auto; font-size: 15px; }
   .sh-row-owes {
     order: 4;
@@ -802,5 +802,5 @@ select.sh-fix-input { width: auto; font-family: inherit; }
   .sh-settled-hint,
   .sh-settle-actions--done .sh-mini { margin-left: 0; }
 
-  .sh-legend { flex-wrap: wrap; gap: 10px 16px; }
+  .sh-legend { flex-wrap: wrap; gap: 10px var(--space-4); }
 }
