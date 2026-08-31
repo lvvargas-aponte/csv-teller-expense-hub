@@ -450,7 +450,7 @@
   position: absolute; top: 26px; right: 0; z-index: 200;
   width: 280px; max-width: calc(100vw - 32px); padding: var(--space-3);
   background: var(--bg-card);
-  border: 1px solid var(--border, #cbd5e1);
+  border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   font-size: var(--text-sm); line-height: 1.4;
@@ -466,7 +466,7 @@
   color: var(--text);
 }
 .icon-legend-row-label { font-weight: 600; }
-.icon-legend-row-detail { color: var(--text-muted, #64748b); font-size: var(--text-xs); }
+.icon-legend-row-detail { color: var(--text-muted); font-size: var(--text-xs); }
 
 .tx-transfer-chip {
   display: inline-block;

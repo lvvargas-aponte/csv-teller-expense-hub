@@ -412,7 +412,7 @@
   flex: 1;
   height: 8px;
   border-radius: 4px;
-  background: linear-gradient(90deg, var(--bg-selected), var(--accent, #6366f1), var(--bg-selected));
+  background: linear-gradient(90deg, var(--bg-selected), var(--accent), var(--bg-selected));
   position: relative;
 }
 .ret-band-base {
@@ -453,12 +453,12 @@
 .ret-contrib {
   margin-top: 14px;
   padding-top: var(--space-3);
-  border-top: 1px solid var(--border, #334155);
+  border-top: 1px solid var(--border);
 }
 .ret-headroom {
   margin-top: 14px;
   padding-top: var(--space-3);
-  border-top: 1px solid var(--border, #334155);
+  border-top: 1px solid var(--border);
 }
 .ret-headroom-title { font-size: var(--text-base); font-weight: 600; margin-bottom: var(--space-2); }
 .ret-headroom-catchup { font-weight: 400; color: var(--text-muted); }
@@ -476,7 +476,7 @@
 .ret-headroom-track {
   height: 6px;
   border-radius: 3px;
-  background: var(--border-soft, #e2e8f0);
+  background: var(--border-soft);
   overflow: hidden;
   margin: var(--space-1) 0 3px;
 }
