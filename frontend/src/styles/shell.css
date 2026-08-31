@@ -247,7 +247,7 @@
   width: 22px; height: 22px;
   border-radius: 50%;
   border: 1px solid var(--border);
-  background: var(--bg-card, #fff);
+  background: var(--bg-card);
   color: var(--text-muted);
   font-size: var(--text-md); font-weight: 700; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center;
