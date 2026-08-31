@@ -62,9 +62,12 @@ export default function FinancesPage({ section, view, subView, healthScore, heal
       .finally(() => setSummaryLoading(false));
   }, []);
 
+  const needsBalances = section === 'home' || section === 'accounts'
+    || section === 'debt' || section === 'invest';
+
   useEffect(() => {
-    loadBalances(false);
-  }, [loadBalances]);
+    if (needsBalances) loadBalances(false);
+  }, [needsBalances, loadBalances]);
 
   const { categories, counts: categoryCounts } = useCategories();
 
