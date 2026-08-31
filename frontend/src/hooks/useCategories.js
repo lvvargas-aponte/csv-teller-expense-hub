@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import axios from 'axios';
-import { API_BASE } from '../utils/formatting';
+import { listCategories, deleteCategory } from '../api/categories';
 
 // Loads the union of known categories (distinct txn categories + budget
 // categories + categorizer defaults) from the backend.
@@ -15,7 +14,7 @@ export function useCategories() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_BASE}/api/categories`);
+      const res = await listCategories();
       setCategories(res.data.categories || []);
       setCounts(res.data.counts || {});
     } catch {
@@ -39,7 +38,7 @@ export function useCategories() {
   const remove = useCallback(async (name) => {
     const trimmed = (name || '').trim();
     if (!trimmed) return null;
-    const res = await axios.delete(`${API_BASE}/api/categories/${encodeURIComponent(trimmed)}`);
+    const res = await deleteCategory(trimmed);
     setCategories((prev) => prev.filter((c) => c.toLowerCase() !== trimmed.toLowerCase()));
     return res.data; // { removed, cleared_txn_count, budget_exists }
   }, []);
