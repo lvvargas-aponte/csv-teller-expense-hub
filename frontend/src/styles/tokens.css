@@ -88,9 +88,11 @@
 
   /* ── Legacy aliases ──────────────────────────────────────────────────
      Every pre-existing rule reads these names. Aliasing them repaints the
-     app without touching ~80 call sites. Phase 8 removes them. Because
-     they resolve through var(), the dark block below only needs to
-     redefine primitives. */
+     app without touching ~80 call sites. They are permanent: they resolve
+     through var() at zero runtime cost, and rewriting ~80 call sites to
+     drop them would be a pure rename with real typo risk and no visual
+     change. Because they resolve through var(), the dark block below only
+     needs to redefine primitives. */
   --bg-root:            var(--surface-ground);
   --bg-card:            var(--surface-card);
   --bg-sidebar:         var(--surface-sidebar);
