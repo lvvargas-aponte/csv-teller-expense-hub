@@ -119,7 +119,6 @@
 [data-theme='dark'] .ov-tag-amber { background: var(--warn-tint); color: var(--warn-text); }
 /* Brand, not chart-blue — insightBuilder's "blue" tag tone already maps to
    var(--brand-wash), not a data-series colour. */
-[data-theme='dark'] .ov-tag-blue  { background: var(--brand-wash); color: var(--brand); }
 [data-theme='dark'] .ov-tag-manual { background: var(--bg-secondary); color: var(--text-muted); }
 
 [data-theme='dark'] .ov-section-header { color: var(--text-faint); border-bottom-color: var(--border); }
