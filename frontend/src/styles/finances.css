@@ -99,7 +99,7 @@
 [data-theme='dark'] .tx-rail-catline b { color: var(--text-secondary); }
 [data-theme='dark'] .tx-rail-card--dark { background: var(--good-inverse-bg); border-color: var(--border-inverse); }
 [data-theme='dark'] .tx-rail-card--dark .tx-rail-big { color: var(--good-inverse-text); }
-[data-theme='dark'] .tx-rail-card--dark .tx-rail-hint { color: rgba(255,255,255,0.5); }
+[data-theme='dark'] .tx-rail-card--dark .tx-rail-hint { color: var(--text-inverse-muted); }
 
 /* Overview / Finances cards */
 [data-theme='dark'] .ov-card { background: var(--bg-card); border-color: var(--border); box-shadow: var(--shadow-sm); }

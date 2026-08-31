@@ -222,7 +222,7 @@
 .tx-bulk-btn--deselect {
   background: none; color: var(--text-inverse-muted); border-color: transparent;
 }
-.tx-bulk-btn--deselect:hover { color: var(--text-inverse-muted); }
+.tx-bulk-btn--deselect:hover { color: var(--text-inverse); }
 
 /* Filter bar */
 .tx-filter-bar {
