@@ -167,6 +167,39 @@ describe('the emerald brand residue does not come back', () => {
   });
 });
 
+// Phase 8 Task 4b: every hardcoded colour in the nine stylesheets gets
+// mapped to a token by role. This is the general guard the green-only one
+// above (Task 2) and the component-file one below (Task 3) were each a
+// narrower version of — it catches any six-digit hex surviving anywhere in
+// the sheets, not just the emerald family, so the next stray literal (of
+// any hue) fails CI instead of quietly landing.
+describe('no raw hex literal remains in the nine stylesheets', () => {
+  const HEX_RE = /#[0-9a-fA-F]{3,6}\b/g;
+
+  // Every survivor must be named here, with why it's allowed to stay.
+  const ALLOWED = new Set([
+    // .tx-adj-quick (transactions.css ~L671-681) is the one sanctioned
+    // exception in the whole migration: tokenising the fill would leave
+    // mint text on a near-white background in dark mode, so its pale-green
+    // pill (fill, text and border, plus the hover shade) stays literal in
+    // both themes on purpose. See the comment on that rule.
+    '#ecfdf5', '#047857', '#a7f3d0', '#d1fae5',
+  ]);
+
+  test('every hex literal left in the sheets is on the allow-list', () => {
+    const found = new Set((ALL_SHEETS.match(HEX_RE) || []).map((h) => h.toLowerCase()));
+    const unexpected = [...found].filter((h) => !ALLOWED.has(h));
+    expect(unexpected).toEqual([]);
+  });
+
+  test('the allow-list has no stale entries', () => {
+    const found = new Set((ALL_SHEETS.match(HEX_RE) || []).map((h) => h.toLowerCase()));
+    for (const hex of ALLOWED) {
+      expect(found.has(hex)).toBe(true);
+    }
+  });
+});
+
 describe('the brand gradient lives in one token', () => {
   test('no rule hand-rolls a blue-violet gradient', () => {
     const handRolled = APP_CSS.match(/linear-gradient\([^)]*#(2563eb|7c3aed|60a5fa|a78bfa)/gi);
