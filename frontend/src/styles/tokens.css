@@ -140,6 +140,12 @@
   --surface-inverse:    #0f172a;
   --border-inverse:     #2c3a51;
   --text-inverse:       #f8fafc;
+  /* Muted text for the same invariant-dark surfaces — color-mix over
+     --text-inverse rather than a fresh rgba literal, at an alpha (50%)
+     that clears 4.5:1 on both --surface-inverse (#0f172a, 5.23:1) and
+     --good-inverse-bg (#0f2417, 5.05:1), the two dark surfaces this
+     family sits on. */
+  --text-inverse-muted: color-mix(in srgb, var(--text-inverse) 50%, transparent);
   --brand-inverse-text: #60a5fa;
   --good-inverse-bg:    #0f2417;
   --good-inverse-text:  #34d399;

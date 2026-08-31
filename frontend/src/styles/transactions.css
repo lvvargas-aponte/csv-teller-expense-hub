@@ -201,7 +201,7 @@
 .tx-bulk-count {
   font-size: var(--text-base); font-weight: 600; color: var(--brand-inverse-text); flex-shrink: 0;
 }
-.tx-bulk-owed { font-size: var(--text-sm); color: rgba(255,255,255,0.45); }
+.tx-bulk-owed { font-size: var(--text-sm); color: var(--text-inverse-muted); }
 .tx-bulk-spacer { flex: 1; }
 .tx-bulk-btn {
   display: inline-flex; align-items: center; gap: 5px;
@@ -210,7 +210,7 @@
   cursor: pointer; border: 1px solid; transition: all 0.14s; white-space: nowrap;
 }
 .tx-bulk-btn--ghost {
-  background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.07); color: var(--text-inverse-muted);
   border-color: rgba(255,255,255,0.12);
 }
 .tx-bulk-btn--ghost:hover { background: rgba(255,255,255,0.12); color: var(--text-inverse); }
@@ -220,9 +220,9 @@
 }
 .tx-bulk-btn--green:hover { background: var(--good-inverse-wash-hover); }
 .tx-bulk-btn--deselect {
-  background: none; color: rgba(255,255,255,0.35); border-color: transparent;
+  background: none; color: var(--text-inverse-muted); border-color: transparent;
 }
-.tx-bulk-btn--deselect:hover { color: rgba(255,255,255,0.65); }
+.tx-bulk-btn--deselect:hover { color: var(--text-inverse-muted); }
 
 /* Filter bar */
 .tx-filter-bar {
@@ -933,10 +933,10 @@ tr.tx-detail-row > td {
   border-color: var(--border-inverse);
   color: var(--text-inverse);
 }
-.tx-rail-card--dark .tx-rail-title { color: rgba(255,255,255,0.42); }
+.tx-rail-card--dark .tx-rail-title { color: var(--text-inverse-muted); }
 .tx-rail-card--dark .tx-rail-big { color: var(--good-inverse-text); }
-.tx-rail-card--dark .tx-rail-big small { color: rgba(255,255,255,0.45); }
-.tx-rail-card--dark .tx-rail-hint { color: rgba(255,255,255,0.5); margin-top: var(--space-2); }
+.tx-rail-card--dark .tx-rail-big small { color: var(--text-inverse-muted); }
+.tx-rail-card--dark .tx-rail-hint { color: var(--text-inverse-muted); margin-top: var(--space-2); }
 .tx-rail-btn--sheet {
   background: var(--good-inverse-wash);
   border-color: var(--good-inverse-border);
