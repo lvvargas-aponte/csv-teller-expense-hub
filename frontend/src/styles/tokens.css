@@ -110,6 +110,10 @@
   --accent-solid:       #2563eb;
   --accent-solid-hover: #1d4ed8;
   --accent-wash:        var(--brand-wash);
+  /* Text for --warn's amber fill — theme-invariant like --accent-solid above.
+     d97706 (light) and fbbf24 (dark) both need dark text to clear AA
+     (5.60:1 / 10.69:1); white fails both (3.19:1 / 1.67:1). */
+  --warn-fill-text:     #0f172a;
   --red:                var(--bad);
   --red-light:          var(--bad-tint);
   --red-wash:           var(--bad-wash);
