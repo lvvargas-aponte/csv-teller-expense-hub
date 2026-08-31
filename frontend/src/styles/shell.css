@@ -708,7 +708,7 @@
   min-width: 220px;
   max-height: 320px;
   overflow-y: auto;
-  background: var(--bg-elevated, #1e293b);
+  background: var(--surface-muted);
   border: 1px solid var(--border, #334155);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);

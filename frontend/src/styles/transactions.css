@@ -463,7 +463,7 @@
 }
 .icon-legend-icon {
   font-weight: 700; font-size: var(--text-xs); text-align: center;
-  color: var(--text-strong, #0f172a);
+  color: var(--text);
 }
 .icon-legend-row-label { font-weight: 600; }
 .icon-legend-row-detail { color: var(--text-muted, #64748b); font-size: var(--text-xs); }
