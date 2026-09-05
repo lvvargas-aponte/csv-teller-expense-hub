@@ -646,3 +646,16 @@
   cursor: pointer;
 }
 .set-cat-showarchived input { accent-color: var(--accent); cursor: pointer; }
+
+/* Grouping badges — which parent a category rolls into, or how many it holds. */
+.set-cat-parent {
+  padding: 1px 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: 99px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: help;
+}

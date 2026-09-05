@@ -112,7 +112,7 @@ def ensure_seeded() -> None:
     _invalidate()
 
 
-_COLUMNS = "id, name, color, roles, archived, sort, created_at"
+_COLUMNS = "id, name, color, roles, archived, sort, created_at, parent_id"
 
 # Role lookups happen inside per-transaction loops, so they are cached for
 # the life of the process and dropped whenever a category changes. A stale
@@ -133,6 +133,18 @@ def _invalidate() -> None:
     _roles_cache = None
 
 
+def reset_caches() -> None:
+    """Drop the role cache and any unavailability backoff.
+
+    For the test suite, which truncates and re-seeds between tests: without
+    this, one test simulating a DB outage leaves the backoff armed and every
+    test that follows inside the window silently reads the fallback.
+    """
+    global _unavailable_until
+    _unavailable_until = 0.0
+    _invalidate()
+
+
 def _mark_unavailable() -> None:
     global _unavailable_until
     _unavailable_until = time.monotonic() + _UNAVAILABLE_BACKOFF_SECONDS
@@ -151,6 +163,7 @@ def _row(r) -> Dict[str, Any]:
         "archived": r[4],
         "sort": r[5],
         "created_at": r[6],
+        "parent_id": r[7],
     }
 
 
@@ -379,6 +392,93 @@ def update(
         ).fetchone()
     _invalidate()
     return _row(row) if row else None
+
+
+def set_parent(category_id: int, parent_id: Optional[int]) -> Optional[Dict[str, Any]]:
+    """Group ``category_id`` under ``parent_id``, or ungroup it with None.
+
+    One level only. A category that already has children cannot be given a
+    parent, and a category with a parent cannot become one — arbitrary depth
+    would mean recursive rollups for a distinction nobody managing a
+    household budget has asked for. Both refusals return None so the caller
+    can say why rather than writing a tree that silently loses a level.
+    """
+    current = get_category(category_id)
+    if current is None:
+        return None
+
+    if parent_id is None:
+        return _write_parent(category_id, None)
+
+    if parent_id == category_id:
+        return None
+    parent = get_category(parent_id)
+    if parent is None or parent.get("parent_id") is not None:
+        return None
+    if children_of(category_id):
+        return None
+
+    return _write_parent(category_id, parent_id)
+
+
+def _write_parent(category_id: int, parent_id: Optional[int]):
+    with sync_engine.begin() as conn:
+        row = conn.execute(
+            text(
+                "UPDATE categories SET parent_id = :parent WHERE id = :id "
+                f"RETURNING {_COLUMNS}"
+            ),
+            {"parent": parent_id, "id": category_id},
+        ).fetchone()
+    _invalidate()
+    return _row(row) if row else None
+
+
+def children_of(category_id: int) -> List[Dict[str, Any]]:
+    with sync_engine.connect() as conn:
+        rows = conn.execute(
+            text(f"SELECT {_COLUMNS} FROM categories WHERE parent_id = :id "
+                 "ORDER BY sort, lower(name)"),
+            {"id": category_id},
+        ).fetchall()
+    return [_row(r) for r in rows]
+
+
+def rollup_map() -> Dict[str, str]:
+    """``{child name lowercased: parent name}`` for every grouped category.
+
+    The one thing the aggregations need: a lookup that turns a transaction's
+    own category into the bucket it rolls up to. Categories with no parent
+    are absent, so a caller falls back to the category's own name.
+
+    Empty when the table is unreachable — an ungrouped rollup is the same
+    answer this returned before grouping existed.
+    """
+    if _is_unavailable():
+        return {}
+    try:
+        with sync_engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT c.name, p.name FROM categories c "
+                    "JOIN categories p ON p.id = c.parent_id"
+                )
+            ).fetchall()
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[categories] rollup lookup skipped: {e}")
+        _mark_unavailable()
+        return {}
+    return {(child or "").strip().lower(): parent for child, parent in rows}
+
+
+def roll_up(name: str, mapping: Optional[Dict[str, str]] = None) -> str:
+    """The bucket ``name`` belongs to — its parent, or itself."""
+    cleaned = (name or "").strip()
+    if not cleaned:
+        return cleaned
+    if mapping is None:
+        mapping = rollup_map()
+    return mapping.get(cleaned.lower(), cleaned)
 
 
 def rename(category_id: int, new_name: str) -> Optional[Dict[str, Any]]:

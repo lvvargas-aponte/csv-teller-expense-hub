@@ -8,7 +8,7 @@ import {
 } from '../../../api/categoryRules';
 import {
   listCategoryRows, createCategory, patchCategory, renameCategory, mergeCategory,
-  deleteCategoryById,
+  deleteCategoryById, setCategoryParent,
 } from '../../../api/categories';
 
 jest.mock('../../../api/profile');
@@ -438,5 +438,77 @@ describe('editing categories', () => {
     const user = await openCategories();
     await user.click(screen.getByRole('checkbox', { name: 'Show archived' }));
     await waitFor(() => expect(listCategoryRows).toHaveBeenCalledWith(true));
+  });
+});
+
+describe('grouping categories', () => {
+  const GROUPED = [
+    { id: 1, name: 'Food', color: null, roles: [], archived: false, sort: 0, parent_id: null },
+    { id: 2, name: 'Groceries', color: null, roles: [], archived: false, sort: 1, parent_id: 1 },
+    { id: 3, name: 'Gas', color: null, roles: [], archived: false, sort: 2, parent_id: null },
+  ];
+
+  async function openCategories(rows = GROUPED) {
+    const user = userEvent.setup();
+    listCategoryRows.mockResolvedValue({
+      data: { rows, categories: rows.map((r) => r.name), counts: {} },
+    });
+    renderPage();
+    await awaitLoad();
+    await user.click(screen.getByRole('tab', { name: /categories & rules/i }));
+    await screen.findByText('Food');
+    return user;
+  }
+
+  test('shows which parent a category rolls into', async () => {
+    await openCategories();
+    expect(screen.getByText('↳ Food')).toBeInTheDocument();
+  });
+
+  test('shows how many a parent holds', async () => {
+    await openCategories();
+    expect(screen.getByText('1 inside')).toBeInTheDocument();
+  });
+
+  test('grouping one category under another calls the endpoint', async () => {
+    const user = await openCategories();
+    setCategoryParent.mockResolvedValue({ data: { ...GROUPED[2], parent_id: 1 } });
+
+    await user.click(screen.getByRole('button', { name: 'Options for Gas' }));
+    await user.selectOptions(
+      screen.getByLabelText('Group Gas under another category'), '1',
+    );
+
+    await waitFor(() => expect(setCategoryParent).toHaveBeenCalledWith(3, 1));
+  });
+
+  test('ungrouping passes a null parent', async () => {
+    const user = await openCategories();
+    setCategoryParent.mockResolvedValue({ data: { ...GROUPED[1], parent_id: null } });
+
+    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
+    await user.selectOptions(
+      screen.getByLabelText('Group Groceries under another category'), '',
+    );
+
+    await waitFor(() => expect(setCategoryParent).toHaveBeenCalledWith(2, null));
+  });
+
+  test('a category that already holds others cannot be nested', async () => {
+    // Grouping is one level deep, so the picker refuses rather than letting
+    // the server 422 after the click.
+    const user = await openCategories();
+    await user.click(screen.getByRole('button', { name: 'Options for Food' }));
+    expect(screen.getByLabelText('Group Food under another category')).toBeDisabled();
+  });
+
+  test('a grouped category is not offered as a parent', async () => {
+    const user = await openCategories();
+    await user.click(screen.getByRole('button', { name: 'Options for Gas' }));
+    const options = Array.from(
+      screen.getByLabelText('Group Gas under another category').options,
+    ).map((o) => o.textContent);
+    expect(options).toContain('Food');
+    expect(options).not.toContain('Groceries');
   });
 });

@@ -60,12 +60,18 @@ def _parse_date_obj(date_str: str) -> Optional[date]:
         return None
 
 
-def group_debit_spending() -> Dict[str, Dict[str, float]]:
+def group_debit_spending(rolled_up: bool = False) -> Dict[str, Dict[str, float]]:
     """Aggregate expense transactions into {month_key: {category: total}}.
 
     What counts as spending is decided by ``_is_expense`` (canonical
     money-flow ``direction``), so every caller agrees.
+
+    ``rolled_up`` buckets each category under its parent where one is set —
+    Dining, Groceries and Coffee reported as Food. Off by default: the
+    per-category answer is what budgets match against, and rolling up
+    silently would make a Groceries cap look like it covered Food.
     """
+    rollup = categories_service.rollup_map() if rolled_up else {}
     spending: Dict[str, Dict[str, float]] = {}
     for txn in state.stored_transactions.values():
         if not _is_expense(txn):
@@ -78,6 +84,8 @@ def group_debit_spending() -> Dict[str, Dict[str, float]]:
             continue
 
         category = txn.get("category") or "Uncategorized"
+        if rollup:
+            category = categories_service.roll_up(category, rollup)
         spending.setdefault(month_key, {})
         spending[month_key][category] = spending[month_key].get(category, 0.0) + amount
     return spending
@@ -793,11 +801,24 @@ def compute_budget_statuses(today: Optional[date] = None) -> List[Dict[str, Any]
     spending = group_debit_spending().get(month_key, {})
     spending_lc = {k.lower(): v for k, v in spending.items()}
 
+    # A cap set on a parent ("Food") has to count what its children spent —
+    # the per-category totals above hold Dining and Groceries separately, so
+    # matching on the name alone would report the parent at zero forever.
+    rollup = categories_service.rollup_map()
+    children_lc: Dict[str, List[str]] = {}
+    for child_lc, parent in rollup.items():
+        children_lc.setdefault(parent.strip().lower(), []).append(child_lc)
+
     out: List[Dict[str, Any]] = []
     for raw in state.budgets.values():
         category = raw.get("category", "")
         limit = float(raw.get("monthly_limit", 0.0))
-        spent = float(spending_lc.get(category.lower(), 0.0))
+        category_lc = category.lower()
+        spent = float(spending_lc.get(category_lc, 0.0))
+        spent += sum(
+            float(spending_lc.get(child, 0.0))
+            for child in children_lc.get(category_lc, ())
+        )
         pct = round(spent / limit * 100.0, 1) if limit > 0 else 0.0
 
         projected = round(spent / month_progress, 2) if month_progress > 0 else None
@@ -2400,6 +2421,12 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
     spending_by_month = group_debit_spending()
     recent = sorted(spending_by_month.keys())[-months:]
     trimmed = {m: spending_by_month[m] for m in recent}
+    # Both levels: the advisor is asked "where does the money go" (the
+    # grouped answer) and "why was Dining high" (the granular one), and
+    # having to infer either from the other is where it starts guessing.
+    _has_grouping = bool(categories_service.rollup_map())
+    rolled_by_month = group_debit_spending(rolled_up=True) if _has_grouping else {}
+    trimmed_rolled = {m: rolled_by_month[m] for m in recent if m in rolled_by_month}
 
     balances = _balances_snapshot()
     debts = _debts_from_accounts(balances)
@@ -2431,6 +2458,9 @@ def build_financial_snapshot(months: int = 6) -> Dict[str, Any]:
         },
         "debts": debts,
         "spending_by_month": trimmed,
+        # Only present once categories are actually grouped; an empty dict
+        # here would read as "nothing was spent" rather than "no grouping".
+        **({"spending_by_month_rolled_up": trimmed_rolled} if _has_grouping else {}),
         "shared_split_recent": shared,
         "budgets": budgets,
         "goals": goals,

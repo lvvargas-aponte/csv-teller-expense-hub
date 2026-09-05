@@ -35,3 +35,7 @@ export const mergeCategory = (id, intoId) =>
 
 export const deleteCategoryById = (id) =>
   axios.delete(`${API}/api/categories/id/${id}`);
+
+/** Group under a parent (one level), or ungroup with null. */
+export const setCategoryParent = (id, parentId) =>
+  axios.post(`${API}/api/categories/${id}/parent`, { parent_id: parentId });

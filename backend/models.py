@@ -270,6 +270,11 @@ class CategoryMergeRequest(BaseModel):
     into_id: int
 
 
+class CategoryParentRequest(BaseModel):
+    """Group a category under a parent, or ungroup it with null."""
+    parent_id: Optional[int] = None
+
+
 class RulePreviewRequest(BaseModel):
     """Ask what a rule would do before committing to it."""
     pattern: str

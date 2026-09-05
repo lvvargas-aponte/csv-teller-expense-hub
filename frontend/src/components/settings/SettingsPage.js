@@ -7,7 +7,7 @@ import CategoriesPane from './panes/CategoriesPane';
 import { patchCategoryRule, deleteCategoryRule } from '../../api/categoryRules';
 import {
   listCategoryRows, createCategory, patchCategory, renameCategory, mergeCategory,
-  deleteCategoryById,
+  deleteCategoryById, setCategoryParent,
 } from '../../api/categories';
 import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext';
 
@@ -118,6 +118,13 @@ export default function SettingsPage({
     [withCategoryReload],
   );
 
+  const setParentRow = useCallback(
+    (category, parentId) => withCategoryReload(
+      () => setCategoryParent(category.id, parentId),
+    ),
+    [withCategoryReload],
+  );
+
   const deleteCategoryRow = useCallback((category) => {
     // Deleting strips the label off every transaction that carried it, which
     // no undo puts back — so this one asks.
@@ -224,6 +231,7 @@ export default function SettingsPage({
             onMergeCategory={mergeCategoryRow}
             onDeleteCategory={deleteCategoryRow}
             onCreateCategory={createCategoryRow}
+            onSetCategoryParent={setParentRow}
           />
         )}
       </div>

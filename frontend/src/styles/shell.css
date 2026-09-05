@@ -483,6 +483,27 @@
   cursor: pointer;
 }
 .eh-topbar-blur:hover { color: var(--text-primary); }
+
+/* Grouped / by-category toggle. A two-state button rather than a pill pair:
+   there are only two views and one of them is always the current answer. */
+.eh-toolbar-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+.eh-toolbar-btn:hover { color: var(--text-primary); border-color: var(--border-mid); }
+.eh-toolbar-btn--on {
+  background: var(--accent-wash);
+  border-color: var(--accent-mid);
+  color: var(--accent-strong);
+}
 .eh-range-pill {
   display: inline-flex;
   background: var(--accent-light);

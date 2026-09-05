@@ -23,12 +23,16 @@ export const ROLE_LABELS = {
 export default function CategoryRow({
   category,
   siblings = [],
+  parentOptions = [],
+  parentName = null,
+  childCount = 0,
   busy = false,
   count = 0,
   onRename,
   onPatch,
   onMerge,
   onDelete,
+  onSetParent,
 }) {
   const [draftName, setDraftName] = useState(category.name);
   const [editing, setEditing] = useState(false);
@@ -85,6 +89,17 @@ export default function CategoryRow({
         )}
         <span className="set-chip-count">{count}</span>
 
+        {parentName && (
+          <span className="set-cat-parent" title={`Rolls up into ${parentName}`}>
+            ↳ {parentName}
+          </span>
+        )}
+        {childCount > 0 && (
+          <span className="set-cat-parent" title="Spending from its children rolls up here">
+            {childCount} inside
+          </span>
+        )}
+
         {category.roles.map((role) => (
           <span key={role} className="set-cat-role" title={ROLE_LABELS[role]?.[1]}>
             {ROLE_LABELS[role]?.[0] || role}
@@ -122,6 +137,29 @@ export default function CategoryRow({
           </fieldset>
 
           <div className="set-cat-actions">
+            {/* Grouping is one level deep, so a category that already holds
+                children has nowhere to go and the picker says why. */}
+            <label className="set-cat-merge">
+              <span>Group under</span>
+              <select
+                className="form-input"
+                value={category.parent_id ?? ''}
+                disabled={busy || childCount > 0}
+                title={childCount > 0
+                  ? 'This category already holds others — grouping is one level deep'
+                  : undefined}
+                aria-label={`Group ${category.name} under another category`}
+                onChange={(e) => onSetParent(
+                  category, e.target.value ? Number(e.target.value) : null,
+                )}
+              >
+                <option value="">Not grouped</option>
+                {parentOptions.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+
             <label className="set-cat-merge">
               <span>Merge into</span>
               <select

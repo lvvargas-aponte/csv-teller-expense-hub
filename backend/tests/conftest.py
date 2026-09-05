@@ -199,6 +199,7 @@ def _reset_all_stores() -> None:
     # the same known set instead of an empty one.
     import categories_service
 
+    categories_service.reset_caches()
     categories_service.ensure_seeded()
 
 

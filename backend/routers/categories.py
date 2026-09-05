@@ -16,6 +16,7 @@ import categories_service
 from models import (
     CategoryCreate,
     CategoryMergeRequest,
+    CategoryParentRequest,
     CategoryPatch,
     CategoryRenameRequest,
 )
@@ -102,6 +103,28 @@ async def merge_category(
     row = categories_service.merge(category_id, req.into_id)
     if row is None:
         raise HTTPException(status_code=404, detail="One of those categories is gone.")
+    return row
+
+
+@router.post("/categories/{category_id}/parent")
+async def set_category_parent(
+    category_id: int, req: CategoryParentRequest
+) -> Dict[str, Any]:
+    """Group this category under a parent, or ungroup it with a null parent.
+
+    One level deep. A category that already has children cannot be given a
+    parent, and a parent cannot itself be nested — 422 rather than writing a
+    tree that silently loses a level.
+    """
+    row = categories_service.set_parent(category_id, req.parent_id)
+    if row is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Categories group one level deep: a parent cannot itself have "
+                "a parent, and a category with children cannot be nested."
+            ),
+        )
     return row
 
 

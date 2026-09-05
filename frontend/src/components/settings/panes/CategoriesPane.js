@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import SettingsCard from '../SettingsCard';
 import categoryColor from '../categoryColor';
 import CategoryRow from './CategoryRow';
@@ -111,8 +111,24 @@ export default function CategoriesPane({
   onMergeCategory,
   onDeleteCategory,
   onCreateCategory,
+  onSetCategoryParent,
 }) {
   const [newCategory, setNewCategory] = useState('');
+
+  const nameById = useMemo(
+    () => new Map(categoryRows.map((c) => [c.id, c.name])),
+    [categoryRows],
+  );
+
+  const childCounts = useMemo(() => {
+    const counted = new Map();
+    categoryRows.forEach((c) => {
+      if (c.parent_id !== null && c.parent_id !== undefined) {
+        counted.set(c.parent_id, (counted.get(c.parent_id) || 0) + 1);
+      }
+    });
+    return counted;
+  }, [categoryRows]);
 
   const addCategory = () => {
     const name = newCategory.trim();
@@ -161,11 +177,19 @@ export default function CategoriesPane({
             category={row}
             count={counts?.[row.name] ?? 0}
             siblings={categoryRows.filter((c) => c.id !== row.id)}
+            // One level deep: only a category that is not itself grouped can
+            // be a parent, and nothing can be its own.
+            parentOptions={categoryRows.filter(
+              (c) => c.id !== row.id && (c.parent_id === null || c.parent_id === undefined),
+            )}
+            parentName={nameById.get(row.parent_id) || null}
+            childCount={childCounts.get(row.id) || 0}
             busy={categoriesBusy}
             onRename={onRenameCategory}
             onPatch={onPatchCategory}
             onMerge={onMergeCategory}
             onDelete={onDeleteCategory}
+            onSetParent={onSetCategoryParent}
           />
         ))}
         <div className="set-cat-add">

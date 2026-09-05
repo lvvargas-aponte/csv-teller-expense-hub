@@ -5,8 +5,10 @@ import axios from 'axios';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
-export const getDashboard = (months = 6) =>
-  axios.get(`${API}/api/dashboard`, { params: { months } });
+// rolledUp reports each category under its parent where one is set, so a long
+// category list reads as a few buckets.
+export const getDashboard = (months = 6, rolledUp = false) =>
+  axios.get(`${API}/api/dashboard`, { params: { months, rolled_up: rolledUp } });
 
 export const getIncomeVsExpenses = (months = 6) =>
   axios.get(`${API}/api/dashboard/income-vs-expenses`, { params: { months } });

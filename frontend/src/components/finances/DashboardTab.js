@@ -51,6 +51,11 @@ export default function DashboardTab({
   summary, onInsightAction, currentPath,
 }) {
   const [months, setMonths] = useState(6);
+  // Grouped totals are a view of the same data, so this refetches rather
+  // than reshaping what is already on screen.
+  const [rolledUp, setRolledUp] = useState(
+    () => localStorage.getItem('eh.rolledUp') === 'true',
+  );
   const [dashboard, setDashboard] = useState(null);
   const [dashboardErr, setDashboardErr] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
@@ -67,11 +72,15 @@ export default function DashboardTab({
   useEffect(() => {
     setDashboardLoading(true);
     setDashboardErr(null);
-    getDashboard(months)
+    getDashboard(months, rolledUp)
       .then((r) => setDashboard(r.data))
       .catch(() => setDashboardErr('Could not load dashboard data.'))
       .finally(() => setDashboardLoading(false));
-  }, [months]);
+  }, [months, rolledUp]);
+
+  useEffect(() => {
+    localStorage.setItem('eh.rolledUp', String(rolledUp));
+  }, [rolledUp]);
 
   // Opt-in and unavailable by default, so a failure here is indistinguishable
   // from the setting being off — both mean "don't render the line".
@@ -129,6 +138,15 @@ export default function DashboardTab({
           </button>
           {/* A filter group, not tabs: the ARIA tab pattern promises arrow-key
               navigation and a matching tabpanel, and neither exists here. */}
+          <button
+            type="button"
+            className={`eh-toolbar-btn${rolledUp ? ' eh-toolbar-btn--on' : ''}`}
+            aria-pressed={rolledUp}
+            title="Report categories under their parent group where one is set"
+            onClick={() => setRolledUp((v) => !v)}
+          >
+            {rolledUp ? 'Grouped' : 'By category'}
+          </button>
           <div className="eh-range-pill" role="group" aria-label="Date range">
             {RANGE_OPTIONS.map((r) => (
               <button

@@ -236,3 +236,167 @@ class TestDelete:
 
     def test_deleting_an_unknown_name_is_404(self, client):
         assert client.delete("/api/categories/NoSuchThing").status_code == 404
+
+
+class TestGrouping:
+    """Categories group one level deep so spending can be read as buckets."""
+
+    def _group(self, client, child_name, parent_name):
+        child = _named(client, child_name)
+        parent = _named(client, parent_name)
+        return client.post(
+            f"/api/categories/{child['id']}/parent", json={"parent_id": parent["id"]}
+        )
+
+    def test_a_category_can_be_grouped_under_another(self, client):
+        client.post("/api/categories", json={"name": "Food"})
+        r = self._group(client, "Groceries", "Food")
+        assert r.status_code == 200
+        assert r.json()["parent_id"] == _named(client, "Food")["id"]
+
+    def test_ungrouping_clears_the_parent(self, client):
+        client.post("/api/categories", json={"name": "Food"})
+        self._group(client, "Groceries", "Food")
+        groceries = _named(client, "Groceries")
+        r = client.post(f"/api/categories/{groceries['id']}/parent", json={"parent_id": None})
+        assert r.json()["parent_id"] is None
+
+    def test_nesting_deeper_than_one_level_is_refused(self, client):
+        # Arbitrary depth means recursive rollups and a tree widget, for a
+        # distinction nobody managing a household budget has asked for.
+        client.post("/api/categories", json={"name": "Food"})
+        self._group(client, "Groceries", "Food")
+        food = _named(client, "Food")
+        dining = _named(client, "Dining")
+        r = client.post(f"/api/categories/{food['id']}/parent", json={"parent_id": dining["id"]})
+        assert r.status_code == 422
+
+    def test_a_parent_cannot_be_given_a_parent(self, client):
+        client.post("/api/categories", json={"name": "Food"})
+        client.post("/api/categories", json={"name": "Essentials"})
+        self._group(client, "Groceries", "Food")
+        r = self._group(client, "Food", "Essentials")
+        assert r.status_code == 422
+
+    def test_a_category_cannot_be_its_own_parent(self, client):
+        groceries = _named(client, "Groceries")
+        r = client.post(
+            f"/api/categories/{groceries['id']}/parent",
+            json={"parent_id": groceries["id"]},
+        )
+        assert r.status_code == 422
+
+    def test_deleting_the_parent_leaves_the_children_alone(self, client):
+        # ON DELETE SET NULL — losing "Food" must not delete Groceries.
+        client.post("/api/categories", json={"name": "Food"})
+        self._group(client, "Groceries", "Food")
+        food = _named(client, "Food")
+        client.delete(f"/api/categories/id/{food['id']}")
+
+        groceries = _named(client, "Groceries")
+        assert groceries is not None
+        assert groceries["parent_id"] is None
+
+
+class TestRollup:
+    _csv = (
+        "Trans. Date,Post Date,Description,Amount,Category\n"
+        "01/15/2024,01/16/2024,TRADER JOE,-40.00,Groceries\n"
+        "01/16/2024,01/17/2024,CHIPOTLE,-12.00,Dining\n"
+        "01/17/2024,01/18/2024,SHELL,-30.00,Gas\n"
+    )
+
+    def _setup(self, client):
+        client.post(
+            "/api/upload-csv",
+            files={"file": ("d.csv", io.BytesIO(self._csv.encode("utf-8")), "text/csv")},
+        )
+        client.post("/api/categories", json={"name": "Food"})
+        food = _named(client, "Food")
+        for name in ("Groceries", "Dining"):
+            client.post(
+                f"/api/categories/{_named(client, name)['id']}/parent",
+                json={"parent_id": food["id"]},
+            )
+        return food
+
+    def test_ungrouped_totals_are_unchanged_by_default(self, client):
+        # Rolling up silently would make a Groceries cap look like it covered
+        # Food, so the per-category answer stays the default.
+        self._setup(client)
+        from analytics import group_debit_spending
+
+        month = group_debit_spending()["2024-01"]
+        assert month["Groceries"] == 40.0
+        assert month["Dining"] == 12.0
+        assert "Food" not in month
+
+    def test_rolled_up_totals_bucket_children_under_the_parent(self, client):
+        self._setup(client)
+        from analytics import group_debit_spending
+
+        month = group_debit_spending(rolled_up=True)["2024-01"]
+        assert month["Food"] == 52.0
+        assert "Groceries" not in month
+        # An ungrouped category still reports under its own name.
+        assert month["Gas"] == 30.0
+
+    def test_the_dashboard_reports_which_view_it_returned(self, client):
+        self._setup(client)
+        assert client.get("/api/dashboard").json()["rolled_up"] is False
+        body = client.get("/api/dashboard", params={"rolled_up": True}).json()
+        assert body["rolled_up"] is True
+        assert body["spending_by_month"]["2024-01"]["Food"] == 52.0
+
+    def test_a_budget_on_a_parent_counts_what_its_children_spent(self, client):
+        # Matching on the name alone would report the parent at zero forever.
+        self._setup(client)
+        client.put("/api/budgets/Food", json={"category": "Food", "monthly_limit": 100.0})
+
+        from analytics import compute_budget_statuses
+        from datetime import date
+
+        statuses = compute_budget_statuses(today=date(2024, 1, 20))
+        food = next(b for b in statuses if b["category"] == "Food")
+        assert food["current_month_spent"] == 52.0
+
+    def test_a_budget_on_a_child_still_counts_only_that_child(self, client):
+        self._setup(client)
+        client.put(
+            "/api/budgets/Groceries",
+            json={"category": "Groceries", "monthly_limit": 100.0},
+        )
+
+        from analytics import compute_budget_statuses
+        from datetime import date
+
+        statuses = compute_budget_statuses(today=date(2024, 1, 20))
+        groceries = next(b for b in statuses if b["category"] == "Groceries")
+        assert groceries["current_month_spent"] == 40.0
+
+    def test_renaming_a_parent_keeps_the_grouping(self, client):
+        food = self._setup(client)
+        client.post(f"/api/categories/{food['id']}/rename", json={"name": "Eating"})
+
+        from analytics import group_debit_spending
+
+        assert group_debit_spending(rolled_up=True)["2024-01"]["Eating"] == 52.0
+
+    def test_the_advisor_snapshot_omits_the_rolled_view_until_grouping_exists(self, client):
+        # An empty dict there would read as "nothing was spent" rather than
+        # "no grouping is configured".
+        client.post(
+            "/api/upload-csv",
+            files={"file": ("d.csv", io.BytesIO(self._csv.encode("utf-8")), "text/csv")},
+        )
+        from analytics import build_financial_snapshot
+
+        assert "spending_by_month_rolled_up" not in build_financial_snapshot()
+
+    def test_the_advisor_snapshot_carries_both_levels_once_grouped(self, client):
+        self._setup(client)
+        from analytics import build_financial_snapshot
+
+        snap = build_financial_snapshot()
+        assert snap["spending_by_month"]["2024-01"]["Groceries"] == 40.0
+        assert snap["spending_by_month_rolled_up"]["2024-01"]["Food"] == 52.0

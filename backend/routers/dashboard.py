@@ -15,10 +15,12 @@ router = APIRouter()
 
 
 @router.get("/dashboard")
-async def dashboard(months: int = 6) -> Dict[str, Any]:
+async def dashboard(months: int = 6, rolled_up: bool = False) -> Dict[str, Any]:
     months = max(3, min(12, int(months)))
 
-    spending = analytics.group_debit_spending()
+    # rolled_up reports each category under its parent where one is set,
+    # so a long category list can still be read as a few buckets.
+    spending = analytics.group_debit_spending(rolled_up=rolled_up)
     sorted_months = sorted(spending.keys())[-months:]
     trimmed = {m: spending[m] for m in sorted_months}
 
@@ -29,6 +31,7 @@ async def dashboard(months: int = 6) -> Dict[str, Any]:
 
     return {
         "months": sorted_months,
+        "rolled_up": rolled_up,
         "spending_by_month": trimmed,
         "monthly_totals": monthly_totals,
         "net_worth_timeseries": analytics.compute_net_worth_timeseries(months),
