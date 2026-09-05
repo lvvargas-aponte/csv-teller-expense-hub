@@ -16,6 +16,9 @@ from typing import Any, Dict, List, Optional
 
 import state
 from helpers import txn_direction
+# Re-exported under the private names this module has always used, so the
+# merchant key stays one implementation now that category rules key on it too.
+from merchant_key import aliases as _merchant_aliases, normalize as _normalize_merchant
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +194,23 @@ _INVESTMENT_SUBTYPES = frozenset({
     "brokerage", "hsa", "investment", "retirement", "rollover_ira",
     "sep_ira", "simple_ira", "529",
 })
+
+# Credit accounts that are installment debt rather than a revolving line: a
+# fixed principal on a fixed schedule. They have no credit limit to be a
+# percentage of, so they are excluded from utilization, and the payoff planner's
+# avalanche/snowball ordering does not apply to them either.
+#
+# Lived in credit_health_service and credit_factors as two separate copies;
+# it is served to the frontend from /accounts/metadata so the JS side does not
+# become a third.
+_INSTALLMENT_SUBTYPES = frozenset({"loan", "mortgage", "student", "auto"})
+
+
+def is_installment(acct_type: str, subtype: str) -> bool:
+    """True for a credit account that is a loan rather than a revolving line."""
+    if classify_account_bucket(acct_type, subtype) != "credit":
+        return False
+    return (subtype or "").lower().strip() in _INSTALLMENT_SUBTYPES
 
 
 def classify_account_bucket(acct_type: str, subtype: str) -> str:
@@ -464,6 +484,233 @@ async def compute_carry_cost() -> Dict[str, Any]:
     }
 
 
+# A statement bills interest as a purchase-shaped line and the wording is the
+# issuer's own: "INTEREST CHARGE-PURCHASES", "INTEREST CHARGE ON PURCHASES",
+# "INTEREST CHARGED ON PURCHASES". Category is checked first — a normalized
+# feed carries "Interest" — and this catches the SimpleFIN rows, which arrive
+# uncategorized.
+_INTEREST_DESCRIPTION = re.compile(r"\binterest\s+charge", re.I)
+
+_CARD_ACTIVITY_MONTHS = 3
+
+_ACTIVITY_FIELD = {"interest": "interest", "payment": "payments", "spend": "spend"}
+
+
+def _card_txn_kind(txn: Dict[str, Any]) -> str:
+    """``interest`` / ``payment`` / ``spend`` for one credit-card transaction.
+
+    The two feeds disagree on how a payment is signed: SimpleFIN posts it to
+    the card as an inflow, Teller as a debit categorized "CC Payment". Both
+    shapes have to read as a payment, so category is consulted before
+    direction. Interest is settled first — it is an outflow like any purchase,
+    and counting it as spending would both inflate the spend figure and hide
+    the one number worth surfacing.
+    """
+    category = (txn.get("category") or "").strip().lower()
+    direction = txn_direction(txn)
+    description = txn.get("description") or ""
+    if category == "interest" or (
+        direction == "outflow" and _INTEREST_DESCRIPTION.search(description)
+    ):
+        return "interest"
+    if category == "cc payment" or direction == "inflow":
+        return "payment"
+    return "spend"
+
+
+async def compute_card_activity(
+    months: int = _CARD_ACTIVITY_MONTHS, today: Optional[date] = None
+) -> Dict[str, Any]:
+    """Per revolving card, what each complete month actually did to the balance.
+
+    ``compute_carry_cost`` models what a balance *would* cost: today's balance
+    times the APR. This reads what the issuer actually billed, because an
+    ``INTEREST CHARGE`` line is a posted transaction — it already accounts for
+    the grace period and for any mid-cycle payment the model cannot see. The
+    two figures disagree by design and both are worth showing: one is the
+    receipt, the other the projection if nothing changes.
+
+    Installment loans are excluded. A mortgage's monthly interest is real, but
+    it is a fixed schedule rather than something this month's behaviour moved.
+    """
+    import balances_service
+
+    summary = await balances_service.build_summary()
+    cards = {
+        a.id: a.name
+        for a in summary.accounts
+        if classify_account_bucket(a.type, a.subtype) == "credit"
+        and not is_installment(a.type, a.subtype)
+    }
+    empty: Dict[str, Any] = {
+        "months": [], "latest_month": None,
+        "interest_billed_latest": None, "by_account": {},
+    }
+    if not cards:
+        return empty
+
+    this_month = (today or date.today()).strftime("%Y-%m")
+    buckets: Dict[tuple, Dict[str, Any]] = {}
+
+    for txn in state.stored_transactions.values():
+        account_id = txn.get("account_id")
+        if account_id not in cards:
+            continue
+        raw_date = txn.get("date") or ""
+        month = _parse_month_key(raw_date) if raw_date else ""
+        # The running month is a partial cycle. Set beside a full one it reads
+        # as a collapse in spending, every time the page is opened on the 3rd.
+        if not month or month >= this_month:
+            continue
+        amount = abs(float(txn.get("amount") or 0.0))
+        if amount <= 0:
+            continue
+
+        entry = buckets.setdefault((account_id, month), {
+            "spend": Decimal("0"),
+            "payments": Decimal("0"),
+            "interest": Decimal("0"),
+            "largest_purchase": None,
+        })
+        kind = _card_txn_kind(txn)
+        entry[_ACTIVITY_FIELD[kind]] += Decimal(str(amount))
+        if kind == "spend" and (
+            entry["largest_purchase"] is None
+            or amount > entry["largest_purchase"]["amount"]
+        ):
+            entry["largest_purchase"] = {
+                "description": txn.get("description") or "",
+                "amount": round(amount, 2),
+                "date": raw_date,
+            }
+
+    if not buckets:
+        return empty
+
+    kept = sorted({month for _, month in buckets})[-months:]
+    by_account: Dict[str, Any] = {}
+
+    for (account_id, month), entry in buckets.items():
+        if month not in kept:
+            continue
+        spend = _round_money(entry["spend"])
+        payments = _round_money(entry["payments"])
+        interest = _round_money(entry["interest"])
+        by_account.setdefault(account_id, {"name": cards[account_id], "months": []})
+        by_account[account_id]["months"].append({
+            "month": month,
+            "spend": spend,
+            "payments": payments,
+            "interest": interest,
+            # What the month did to what is owed. Positive means the balance
+            # grew: the card was used, and charged for, faster than it was paid.
+            "net_change": round(spend + interest - payments, 2),
+            "largest_purchase": entry["largest_purchase"],
+        })
+
+    for record in by_account.values():
+        record["months"].sort(key=lambda m: m["month"])
+        record["latest"] = record["months"][-1]
+        record["avg_net_change"] = round(
+            sum(m["net_change"] for m in record["months"]) / len(record["months"]), 2
+        )
+
+    latest_month = kept[-1]
+    interest_latest = sum(
+        m["interest"]
+        for record in by_account.values()
+        for m in record["months"] if m["month"] == latest_month
+    )
+
+    return {
+        "months": kept,
+        "latest_month": latest_month,
+        "interest_billed_latest": round(interest_latest, 2),
+        "by_account": by_account,
+    }
+
+
+_INTEREST_HISTORY_MONTHS = 12
+
+
+def compute_interest_history(
+    months: int = _INTEREST_HISTORY_MONTHS, today: Optional[date] = None
+) -> Dict[str, Any]:
+    """What carrying a balance has actually cost, month by month.
+
+    Scoped by the transaction, not by the account. ``compute_card_activity``
+    is joined to the cards that are linked *now*, which is right for a
+    per-card row and wrong for a history: the household's Teller-era cards
+    were replaced by SimpleFIN ones in July, and reading interest through the
+    live account list threw away January through June and made the cost look
+    like it appeared from nowhere. An ``INTEREST CHARGE`` line that left the
+    account is money paid to a lender whether or not the card is still linked
+    — including the CSV-imported rows that carry no ``account_id`` at all.
+
+    The direction guard is what keeps deposit interest out: a savings account
+    posts its interest as an inflow, a card bills it as an outflow.
+    """
+    today = today or date.today()
+    this_month = today.strftime("%Y-%m")
+    by_month: Dict[str, Decimal] = {}
+
+    for txn in state.stored_transactions.values():
+        if txn_direction(txn) != "outflow":
+            continue
+        category = (txn.get("category") or "").strip().lower()
+        if category != "interest" and not _INTEREST_DESCRIPTION.search(
+            txn.get("description") or ""
+        ):
+            continue
+        raw_date = txn.get("date") or ""
+        month = _parse_month_key(raw_date) if raw_date else ""
+        # The running month is a partial cycle and most cards bill once, so it
+        # is usually a zero that reads as a collapse.
+        if not month or month >= this_month:
+            continue
+        amount = abs(float(txn.get("amount") or 0.0))
+        if amount <= 0:
+            continue
+        by_month[month] = by_month.get(month, Decimal("0")) + Decimal(str(amount))
+
+    if not by_month:
+        return {
+            "months": [], "total_paid": 0.0, "latest": None,
+            "average": None, "trend": None, "highest": None,
+        }
+
+    kept = sorted(by_month)[-months:]
+    rows = [{"month": m, "interest": _round_money(by_month[m])} for m in kept]
+    amounts = [r["interest"] for r in rows]
+    latest = amounts[-1]
+
+    # Against the MEDIAN of the months before it. Not the previous month alone
+    # — a card cleared inside its grace period bills nothing, and the next
+    # ordinary month would read as a surge off that zero. Not their mean
+    # either: one such month drags an average far enough to call a return to
+    # normal a rise, which is the same outlier sensitivity that broke income
+    # detection.
+    prior = amounts[:-1]
+    baseline = statistics.median(prior) if prior else None
+    if baseline is None or baseline <= 0:
+        trend = None
+    elif latest > baseline * 1.15:
+        trend = "rising"
+    elif latest < baseline * 0.85:
+        trend = "falling"
+    else:
+        trend = "steady"
+
+    return {
+        "months": rows,
+        "total_paid": round(sum(amounts), 2),
+        "latest": latest,
+        "average": round(sum(amounts) / len(amounts), 2),
+        "trend": trend,
+        "highest": max(amounts),
+    }
+
+
 def _debts_from_accounts(snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Extract credit-type accounts as debts.  When the user has configured
     per-account details (APR, min payment, due day) via the Accounts tab, those
@@ -724,30 +971,6 @@ def compute_goal_statuses() -> List[Dict[str, Any]]:
 # Recurring / subscription detection
 # ---------------------------------------------------------------------------
 
-# Strip transaction-noise tokens that vary between charges of the same merchant.
-# Digits + ``#`` + ``*`` always go; the second pass below tackles structured
-# tails (WEB ID:, ACH/PMT tokens, state codes) and processor prefixes
-# (SQ *, TST*, PP*) so the same merchant collapses to one key across months.
-_NOISE_RE = re.compile(r"[\d#*]+")
-_WHITESPACE_RE = re.compile(r"[\s\-_/]+")
-# Mixed-alphanumeric "session id" tokens like ``F4KP2T``, ``6BVHGR`` that some
-# merchants embed in every charge — strip so the same merchant doesn't fork
-# into one merchant-key per charge. Gated to tokens 4–10 chars with at least
-# one letter AND at least one digit so real words ("4G", "AT&T") survive.
-_SESSION_ID_RE = re.compile(
-    r"\b(?=[a-z0-9]*[a-z])(?=[a-z0-9]*\d)[a-z0-9]{4,10}\b",
-    re.IGNORECASE,
-)
-_PROCESSOR_PREFIX_RE = re.compile(
-    r"^(sq\s*\*|tst\s*\*|pp\s*\*|paypal\s*\*|amzn\s+mktp\s+us\*?)\s*",
-    re.IGNORECASE,
-)
-_ACH_TAIL_RE = re.compile(
-    r"\b(web\s*id|ach|pmt|payment|epayment|xfer|pos|recur|aut(?:o|opay)?|mob|olb|mtgpmt|mortg)\b[:\s]*",
-    re.IGNORECASE,
-)
-_STATE_CODE_TAIL_RE = re.compile(r"\s+[a-z]{2}\s*$", re.IGNORECASE)
-
 # Amount-spread tolerance for grouping: utilities/phone/insurance routinely
 # vary 30-50% month to month; 0.60 keeps them in while still rejecting genuinely
 # noisy categories like gas stations (where the spread is typically > 1.0).
@@ -781,29 +1004,105 @@ _NON_SPENDING_CATEGORIES = frozenset({
 })
 
 
-def _normalize_merchant(description: str) -> str:
-    """Collapse description into a stable merchant key.
+# Tighter spread for merchants with no category vouching for them. A real
+# subscription bills the same amount every period; 0.35 still absorbs a price
+# rise mid-window, but rejects two unrelated shopping trips that happen to land
+# in different months.
+_RECURRING_TIGHT_SPREAD = 0.35
 
-    Pipeline:
-      1. Lowercase.
-      2. Drop processor prefixes (``SQ *``, ``TST*``, ``AMZN MKTP US``).
-      3. Strip ACH/wire tail tokens (``WEB ID:``, ``ACH``, ``PMT``…).
-      4. Replace remaining digits / ``#`` / ``*`` with spaces.
-      5. Drop a trailing 2-letter state code (``... Doral FL`` → ``... doral``).
-      6. Collapse whitespace, trim to 40 chars.
+# Months of evidence required before an uncategorized merchant counts as
+# recurring. Two is what a pair of grocery runs produces; three means the
+# pattern survived a full billing cycle.
+_MIN_MONTHS_UNTRUSTED = 3
+
+# Categories that mark a merchant as a subscription rather than a bill.
+_SUBSCRIPTION_CATEGORIES = frozenset({
+    "subscription",
+    "subscriptions",
+    "entertainment",
+    "streaming",
+    "music",
+})
+
+# Categories that mark a merchant as an obligatory bill. Superset of
+# ``_ALWAYS_RECURRING_CATEGORIES`` — the two differ in purpose: that one
+# waives the amount-spread gate, this one routes to the Bills section.
+_BILL_CATEGORIES = _ALWAYS_RECURRING_CATEGORIES | {"loan", "loans", "childcare"}
+
+# Bills the user never categorized. Matched against the RAW description, not
+# the merchant key — ``merchant_key._ACH_TAIL_RE`` strips exactly these tokens
+# when building the key, so by then "MTGPMT" and "INS PREM" are gone.
+_BILL_DESCRIPTION_RE = re.compile(
+    r"(mortg|mtgpmt|ins\s+prem|insurance|utilit|assn\s+dues|hoa\s+dues"
+    r"|electric|water\s+bill|city\s*of\s*\w*util)",
+    re.IGNORECASE,
+)
+
+# Paying a card or moving money between own accounts. These reach the detector
+# only when the transaction was never categorized — a categorized one is
+# already filtered by ``_NON_SPENDING_CATEGORIES`` in ``_is_expense``.
+_CARD_PAYMENT_RE = re.compile(
+    r"(e-?payment|e-?pymt|online\s+p(?:m|ay)t|online\s+payment|autopay"
+    # Bank of America writes "ONLINE/MOBILE PAYMENT" — the slash keeps it out
+    # of the `online\s+payment` branch above.
+    r"|mobile\s+payment"
+    r"|payment\s+thank\s*you|card\s+pmt|visa\s+online"
+    # "Payment to Chase card ending in 5637" — a payment, not a merchant.
+    r"|card\s+ending|payment\s+to\s+\w+\s+card)",
+    re.IGNORECASE,
+)
+
+# A card issuer's name next to the word payment. Kept separate from the
+# patterns above because the word alone is far too common to match on: plenty
+# of real bills ("PROG PREMIER INS PREM", "CITYOFRALUTIL BILLPAY") carry it.
+_ISSUER_PAYMENT_RE = re.compile(
+    r"\b(chase|amex|american\s+express|discover|barclays?|capital\s+one|citi"
+    r"|bank\s+of\s+america|bk\s+of\s+amer|synchrony|wells\s+fargo)\b"
+    r"[^a-z]*(payment|pmt|pymt)\b",
+    re.IGNORECASE,
+)
+
+# Repeats that are consequences of a balance, not commitments to anything.
+_NON_COMMITMENT_CATEGORIES = frozenset({"interest", "fees"})
+
+
+def _is_card_payment(description: str) -> bool:
+    """True when a description reads as paying a card off, not buying anything.
+
+    Deliberately narrow. A card payment is money moving between the
+    household's own accounts — the spending it settles was already counted
+    when each purchase posted to the card — so counting the payment too
+    reports the same money twice. A *loan* payment is not the same thing:
+    nothing was counted when the mortgage was drawn, so ``TRUIST MORTG OLB
+    MTGPMT`` must keep counting, and neither pattern matches it.
     """
-    if not description:
-        return ""
-    cleaned = description.lower()
-    cleaned = _PROCESSOR_PREFIX_RE.sub("", cleaned)
-    cleaned = _ACH_TAIL_RE.sub(" ", cleaned)
-    # Strip mixed-alphanumeric session ids *before* the digit-only sweep so
-    # ``F4KP2T`` doesn't survive as ``fkpt``.
-    cleaned = _SESSION_ID_RE.sub(" ", cleaned)
-    cleaned = _NOISE_RE.sub(" ", cleaned)
-    cleaned = _WHITESPACE_RE.sub(" ", cleaned).strip()
-    cleaned = _STATE_CODE_TAIL_RE.sub("", cleaned).strip()
-    return cleaned[:40]
+    text_ = description or ""
+    return bool(_CARD_PAYMENT_RE.search(text_) or _ISSUER_PAYMENT_RE.search(text_))
+
+
+def _classify_commitment(description: str, category: str) -> Optional[str]:
+    """Bucket a recurring merchant: ``bill``, ``subscription`` or
+    ``recurring_spend``. ``None`` means it is not a commitment at all and the
+    caller should drop it.
+
+    Category wins when the user has set one; description patterns are the
+    fallback that keeps an uncategorized mortgage out of the subscriptions
+    list. Consumed by ``routers/bills.py`` and ``routers/subscriptions.py``
+    so the bill/subscription rule lives in exactly one place.
+    """
+    cat = (category or "").strip().lower()
+    if cat in _NON_COMMITMENT_CATEGORIES:
+        return None
+    if cat in _SUBSCRIPTION_CATEGORIES:
+        return "subscription"
+    if cat in _BILL_CATEGORIES:
+        return "bill"
+    # Uncategorized from here on: fall back to what the bank wrote.
+    if _is_card_payment(description):
+        return None
+    if _BILL_DESCRIPTION_RE.search(description or ""):
+        return "bill"
+    return "recurring_spend"
 
 
 def _is_expense(txn: Dict[str, Any]) -> bool:
@@ -814,12 +1113,25 @@ def _is_expense(txn: Dict[str, Any]) -> bool:
     spending. Filters:
       * tagged transfers to a manual account drop out (see ``transfer_to_account_id``)
       * known non-spending categories drop out (CC payments, Zelle out, etc.)
+      * a card payment the bank never categorized drops out too
       * everything else counts when its money-flow ``direction`` is outflow
+
+    The uncategorized card payment is the one that mattered: SimpleFIN sends
+    no category, so ``BANK OF AMERICA PAYMENT`` and ``CHASE CREDIT CRD
+    AUTOPAY`` were counted as spending on top of the purchases they settle.
+    August read $12,555 against $8,355 of income; $3,395 of it was the same
+    money twice, and the savings rate reported -50%.
     """
     if txn.get("transfer_to_account_id"):
         return False
     category = (txn.get("category") or "").strip().lower()
     if category in _NON_SPENDING_CATEGORIES:
+        return False
+    # Not gated on a missing category: these rows often carry a wrong one
+    # ("BANK OF AMERICA PAYMENT" filed under Service, "Payment to Chase card
+    # ending in 5637" under General), so a category is no evidence the row is
+    # real spending. The patterns are narrow enough to spare loans and bills.
+    if _is_card_payment(txn.get("description") or ""):
         return False
     try:
         float(txn.get("amount", 0))
@@ -842,6 +1154,62 @@ _CADENCE_BANDS = (
 )
 
 
+# Charges per month by cadence name, derived from the bands above so a
+# declared cadence and an inferred one price identically.
+_CADENCE_PER_MONTH = {name: per_month for name, _, _, per_month in _CADENCE_BANDS}
+
+# Days between charges for each cadence, used when a merchant has a declared
+# cadence (no observed gaps to measure) and to judge how overdue it is.
+_CADENCE_INTERVAL_DAYS = {
+    "weekly": 7, "biweekly": 14, "monthly": 30, "bimonthly": 60,
+    "quarterly": 91, "semiannual": 182, "annual": 365,
+    # An irregular merchant gets the monthly yardstick — it is what the
+    # estimated_monthly_cost already assumes.
+    "irregular": 30,
+}
+
+# Cycles a merchant can miss before it stops being treated as live. Under 1.5
+# is ordinary billing drift; past 3 the charge has almost certainly stopped.
+_OVERDUE_CYCLES = 1.5
+_DORMANT_CYCLES = 3.0
+
+
+def _dataset_as_of() -> Optional[date]:
+    """Newest transaction date on file.
+
+    Staleness is measured from here, never from ``today``: if nothing has
+    been imported for five weeks, every merchant is five weeks quiet and
+    would look cancelled. Anchoring on the data's own horizon means a gap in
+    *importing* never reads as a gap in *billing*.
+    """
+    newest: Optional[date] = None
+    for txn in state.stored_transactions.values():
+        parsed = _parse_date_obj(txn.get("date", ""))
+        if parsed and (newest is None or parsed > newest):
+            newest = parsed
+    return newest
+
+
+def _staleness(last_seen: date, interval_days: int, as_of: Optional[date]) -> tuple:
+    """Return ``(days_since_last, cycles_missed, status)``.
+
+    ``status`` is ``active`` / ``overdue`` / ``dormant``. A merchant billed
+    annually is not overdue at 60 days; one billed weekly is. Dividing by the
+    merchant's own interval is what makes the three thresholds mean the same
+    thing for every cadence.
+    """
+    anchor = as_of or last_seen
+    days_since = max(0, (anchor - last_seen).days)
+    cycles = days_since / max(1, interval_days)
+    if cycles > _DORMANT_CYCLES:
+        status = "dormant"
+    elif cycles > _OVERDUE_CYCLES:
+        status = "overdue"
+    else:
+        status = "active"
+    return days_since, round(cycles, 2), status
+
+
 def _classify_cadence(gap_days: List[int]) -> tuple:
     """Return ``(cadence_name, charges_per_month, median_gap)`` from the gaps
     between consecutive charges. ``("irregular", None, median_gap)`` when the
@@ -856,19 +1224,10 @@ def _classify_cadence(gap_days: List[int]) -> tuple:
     return "irregular", None, median_gap
 
 
-def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
-    """Find merchants charging the household on a regular cadence.
-
-    Heuristic: group expense transactions by normalized merchant; keep groups
-    seen in at least ``min_occurrences`` distinct months with amounts within
-    ``_RECURRING_AMOUNT_SPREAD`` of each other. The gaps between consecutive
-    charges classify the billing ``cadence`` (weekly … annual), which makes
-    ``estimated_monthly_cost`` cadence-aware — an annual renewal contributes
-    1/12 of its price, a weekly charge ~4.3x.
-
-    ``price_change_pct`` compares the latest charge to the median so callers
-    (alerts, the subscriptions review page) can flag price creep.
-    """
+def _group_expenses_by_merchant(
+    aliases: Dict[str, str]
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Bucket every expense transaction under its normalized merchant key."""
     groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for txn in state.stored_transactions.values():
         if not _is_expense(txn):
@@ -884,6 +1243,9 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
         key = _normalize_merchant(txn.get("description", ""))
         if not key:
             continue
+        # A merged merchant's charges join its canonical group, so a service
+        # that renamed itself keeps one continuous history.
+        key = aliases.get(key, key)
 
         groups[key].append({
             "description": txn.get("description", ""),
@@ -893,11 +1255,97 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
             "month": _parse_month_key(date_str),
             "category": txn.get("category") or "Uncategorized",
         })
+    return groups
 
+
+def _load_subscription_reviews() -> Dict[str, Any]:
+    """The user's keep/cancel/declare answers, or ``{}`` if the DB is down.
+
+    Read once per detection — the table is small and this is the detector's
+    only round-trip.
+    """
+    try:
+        from db import subscriptions_repo
+        return subscriptions_repo.list_reviews()
+    except Exception:  # noqa: BLE001 — detection must survive a DB hiccup
+        logger.warning("[recurring] could not read subscription reviews", exc_info=True)
+        return {}
+
+
+def _survives_recurrence_gates(
+    *,
+    commitment_type: str,
+    cadence: str,
+    category: str,
+    months_seen: int,
+    spread: float,
+    declared_cadence: Optional[str],
+    min_occurrences: int,
+) -> bool:
+    """Whether a merchant group is really recurring, or just repeated.
+
+    Three regimes, and which one applies is the whole policy:
+
+    * **Declared** — the user answered, so no gate is left to apply.
+    * **Unvouched** (``recurring_spend``: no category, no bill-shaped
+      description) — two grocery runs in two months look exactly like a
+      subscription, so this needs a real billing rhythm, a third month, and
+      amounts that hold steady.
+    * **Vouched** — a category or description backs it, so only the spread
+      gate applies, and not even that for utilities and insurance, which
+      routinely swing wider than 60% and are still bills.
+    """
+    if declared_cadence:
+        return True
+
+    if commitment_type == "recurring_spend":
+        if cadence == "irregular":
+            return False
+        if months_seen < max(min_occurrences, _MIN_MONTHS_UNTRUSTED):
+            return False
+        return spread <= _RECURRING_TIGHT_SPREAD
+
+    if (category or "").strip().lower() in _ALWAYS_RECURRING_CATEGORIES:
+        return True
+    return spread <= _RECURRING_AMOUNT_SPREAD
+
+
+def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
+    """Find merchants charging the household on a regular cadence.
+
+    Heuristic: group expense transactions by normalized merchant; keep groups
+    seen in at least ``min_occurrences`` distinct months with amounts within
+    ``_RECURRING_AMOUNT_SPREAD`` of each other. The gaps between consecutive
+    charges classify the billing ``cadence`` (weekly … annual), which makes
+    ``estimated_monthly_cost`` cadence-aware — an annual renewal contributes
+    1/12 of its price, a weekly charge ~4.3x.
+
+    ``price_change_pct`` compares the latest charge to the median so callers
+    (alerts, the subscriptions review page) can flag price creep.
+
+    Every survivor carries a ``commitment_type`` — ``bill``, ``subscription``
+    or ``recurring_spend`` (see ``_classify_commitment``) — and that is the
+    field consumers filter on; none of them re-derive the bucket from the
+    category. A merchant with no category and no bill-shaped description faces
+    stricter gates than a vouched-for one: it needs a recognized cadence,
+    ``_MIN_MONTHS_UNTRUSTED`` months of history, and amounts inside
+    ``_RECURRING_TIGHT_SPREAD``. Without that, two grocery runs in two months
+    read as a subscription.
+    """
+    aliases = _merchant_aliases()
+    groups = _group_expenses_by_merchant(aliases)
+    reviews = _load_subscription_reviews()
+
+    as_of = _dataset_as_of()
     out: List[Dict[str, Any]] = []
     for key, items in groups.items():
         months_seen = sorted({i["month"] for i in items if i["month"]})
-        if len(months_seen) < min_occurrences:
+        # A cadence the user declared outranks the evidence. Seven months of
+        # history can never prove a yearly renewal is yearly, and a car
+        # payment that shows up once is still a car payment — so a declared
+        # merchant skips the month, cadence and spread gates entirely.
+        declared = (reviews.get(key) or {}).get("declared_cadence")
+        if not declared and len(months_seen) < min_occurrences:
             continue
         amounts = [i["amount"] for i in items]
         avg = sum(amounts) / len(amounts)
@@ -906,11 +1354,12 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
         items.sort(key=lambda i: i["date_obj"])
         latest = items[-1]
 
-        spread = (max(amounts) - min(amounts)) / avg
-        # Skip the spread gate for always-recurring categories — utilities and
-        # insurance routinely swing wider than 60% but are still bills.
-        item_cat = (latest["category"] or "").strip().lower()
-        if item_cat not in _ALWAYS_RECURRING_CATEGORIES and spread > _RECURRING_AMOUNT_SPREAD:
+        review = reviews.get(key) or {}
+        commitment_type = (
+            review.get("declared_type")
+            or _classify_commitment(latest["description"], latest["category"])
+        )
+        if commitment_type is None:
             continue
 
         gaps = [
@@ -918,6 +1367,28 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
             for i in range(1, len(items))
         ]
         cadence, per_month, median_gap = _classify_cadence(gaps)
+
+        # A declared cadence replaces the inferred one outright: the user
+        # knows an annual renewal is annual after one charge, where the gaps
+        # need two years to say so.
+        declared_cadence = review.get("declared_cadence")
+        if declared_cadence:
+            cadence = declared_cadence
+            # Take the band's own charges-per-month rather than deriving one
+            # from the interval, so a declared "annual" costs exactly what an
+            # inferred "annual" costs.
+            per_month = _CADENCE_PER_MONTH.get(declared_cadence, 1.0)
+
+        if not _survives_recurrence_gates(
+            commitment_type=commitment_type,
+            cadence=cadence,
+            category=latest["category"],
+            months_seen=len(months_seen),
+            spread=(max(amounts) - min(amounts)) / avg,
+            declared_cadence=declared_cadence,
+            min_occurrences=min_occurrences,
+        ):
+            continue
         # Irregular groups that survived the month/spread gates behave like
         # the old detector: assume one charge a month.
         monthly_cost = avg * per_month if per_month else avg
@@ -932,6 +1403,15 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
         # page to project the next due date. Resilient to one stray reissue.
         days_of_month = sorted(i["date_obj"].day for i in items)
         typical_day = days_of_month[len(days_of_month) // 2] if days_of_month else None
+
+        # How long since this merchant last billed, in its own cycles.
+        interval = (
+            int(median_gap) if (median_gap and not declared_cadence)
+            else _CADENCE_INTERVAL_DAYS.get(cadence, 30)
+        )
+        days_since, cycles_missed, status = _staleness(
+            latest["date_obj"], interval, as_of,
+        )
         out.append({
             "merchant_key": key,
             "sample_description": latest["description"],
@@ -947,10 +1427,79 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
             "cadence": cadence,
             "interval_days": int(median_gap) if median_gap is not None else None,
             "estimated_monthly_cost": round(monthly_cost, 2),
+            "commitment_type": commitment_type,
+            "days_since_last": days_since,
+            "cycles_missed": cycles_missed,
+            "status": status,
+            "as_of": as_of.isoformat() if as_of else None,
+            "cadence_declared": bool(declared_cadence),
+            "merged_from": sorted(a for a, c in aliases.items() if c == key),
         })
 
     out.sort(key=lambda r: r["estimated_monthly_cost"], reverse=True)
     return out
+
+
+def list_commitment_candidates(limit: int = 60) -> List[Dict[str, Any]]:
+    """Merchants the detector did **not** claim, offered up for declaring.
+
+    The detector needs two charges to measure a gap, so a yearly renewal in a
+    seven-month history and a car payment that billed once are both invisible
+    to it — and invisible means the user can never even declare them. This is
+    the list they pick from: every expense merchant that isn't already a
+    detected commitment, biggest first.
+
+    Card payments, transfers and interest are excluded the same way they are
+    everywhere else, via ``_classify_commitment`` returning ``None``.
+    """
+    claimed = {r["merchant_key"] for r in detect_recurring_charges()}
+    aliases = _merchant_aliases()
+
+    groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for txn in state.stored_transactions.values():
+        if not _is_expense(txn):
+            continue
+        try:
+            amount = float(txn.get("amount", 0))
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+        parsed = _parse_date_obj(txn.get("date", ""))
+        if parsed is None:
+            continue
+        key = _normalize_merchant(txn.get("description", ""))
+        if not key:
+            continue
+        key = aliases.get(key, key)
+        if key in claimed:
+            continue
+        groups[key].append({
+            "description": txn.get("description", ""),
+            "amount": amount,
+            "date_obj": parsed,
+            "category": txn.get("category") or "Uncategorized",
+        })
+
+    out: List[Dict[str, Any]] = []
+    for key, items in groups.items():
+        items.sort(key=lambda i: i["date_obj"])
+        latest = items[-1]
+        if _classify_commitment(latest["description"], latest["category"]) is None:
+            continue
+        amounts = [i["amount"] for i in items]
+        out.append({
+            "merchant_key": key,
+            "sample_description": latest["description"],
+            "category": latest["category"],
+            "latest_amount": round(latest["amount"], 2),
+            "average_amount": round(sum(amounts) / len(amounts), 2),
+            "occurrences": len(items),
+            "last_seen": latest["date_obj"].isoformat(),
+        })
+
+    out.sort(key=lambda r: r["latest_amount"], reverse=True)
+    return out[:limit]
 
 
 # ---------------------------------------------------------------------------
@@ -962,12 +1511,41 @@ def detect_recurring_charges(min_occurrences: int = 2) -> List[Dict[str, Any]]:
 _TREND_LOOKBACK_DAYS = (30, 60, 90)
 
 
+def _live_account_ids() -> set:
+    """Ids of the accounts the household still holds.
+
+    An account that was disconnected keeps its ``balance_snapshots`` rows, and
+    the walker below carries each account's last known balance forward
+    indefinitely — so a Teller card unplugged in May went on contributing its
+    final balance to every point in the series after it. Nine such ghosts sat
+    between the trend figure and the real one.
+
+    Read from the balances cache rather than a live fetch: this runs inside a
+    per-day loop, and the callers are sync.
+    """
+    snapshot = _balances_snapshot()
+    return {
+        acct.get("id")
+        for acct in (
+            (snapshot.get("linked_accounts") or [])
+            + (snapshot.get("snaptrade_accounts") or [])
+            + (snapshot.get("manual_accounts") or [])
+        )
+        if acct.get("id")
+    }
+
+
 def _net_worth_at(
     snapshots_newest_first: List[Dict[str, Any]],
     target_ts: datetime,
+    live_ids: Optional[set] = None,
 ) -> Optional[float]:
     """Approximate net worth at ``target_ts`` using the latest snapshot per
     account at or before that timestamp.
+
+    ``live_ids`` restricts the walk to accounts the household still holds; an
+    empty or absent set counts everything, which is the right answer before any
+    balances have been cached.
 
     Returns ``None`` if no account has a snapshot at or before
     ``target_ts`` — the trend block can't compute deltas in that case.
@@ -982,6 +1560,8 @@ def _net_worth_at(
         if captured > target_ts:
             continue
         aid = snap["account_id"]
+        if live_ids and aid not in live_ids:
+            continue
         if aid in chosen:
             continue
         chosen[aid] = snap
@@ -1065,8 +1645,9 @@ def compute_balance_trend(
     if not snapshots:
         return {"available": False, "reason": "no balance snapshots yet"}
 
+    live_ids = _live_account_ids()
     now = datetime.now(timezone.utc)
-    current = _net_worth_at(snapshots, now)
+    current = _net_worth_at(snapshots, now, live_ids)
     if current is None:
         return {"available": False, "reason": "no usable snapshots"}
 
@@ -1077,7 +1658,7 @@ def compute_balance_trend(
     delta_30d: Optional[float] = None
     for d in lookbacks:
         past_ts = now - timedelta(days=d)
-        past_nw = _net_worth_at(snapshots, past_ts)
+        past_nw = _net_worth_at(snapshots, past_ts, live_ids)
         if past_nw is None:
             continue
         delta = current - past_nw
@@ -1106,12 +1687,13 @@ def compute_net_worth_timeseries(months: int) -> List[Dict[str, Any]]:
     if not snapshots:
         return []
 
+    live_ids = _live_account_ids()
     step_days = 1 if months <= 6 else 7
     now = datetime.now(timezone.utc)
     out: List[Dict[str, Any]] = []
     cursor = now - timedelta(days=days)
     while cursor <= now:
-        nw = _net_worth_at(snapshots, cursor)
+        nw = _net_worth_at(snapshots, cursor, live_ids)
         if nw is not None:
             out.append({
                 "date": cursor.date().isoformat(),
@@ -1130,16 +1712,26 @@ def compute_net_worth_timeseries(months: int) -> List[Dict[str, Any]]:
 #   * cadence-aware monthly conversion (biweekly paychecks → ×2.166/mo)
 # ---------------------------------------------------------------------------
 
-# Spread of paycheck amounts within the same job is typically <5%; we allow
-# a little extra slack for bonus-month bumps and tax-bracket shifts.
-_INCOME_AMOUNT_SPREAD = 0.15
+# How far a single deposit may sit from the stream's MEDIAN and still count as
+# one of its paycheques. Deliberately generous: a bonus month, a tax-bracket
+# shift or a three-paycheque month all land inside 25%, and the rows that fall
+# outside are dropped rather than disqualifying the stream.
+#
+# The predecessor was a spread test — (max − min) / mean > 0.15 threw the whole
+# group away — and it is the most outlier-sensitive statistic available for the
+# job. One $872.21 adjustment deposit beside a normal $3,889.73 on the same day
+# took an 18-paycheque salary from a 0.12 spread to 0.91 and disqualified it,
+# after which the only stream regular enough to survive was a $1,000 recurring
+# P2P transfer. Income read a quarter of its real value, at "high" confidence,
+# and fed the savings rate, DTI, the health score and the advisor's snapshot.
+_INCOME_MEDIAN_BAND = 0.25
 _INCOME_MIN_OCCURRENCES = 2
 # Strict P2P-platform signals: Venmo/Zelle/Cash App/PayPal in a description
 # almost always indicates a person-to-person transfer, never a paycheck.
 # Used both to *exclude* such rows from income detection (PR2) and to
 # *include* them in recurring inbound-transfer detection (PR4).
 _P2P_RE = re.compile(
-    r"\b(venmo|zelle|cashapp|cash\s*app|paypal)\b",
+    r"\b(venmo|zelle|cashapp|cash\s*app|paypal|p2p)\b",
     re.IGNORECASE,
 )
 
@@ -1153,7 +1745,29 @@ _INBOUND_TRANSFER_RE = re.compile(
 )
 
 
-def _is_income_candidate(txn: Dict[str, Any]) -> bool:
+def _credit_account_ids() -> set:
+    """Ids of every credit-type account, from the balances snapshot.
+
+    Read from the same cache the rest of the module uses rather than a live
+    fetch — this runs inside transaction walks, and the account list is not
+    worth a provider round-trip.
+    """
+    snapshot = _balances_snapshot()
+    return {
+        acct.get("id")
+        for acct in (
+            (snapshot.get("linked_accounts") or [])
+            + (snapshot.get("manual_accounts") or [])
+        )
+        if classify_account_bucket(acct.get("type") or "", acct.get("subtype") or "")
+        == "credit"
+        and acct.get("id")
+    }
+
+
+def _is_income_candidate(
+    txn: Dict[str, Any], credit_account_ids: Optional[set] = None
+) -> bool:
     """Return True if ``txn`` could plausibly be income.
 
     Filters:
@@ -1161,11 +1775,17 @@ def _is_income_candidate(txn: Dict[str, Any]) -> bool:
     * Amount must be positive — sources occasionally return signed amounts;
       we standardize to positive elsewhere but keep the guard.
     * Exclude credit-card account credits (statement payments / refunds).
-      ``account_type`` from SimpleFIN is e.g. ``credit_card``; CSV uploads to
-      a credit-typed account also tag the row.
-    * Exclude P2P-platform credits (Venmo/Zelle/Cash App/PayPal). Those flow
-      through ``detect_recurring_inbound_transfers`` instead so a roommate's
-      rent split doesn't get treated as a household paycheck.
+      A payment posts to the card as an inflow and is emphatically not income.
+    * Exclude P2P-platform credits (Venmo/Zelle/Cash App/PayPal/P2P). Those
+      flow through ``detect_recurring_inbound_transfers`` instead so a
+      roommate's rent split doesn't get treated as a household paycheck.
+
+    ``credit_account_ids`` is the reliable way to spot the first case and
+    callers should pass it. The ``account_type`` string alone is not
+    trustworthy: Teller sets it to ``credit_card``, but SimpleFIN puts the
+    account's *display name* there ("Amazon Prime Rewards Visa Signature
+    (5637)"), which contains no "credit" at all — so a substring test let
+    every SimpleFIN card payment through as a paycheque.
     """
     if txn_direction(txn) != "inflow":
         return False
@@ -1175,10 +1795,20 @@ def _is_income_candidate(txn: Dict[str, Any]) -> bool:
         return False
     if amount <= 0:
         return False
+    if credit_account_ids and txn.get("account_id") in credit_account_ids:
+        return False
     acct_type = (txn.get("account_type") or "").lower()
     if "credit" in acct_type:
         return False
-    if _P2P_RE.search(txn.get("description", "") or ""):
+    if (txn.get("category") or "").strip().lower() == "cc payment":
+        return False
+    description = txn.get("description", "") or ""
+    # The account-id set is the reliable signal, but it can only speak for
+    # accounts the balances cache knows. This catches the payment whose
+    # account cannot be classified — a CSV import, a disconnected card.
+    if _is_card_payment(description):
+        return False
+    if _P2P_RE.search(description):
         return False
     return True
 
@@ -1227,23 +1857,30 @@ def _is_inbound_transfer_candidate(
 
 def detect_recurring_income(
     min_occurrences: int = _INCOME_MIN_OCCURRENCES,
-    max_spread: float = _INCOME_AMOUNT_SPREAD,
+    median_band: float = _INCOME_MEDIAN_BAND,
 ) -> List[Dict[str, Any]]:
     """Find recurring inbound flows that look like a paycheck or stipend.
 
     Groups income-candidate credits by normalized merchant key
-    (``_normalize_merchant``), then keeps groups that:
-      * have at least ``min_occurrences`` rows
-      * have amount spread within ``max_spread`` of the average
-      * cover ≥1 distinct month (single-month bursts are noise, not income)
+    (``_normalize_merchant``), then, per group, keeps the deposits within
+    ``median_band`` of the group's MEDIAN and judges the stream on those:
+      * at least ``min_occurrences`` rows survive the band
+      * they cover ≥1 distinct month (a single-month burst is noise)
+
+    Trimming rather than disqualifying is the point. A salary is a stream with
+    the occasional odd deposit in it — an adjustment, a correction, a final
+    stub — and a rule that reads the whole stream through its widest pair of
+    values throws away eighteen good paycheques over one bad one. The median
+    is unmoved by a handful of outliers, which is exactly the property wanted.
 
     Returns one entry per detected source with ``cadence_days`` (median gap
     between charges) and ``monthly_estimate`` so the snapshot block can sum
     a single household-level income figure.
     """
+    credit_ids = _credit_account_ids()
     groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for txn in state.stored_transactions.values():
-        if not _is_income_candidate(txn):
+        if not _is_income_candidate(txn, credit_ids):
             continue
         date_str = txn.get("date", "")
         if not date_str:
@@ -1262,21 +1899,32 @@ def detect_recurring_income(
     for key, items in groups.items():
         if len(items) < min_occurrences:
             continue
-        months_seen = {i["month"] for i in items if i["month"]}
+
+        median_amount = statistics.median(i["amount"] for i in items)
+        if median_amount <= 0:
+            continue
+        # The band is what separates "a salary with an odd deposit in it" from
+        # "lumpy freelance work": trimming a couple of strays leaves a stream,
+        # while a genuinely irregular one loses most of its rows here and fails
+        # the occurrence test below.
+        kept = [
+            i for i in items
+            if abs(i["amount"] - median_amount) / median_amount <= median_band
+        ]
+        if len(kept) < min_occurrences:
+            continue
+        months_seen = {i["month"] for i in kept if i["month"]}
         if len(months_seen) < 1:
             continue
 
-        amounts = [i["amount"] for i in items]
+        amounts = [i["amount"] for i in kept]
         avg = sum(amounts) / len(amounts)
         if avg <= 0:
-            continue
-        spread = (max(amounts) - min(amounts)) / avg
-        if spread > max_spread:
             continue
 
         # Cadence: median gap between consecutive charges in days.
         parsed = sorted(
-            d for d in (_parse_date_obj(i["date"]) for i in items) if d is not None
+            d for d in (_parse_date_obj(i["date"]) for i in kept) if d is not None
         )
         if len(parsed) >= 2:
             gaps = [(parsed[i + 1] - parsed[i]).days for i in range(len(parsed) - 1)]
@@ -1288,13 +1936,17 @@ def detect_recurring_income(
 
         out.append({
             "merchant_key": key,
-            "sample_description": items[-1]["description"],
+            "sample_description": kept[-1]["description"],
             "average_amount": round(avg, 2),
-            "occurrences": len(items),
+            # The kept rows, not every row that carried the name: they are what
+            # the estimate is built from, and what the confidence test should
+            # be counting. The strays are reported beside them, not hidden.
+            "occurrences": len(kept),
+            "deposits_ignored": len(items) - len(kept),
             "months_seen": len(months_seen),
             "cadence_days": cadence_days,
             "monthly_estimate": round(monthly_estimate, 2),
-            "last_seen": max(i["date"] for i in items),
+            "last_seen": max(i["date"] for i in kept),
         })
 
     out.sort(key=lambda r: r["monthly_estimate"], reverse=True)
@@ -1541,6 +2193,10 @@ def _discretionary_baseline(today: date) -> Dict[str, Any]:
     recurring_keys = {
         r.get("merchant_key") for r in detect_recurring_charges() if r.get("merchant_key")
     }
+    # Detected keys are canonical, so an alias's raw key has to be mapped
+    # before the comparison or its charges count as discretionary on top of
+    # the recurring total they already belong to.
+    aliases = _merchant_aliases()
     totals: Dict[str, float] = {}
     for txn in state.stored_transactions.values():
         if not _is_expense(txn):
@@ -1556,7 +2212,8 @@ def _discretionary_baseline(today: date) -> Dict[str, Any]:
             continue
         # A month holding nothing but bills is a real zero, not a missing month.
         totals.setdefault(month, 0.0)
-        if _normalize_merchant(txn.get("description", "") or "") in recurring_keys:
+        merchant = _normalize_merchant(txn.get("description", "") or "")
+        if aliases.get(merchant, merchant) in recurring_keys:
             continue
         totals[month] += amount
 
@@ -1642,6 +2299,9 @@ def project_cashflow(horizon_days: int = 30) -> Dict[str, Any]:
         amount = float(r.get("estimated_monthly_cost") or 0.0)
         if not typical_day or amount <= 0:
             continue
+        # Projecting a charge that stopped months ago inflates the outflow.
+        if r.get("status") == "dormant":
+            continue
         # Project each occurrence of typical_day inside the horizon.
         cursor = today
         for _ in range(int(horizon_days / 28) + 2):
@@ -1690,7 +2350,7 @@ def _load_user_profile() -> Optional[Dict[str, Any]]:
 
         row = profile_repo.load()
     except Exception as e:
-        logger.debug(f"[analytics] user_profile read skipped: {e}")
+        logger.warning("[analytics] user_profile read failed: %s", e)
         return None
     if not row:
         return None
