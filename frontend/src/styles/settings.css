@@ -527,3 +527,122 @@
   }
   .set-rule-row--learned .set-rule-meta { display: none; }
 }
+
+/* Categories — one editable row each. The name is a button until clicked so
+   the common case (reading the list) does not look like a wall of inputs. */
+.set-cat-row { border-bottom: 1px solid var(--bg-root); }
+.set-cat-row--archived { opacity: 0.55; }
+.set-cat-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px 20px;
+}
+.set-cat-name {
+  border: 1px solid transparent;
+  background: none;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: text;
+  text-align: left;
+}
+.set-cat-name:hover:not(:disabled) {
+  border-color: var(--border-mid);
+  background: var(--bg-card);
+}
+.set-cat-name-input { max-width: 220px; }
+.set-cat-role {
+  padding: 1px 7px;
+  border: 1px solid var(--accent-mid);
+  border-radius: 99px;
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: help;
+}
+.set-cat-spacer { flex: 1; }
+.set-cat-more {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--text-faint);
+  font-size: var(--text-base);
+  line-height: 1;
+  cursor: pointer;
+}
+.set-cat-more:hover { background: var(--surface-muted); color: var(--text-primary); }
+
+.set-cat-options {
+  padding: 0 20px 14px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.set-cat-roles {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 8px 12px 10px;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.set-cat-roles legend {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  padding: 0 4px;
+}
+.set-cat-role-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.set-cat-role-check input { accent-color: var(--accent); cursor: pointer; }
+.set-cat-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.set-cat-merge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.set-cat-merge select { max-width: 180px; }
+.set-cat-delete { color: var(--red); }
+.set-cat-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.set-cat-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 12px 20px;
+}
+.set-cat-add input.form-input { max-width: 200px; }
+.set-cat-showarchived {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.set-cat-showarchived input { accent-color: var(--accent); cursor: pointer; }

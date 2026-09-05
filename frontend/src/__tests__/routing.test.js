@@ -145,43 +145,35 @@ test.each(ALL_PATHS.filter((p) => p !== '/'))(
   },
 );
 
-test('commitments due-soon shows bills and recurring charges together', async () => {
-  renderAt('/plan/commitments/due');
+test('commitments shows bills, subscriptions and recurring spend together', async () => {
+  // The three buckets the detector's commitment_type splits merchants into,
+  // as three sections of one page. They were sub-tabs until each kind got its
+  // own section; the cost of merging them is the fetch count asserted below.
+  renderAt('/plan/commitments');
   expect(await screen.findByRole('heading', { level: 1, name: 'Commitments' })).toBeInTheDocument();
   expect(await screen.findByText('Upcoming Bills')).toBeInTheDocument();
+  expect(await screen.findByText(/subscriptions & recurring charges/i)).toBeInTheDocument();
   expect(await screen.findByText('Recurring Charges')).toBeInTheDocument();
 });
 
-test('commitments recurring shows subscriptions', async () => {
-  renderAt('/plan/commitments/recurring');
-  expect(await screen.findByRole('heading', { level: 1, name: 'Commitments' })).toBeInTheDocument();
-  expect(await screen.findByText(/subscriptions & recurring charges/i)).toBeInTheDocument();
-});
-
-test('the bare commitments path lands on due soon', async () => {
-  renderAt('/plan/commitments');
+test.each([
+  '/plan/commitments/due',
+  '/plan/commitments/recurring',
+])('the retired sub-tab path %s still lands on commitments', async (path) => {
+  renderAt(path);
   expect(await screen.findByText('Upcoming Bills')).toBeInTheDocument();
 });
 
-test('commitments sub-tabs are real links, not buttons', async () => {
-  // Buttons can't be ctrl/cmd-clicked, middle-clicked, or right-clicked for
-  // "copy link address" — the whole point of these being routes.
-  renderAt('/plan/commitments/due');
-  const due = await screen.findByRole('link', { name: 'Due soon' });
-  const recurring = await screen.findByRole('link', { name: 'Recurring' });
-  expect(due).toHaveAttribute('href', '/plan/commitments/due');
-  expect(recurring).toHaveAttribute('href', '/plan/commitments/recurring');
-});
-
-test('each commitments view fetches only what it shows', async () => {
-  // Stacking all three sections made every visit fire all three fetches.
-  // Splitting them is the point; assert it actually happened. axios is
-  // already mocked module-wide above, so this needs no extra mocking —
-  // just check the URL never reaches the subscriptions endpoint.
-  renderAt('/plan/commitments/due');
+test('commitments loads all three sections in one visit', async () => {
+  // Deliberate: one page means one visit pays for all three fetches, where
+  // the sub-tab split paid for one at a time. Asserted so the trade-off is
+  // visible if the section list grows again.
+  renderAt('/plan/commitments');
   await screen.findByText('Upcoming Bills');
-  const subscriptionCalls = axios.get.mock.calls.filter(([url]) => url.includes('/api/subscriptions'));
-  expect(subscriptionCalls).toHaveLength(0);
+  await waitFor(() => {
+    const urls = axios.get.mock.calls.map(([url]) => url);
+    expect(urls.some((u) => u.includes('/api/subscriptions'))).toBe(true);
+  });
 });
 
 test('insight actions point at real routes, not the pre-Phase-2 ones', () => {

@@ -14,6 +14,11 @@ function toNum(v) {
 // Two-tier credit/loan row. Clicking the row expands an inline drawer holding
 // the fields the bank doesn't sync (limit, APR, minimum, statement/due day).
 //
+// The drawer is controlled by the parent (`open` / `onOpenChange`) rather than
+// owned here: the Credit Utilization card further down the page links straight
+// at a specific card's limit field, which a row holding its own state could not
+// be asked to open. Only one drawer at a time falls out of that for free.
+//
 // The account name never truncates — long names wrap to a second line. Meta
 // values that are missing are omitted entirely rather than rendered as a dash,
 // which is what made the old eight-column table read as mostly empty.
@@ -28,11 +33,13 @@ export default function AccountListRow({
   row,
   needsReconnect = false,
   cacheFetchedAt,
+  open = false,
+  onOpenChange,
+  focusLimit = false,
   onUpdate,
   onEditBalance,
   onDelete,
 }) {
-  const [open, setOpen] = useState(false);
   const [editingBalance, setEditingBalance] = useState(false);
   const [owed, setOwed] = useState('');
   const [available, setAvailable] = useState('');
@@ -53,7 +60,7 @@ export default function AccountListRow({
     setAvailable(row.available === null || row.available === undefined ? '' : String(row.available));
     setSaveError(null);
     setEditingBalance(true);
-    setOpen(false);
+    onOpenChange?.(false);
   };
 
   const saveBalance = async () => {
@@ -69,13 +76,13 @@ export default function AccountListRow({
   };
 
   return (
-    <div className="acct-row-group" role="group" aria-label={row.name}>
+    <div id={`acct-row-${row.id}`} className="acct-row-group" role="group" aria-label={row.name}>
       <div className={`acct-row acct-row--expandable${hasActions ? ' acct-row--actions' : ''}`}>
         <button
           type="button"
           className="acct-row-hit"
           aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => onOpenChange?.(!open)}
         >
           <div
             className="acct-row-avatar"
@@ -97,7 +104,11 @@ export default function AccountListRow({
             <div className={`acct-row-balance${row.owed === 0 ? ' is-zero' : ''}`}>
               {fmt$(row.owed)}
             </div>
-            <div className="acct-row-subamount">{fmt$(row.available)} available</div>
+            {/* Null means no limit is stored and nothing usable was entered —
+                there is no available-credit figure to show. */}
+            {row.available !== null && (
+              <div className="acct-row-subamount">{fmt$(row.available)} available</div>
+            )}
           </div>
 
           <div className={`acct-row-chevron${open ? ' is-open' : ''}`} aria-hidden="true">›</div>
@@ -185,6 +196,7 @@ export default function AccountListRow({
               className="ifield--boxed"
               step="0.01"
               min="0"
+              autoFocus={focusLimit}
             />
           </DrawerField>
           <DrawerField label="APR">
@@ -241,8 +253,18 @@ export default function AccountListRow({
             <InlineField
               value={row.openedOn}
               onChange={(v) => onUpdate('opened_on', v)}
-              type="text"
-              placeholder="YYYY-MM-DD"
+              type="date"
+              className="ifield--boxed"
+            />
+          </DrawerField>
+          <DrawerField label="Closed on">
+            {/* SimpleFIN has no open/closed concept, so a closed account keeps
+                arriving on every fetch. Saying so here is what moves it out of
+                the totals and into the Closed group; clearing it undoes that. */}
+            <InlineField
+              value={row.closedOn}
+              onChange={(v) => onUpdate('closed_on', v)}
+              type="date"
               className="ifield--boxed"
             />
           </DrawerField>

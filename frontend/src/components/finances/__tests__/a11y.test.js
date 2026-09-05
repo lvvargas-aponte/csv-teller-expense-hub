@@ -9,7 +9,7 @@ import FinancesPage from '../FinancesPage';
 import { getHealthScore, getRatios } from '../../../api/health';
 import { getBalancesSummary } from '../../../api/balances';
 import {
-  getDashboard, getIncomeVsExpenses, getAlerts, getCreditHealth, getCreditFactors, getUpcomingBills,
+  getDashboard, getIncomeVsExpenses, getAlerts, getCreditHealth, getBorrowingPower, getUpcomingBills,
 } from '../../../api/dashboard';
 import { getAfterTaxNetWorth, getContributionHeadroom } from '../../../api/tax';
 import { getCashflowProjection } from '../../../api/cashflow';
@@ -251,7 +251,13 @@ function mockApis() {
       ],
     },
   });
-  getCreditFactors.mockResolvedValue({ data: { available: false, factors: [] } });
+  getBorrowingPower.mockResolvedValue({
+    data: {
+      dti: { pct: null, debts_missing_payment: [] },
+      interest_history: { months: [], total_paid: 0, latest: null, average: null, trend: null, highest: null },
+      carry_cost: { monthly_interest: 0, accounts_missing_apr: 0 },
+    },
+  });
   getUpcomingBills.mockResolvedValue({
     data: {
       total_due: 0, window_days: 30, total_due_by_kind: { credit: 0, recurring: 0 }, bills: [],
@@ -298,6 +304,20 @@ function mockApis() {
   getAllTransactions.mockResolvedValue({ data: { transactions: [] } });
 
   axios.get.mockImplementation((url) => {
+    if (url.includes('/api/subscriptions')) {
+      return Promise.resolve({
+        data: {
+          subscriptions: [{
+            merchant_key: 'spotify', sample_description: 'SPOTIFY 877-778-1161 NY',
+            category: 'Subscriptions', latest_amount: 19.98, estimated_monthly_cost: 19.98,
+            cadence: 'monthly', months_seen: 3, commitment_type: 'subscription',
+            review: null, needs_review: true, price_change_since_review_pct: null,
+            overlap_group: null,
+          }],
+          summary: { active_monthly_cost: 19.98, cancel_monthly_savings: 0, needs_review_count: 1 },
+        },
+      });
+    }
     if (url.includes('/api/budgets')) {
       return Promise.resolve({
         data: [
@@ -371,8 +391,10 @@ test('the debt surface has no axe violations', async () => {
 
 // Phase 6 split Commitments and Ask into their own sub-tab strips
 // (FinancesPage's SubTabs); no axe run previously mounted either one.
-test('the commitments sub-tab strip has no axe violations', async () => {
-  await renderTab('plan', 'commitments', 'due');
+// Commitments has since collapsed back to one page — bills, subscriptions
+// and recurring spend as three stacked sections — so this covers the stack.
+test('the commitments page has no axe violations', async () => {
+  await renderTab('plan', 'commitments');
   expect(await axe(document.body)).toHaveNoViolations();
 });
 

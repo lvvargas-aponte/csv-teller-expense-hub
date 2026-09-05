@@ -1,13 +1,18 @@
 import {
   classifyAccountBucket,
   INVESTMENT_SUBTYPES,
+  isInstallmentLoan,
+  setInstallmentSubtypes,
   setInvestmentSubtypes,
 } from '../accountBucket';
 
 // Port of backend `analytics.classify_account_bucket`. The cases below mirror
 // its branches one for one so the two suites stay comparable by eye.
 
-afterEach(() => setInvestmentSubtypes(null));
+afterEach(() => {
+  setInvestmentSubtypes(null);
+  setInstallmentSubtypes(null);
+});
 
 test('a depository account with a retirement subtype is an investment', () => {
   expect(classifyAccountBucket({ type: 'depository', subtype: 'Roth IRA' }))
@@ -73,4 +78,44 @@ test('a real asset is not reclassified by an investment subtype', () => {
   // still a house, and must not join the portfolio allocation.
   expect(classifyAccountBucket({ type: 'asset', subtype: 'investment' }))
     .toBe('real_asset');
+});
+
+// --- Installment loans --------------------------------------------------
+// A loan is credit, but it has no limit to be a percentage of and no balance
+// you choose how fast to clear. The backend already splits it out of
+// utilization; the frontend needs the same line for the Debt page.
+
+test.each(['loan', 'mortgage', 'student', 'auto', 'MORTGAGE', ' auto '])(
+  'subtype %p is an installment loan', (subtype) => {
+    expect(isInstallmentLoan({ type: 'credit', subtype })).toBe(true);
+  },
+);
+
+test.each([
+  ['a credit card', { type: 'credit', subtype: 'credit_card' }],
+  ['a card with no subtype', { type: 'credit', subtype: '' }],
+  ['cash', { type: 'depository', subtype: 'checking' }],
+  ['an investment', { type: 'investment', subtype: 'brokerage' }],
+  ['a house', { type: 'asset', subtype: 'home' }],
+])('%s is not an installment loan', (_label, account) => {
+  expect(isInstallmentLoan(account)).toBe(false);
+});
+
+// A depository account someone labelled "loan" is still not credit — the
+// bucket check has to come first.
+test('subtype alone does not make a non-credit account a loan', () => {
+  expect(isInstallmentLoan({ type: 'depository', subtype: 'loan' })).toBe(false);
+});
+
+test('the server list replaces the bundled one', () => {
+  setInstallmentSubtypes(['heloc']);
+
+  expect(isInstallmentLoan({ type: 'credit', subtype: 'heloc' })).toBe(true);
+  expect(isInstallmentLoan({ type: 'credit', subtype: 'mortgage' })).toBe(false);
+});
+
+test('an empty server list falls back to the bundled one', () => {
+  setInstallmentSubtypes([]);
+
+  expect(isInstallmentLoan({ type: 'credit', subtype: 'mortgage' })).toBe(true);
 });

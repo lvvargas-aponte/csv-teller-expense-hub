@@ -3,22 +3,15 @@ that has a ``due_day`` configured in ``account_details``, and merges in
 transaction-derived recurring charges (utilities, subscriptions, etc.) so
 non-credit bills also appear on the Bills page.
 """
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any, Dict, List
 
 from fastapi import APIRouter
 
 import state
-from analytics import _ALWAYS_RECURRING_CATEGORIES, _next_due_date
+from analytics import _next_due_date
 
 router = APIRouter()
-
-# What counts as a bill, seeded from the detector's own list of categories that
-# are obligations by nature rather than a fourth hand-maintained copy — a
-# category that repeats every month for everyone is a bill. Loans and childcare
-# are obligations the detector doesn't need to special-case but a household
-# certainly plans around.
-_BILL_CATEGORIES = _ALWAYS_RECURRING_CATEGORIES | {"loan", "loans", "childcare"}
 
 
 def _account_lookup(account_id: str) -> Dict[str, Any]:
@@ -83,15 +76,17 @@ async def upcoming_bills(window_days: int = 30) -> Dict[str, Any]:
             "amount_due": amount_due,
         })
 
-    # Merge in transaction-derived bills — obligatory monthly commitments only
-    # (utilities, insurance, mortgage/rent, phone/internet, subscriptions). The
-    # Dashboard's Recurring Charges card surfaces everything else that repeats
-    # (groceries, parking, hair, therapy, etc.); those don't belong here.
+    # Merge in transaction-derived bills — obligatory commitments only. The
+    # detector already bucketed each merchant; subscriptions and everything
+    # else that merely repeats (groceries, parking, hair, therapy) carry a
+    # different ``commitment_type`` and belong to their own sections.
     from analytics import detect_recurring_charges
 
     for r in detect_recurring_charges():
-        cat = (r.get("category") or "").strip().lower()
-        if cat not in _BILL_CATEGORIES:
+        if r.get("commitment_type") != "bill":
+            continue
+        # A bill that stopped arriving has no next due date worth projecting.
+        if r.get("status") == "dormant":
             continue
         typical_day = r.get("typical_day")
         if not typical_day:

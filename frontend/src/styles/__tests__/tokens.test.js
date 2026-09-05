@@ -103,7 +103,7 @@ const APP_CSS = [
 
 describe('brand and semantic colours stay separate', () => {
   test.each([
-    '.eh-kpi-value--pos',
+    '.eh-hero-figure',
     '.tx-amt-val--credit',
     '.ov-bal-primary--pos',
     '.acct-row-balance.is-positive',
@@ -112,7 +112,10 @@ describe('brand and semantic colours stay separate', () => {
     const rules = APP_CSS.match(new RegExp(`${escaped}\\s*\\{[^}]*\\}`, 'g'));
     expect(rules).not.toBeNull();
     for (const rule of rules) {
-      expect(rule).toContain('var(--good-text)');
+      // --status-good-text is an alias of --good-text in tokens.css, so either
+      // spelling satisfies the rule this guards: positive money wears the
+      // financial-positive token and never the brand.
+      expect(rule).toMatch(/var\(--(status-)?good-text\)/);
       expect(rule).not.toContain('var(--accent)');
     }
   });
@@ -206,10 +209,16 @@ describe('the brand gradient lives in one token', () => {
     expect(handRolled).toBeNull();
   });
 
-  test('the banner uses the gradient token', () => {
-    const rule = APP_CSS.match(/\.eh-banner\s*\{[^}]*\}/);
-    expect(rule).not.toBeNull();
-    expect(rule[0]).toContain('var(--brand-gradient)');
+  // The home page's gradient banner is gone — it spent a third of the fold on
+  // a greeting and two decorative circles. The token still has to be the only
+  // way anything paints that gradient, which the hand-rolled test above pins;
+  // this one keeps the remaining users honest about reaching for the token.
+  test('every gradient fill comes from the token', () => {
+    const fills = APP_CSS.match(/background:\s*linear-gradient\([^;]*;/gi) || [];
+    const brandish = fills.filter((f) => /135deg|brand/i.test(f));
+    for (const fill of brandish) {
+      expect(fill).toContain('var(--brand-gradient)');
+    }
   });
 
   test('no emerald gradient survives', () => {

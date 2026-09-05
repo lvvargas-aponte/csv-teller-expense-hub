@@ -1,6 +1,6 @@
 """Pytest fixtures.
 
-Tests run against a dedicated Postgres database ``expense_hub_test`` on the
+Tests run against a dedicated Postgres database ``financial_freedom_test`` on the
 same ``db`` service used by docker-compose. The bootstrap below runs before
 any app module is imported — it creates the test database if missing and
 applies all Alembic migrations so the schema matches the dev DB.
@@ -8,11 +8,11 @@ applies all Alembic migrations so the schema matches the dev DB.
 To run the suite:
     docker compose run --rm backend pytest tests
     # or, from the host when port 15432 is exposed:
-    DATABASE_URL=postgresql+asyncpg://expense:expense_dev@localhost:15432/expense_hub_test pytest tests
+    DATABASE_URL=postgresql+asyncpg://finfree:finfree_dev@localhost:15432/financial_freedom_test pytest tests
 
 Name the directory explicitly. This suite and ``tests_unit`` cannot share
 a pytest process: both conftests force-override DATABASE_URL at import
-time (this one to ``expense_hub_test``, the other to a placeholder no-DB
+time (this one to ``financial_freedom_test``, the other to a placeholder no-DB
 URL) and ``db.base`` binds its engine to whichever loaded last. A bare
 ``pytest`` collects both, and the TRUNCATE guard below then aborts every
 test in this suite.
@@ -29,17 +29,17 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 # FORCE-OVERRIDE (not setdefault) — docker-compose hardcodes DATABASE_URL to
-# the dev DB `expense_hub` in the backend service env, which would otherwise
+# the dev DB `financial_freedom` in the backend service env, which would otherwise
 # cause pytest's autouse `clear_storage` fixture to TRUNCATE the dev DB on
-# every test. We always pin tests to `expense_hub_test` regardless of what
+# every test. We always pin tests to `financial_freedom_test` regardless of what
 # the caller's environment says.
-_TEST_DATABASE_URL = "postgresql+asyncpg://expense:expense_dev@db:5432/expense_hub_test"
+_TEST_DATABASE_URL = "postgresql+asyncpg://finfree:finfree_dev@db:5432/financial_freedom_test"
 os.environ["DATABASE_URL"] = _TEST_DATABASE_URL
 
 # Sanity guard: refuse to run if anything later mutates DATABASE_URL away
 # from the test DB. The TRUNCATE fixture below is destructive and must NEVER
 # touch a non-test database.
-_REQUIRED_TEST_DB_NAME = "expense_hub_test"
+_REQUIRED_TEST_DB_NAME = "financial_freedom_test"
 
 
 def _assert_safe_test_db() -> None:
@@ -135,6 +135,7 @@ from main import app  # noqa: E402
 _TABLES_TO_TRUNCATE = [
     "json_stores",
     "subscription_reviews",
+    "merchant_aliases",
     "digests",
     "user_fact_embeddings",
     "user_facts",
@@ -160,6 +161,7 @@ _TABLES_TO_TRUNCATE = [
     "allowlist_hosts",
     "user_profile",
     "category_rules",
+    "categories",
     "account_details",
     "goals",
     "budgets",
@@ -191,6 +193,13 @@ def _reset_all_stores() -> None:
                 f"TRUNCATE {', '.join(_TABLES_TO_TRUNCATE)} RESTART IDENTITY CASCADE"
             )
         )
+    # categories is truncated for isolation like everything else, but it is a
+    # seeded vocabulary rather than per-test data: analytics reads roles off
+    # these rows to decide what counts as a bill, so every test starts from
+    # the same known set instead of an empty one.
+    import categories_service
+
+    categories_service.ensure_seeded()
 
 
 @pytest.fixture(autouse=True)

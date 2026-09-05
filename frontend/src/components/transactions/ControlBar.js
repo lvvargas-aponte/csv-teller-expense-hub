@@ -11,6 +11,8 @@ export default function ControlBar({
   dedupingNow,
   onPickCsv,
   onFindDuplicates,
+  onSendToSheet = null,
+  sendingSheet = false,
 }) {
   return (
     <div className="tx-control-bar">
@@ -54,6 +56,17 @@ export default function ControlBar({
             title="Find and remove duplicate transactions"
           >
             {dedupingNow ? <><Spin /> Checking…</> : <>⎘ Find duplicates</>}
+          </button>
+        )}
+        {onSendToSheet && (
+          <button
+            type="button"
+            className="tx-btn tx-btn-secondary"
+            onClick={onSendToSheet}
+            disabled={sharedCount === 0 || sendingSheet}
+            title="Sync the shared expenses in this view with the Google Sheet"
+          >
+            {sendingSheet ? <><Spin /> Sending…</> : <>↗ Send to Sheet ({sharedCount})</>}
           </button>
         )}
       </div>

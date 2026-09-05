@@ -51,17 +51,20 @@ class TestCreditHealthLiveBalances:
         assert data["overall_utilization_pct"] == 30.0   # not 20.0
         assert data["total_balance"] == 1500.0
 
-    def test_installment_loan_is_listed_but_not_rated(self, client):
-        """Revolving utilization is meaningless for an auto loan or mortgage."""
+    def test_installment_loan_is_left_out_of_the_composition(self, client):
+        """Revolving utilization is meaningless for an auto loan or mortgage.
+
+        The loan was once returned with a null percentage so /debt could show
+        every debt in one place. /debt builds its own Cards and Loans sections
+        from the balances summary instead, so all that row did here was render
+        a name with an empty bar beside it.
+        """
         _seed_manual_card("card", starting_ledger=1000.0, limit=5000.0)
         _seed_manual_card("auto", starting_ledger=18000.0, limit=20000.0, subtype="loan")
 
         data = client.get("/api/accounts/credit-health").json()
-        by_id = {a["account_id"]: a for a in data["accounts"]}
 
-        assert by_id["auto"]["utilization_pct"] is None
-        assert by_id["auto"]["status"] == "not_applicable"
-        assert by_id["auto"]["balance"] == 18000.0
+        assert [a["account_id"] for a in data["accounts"]] == ["card"]
         # The loan is out of the ratio entirely — 1000 / 5000, not 19000 / 25000.
         assert data["overall_utilization_pct"] == 20.0
         assert data["total_limit"] == 5000.0

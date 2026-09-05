@@ -143,3 +143,101 @@ class TestSummaryExposesHealth:
         statuses = {c["institution"]: c["status"] for c in data["connections"]}
         assert statuses["Chase"] == "connected"
         assert statuses["https://***@bridge/y"] == "disconnected"
+
+
+class TestOutageDoesNotEraseBalances:
+    """The cache exists so the Accounts page can answer without calling a
+    provider. A provider that cannot be reached has said nothing about its
+    accounts — which is not the same as saying they are gone — so its cached
+    rows have to survive the failure that used to overwrite them with nothing.
+    """
+
+    URL = "https://u:p@bridge/x"
+
+    def _seed_good_sync(self, client, monkeypatch):
+        """One successful sync, so there are balances and a cid→bank mapping."""
+        monkeypatch.setattr(state, "SIMPLEFIN_ACCESS_URLS", [self.URL])
+        accounts = [
+            {"id": "acc1", "name": "Checking", "_org_name": "Chase",
+             "balance": "1500.00", "transactions": []},
+            {"id": "acc2", "name": "Sapphire", "_org_name": "Chase",
+             "balance": "-400.00", "transactions": []},
+        ]
+        with patch.object(
+            state.simplefin, "list_accounts_by_url",
+            AsyncMock(return_value=([(self.URL, accounts)], [])),
+        ):
+            return client.get("/api/balances/summary?force=true").json()
+
+    def _blackout(self, client):
+        from simplefin import connection_id
+
+        errors = [{"id": connection_id(self.URL), "label": "https://***@bridge/x",
+                   "error": "Connection failed"}]
+        with patch.object(
+            state.simplefin, "list_accounts_by_url",
+            AsyncMock(return_value=([], errors)),
+        ):
+            return client.get("/api/balances/summary?force=true").json()
+
+    def test_a_total_outage_keeps_the_last_good_balances(self, client, monkeypatch):
+        before = self._seed_good_sync(client, monkeypatch)
+        assert before["total_cash"] == 1500.0
+        assert before["total_credit_debt"] == 400.0
+
+        after = self._blackout(client)
+
+        assert [a["id"] for a in after["accounts"]] == ["acc1", "acc2"]
+        assert after["total_cash"] == 1500.0
+        assert after["total_credit_debt"] == 400.0
+        assert after["net_worth"] == before["net_worth"]
+
+    def test_the_outage_is_still_reported(self, client, monkeypatch):
+        """Keeping the balances must not make a dead connection look healthy."""
+        self._seed_good_sync(client, monkeypatch)
+
+        after = self._blackout(client)
+
+        statuses = {c["institution"]: c["status"] for c in after["connections"]}
+        assert statuses["Chase"] == "disconnected"
+
+    def test_the_kept_rows_survive_a_later_page_load(self, client, monkeypatch):
+        """They are written back to the cache, not just returned once."""
+        self._seed_good_sync(client, monkeypatch)
+        self._blackout(client)
+
+        later = client.get("/api/balances/summary").json()
+
+        assert [a["id"] for a in later["accounts"]] == ["acc1", "acc2"]
+
+    def test_a_connection_that_answers_still_replaces_its_own_rows(self, client, monkeypatch):
+        """The guard must not pin stale balances: an account a working
+        connection stops returning is still dropped."""
+        self._seed_good_sync(client, monkeypatch)
+
+        remaining = [{"id": "acc1", "name": "Checking", "_org_name": "Chase",
+                      "balance": "1600.00", "transactions": []}]
+        with patch.object(
+            state.simplefin, "list_accounts_by_url",
+            AsyncMock(return_value=([(self.URL, remaining)], [])),
+        ):
+            after = client.get("/api/balances/summary?force=true").json()
+
+        assert [a["id"] for a in after["accounts"]] == ["acc1"]
+        assert after["total_cash"] == 1600.0
+        assert after["total_credit_debt"] == 0.0
+
+    def test_a_connection_with_no_history_contributes_nothing(self, client, monkeypatch):
+        """A URL that has never synced has no institutions on file, so there is
+        nothing to attribute to it and nothing to keep."""
+        monkeypatch.setattr(state, "SIMPLEFIN_ACCESS_URLS", [self.URL])
+        errors = [{"id": "never-synced", "label": "https://***@bridge/z",
+                   "error": "Auth failed (403)"}]
+        with patch.object(
+            state.simplefin, "list_accounts_by_url",
+            AsyncMock(return_value=([], errors)),
+        ):
+            data = client.get("/api/balances/summary?force=true").json()
+
+        assert data["accounts"] == []
+        assert data["total_cash"] == 0.0

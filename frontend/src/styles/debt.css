@@ -58,10 +58,12 @@
 }
 .ov-tag-paid { background: var(--good-wash); color: var(--good-text); }
 
-/* Credit factors — five rows, each a measured value and its lever. There is
-   deliberately no composite score, gauge or grade anywhere in this block. */
-.cf-framing {
-  margin: 0 0 var(--space-4);
+/* Borrowing power — debt-to-income, the cost of closing a card, and the
+   handful of facts advisors repeat because people get them wrong. Replaced a
+   five-factor credit-score panel that could honestly measure one of the five.
+   There is still deliberately no score, gauge or grade anywhere in here. */
+.bp-framing {
+  margin: 0 0 var(--space-5);
   padding: 10px var(--space-3);
   border-left: 3px solid var(--accent);
   background: var(--accent-light);
@@ -69,35 +71,209 @@
   line-height: 1.5;
   color: var(--text-muted);
 }
-.cf-factors { display: grid; gap: 14px; }
-.cf-factor {
-  padding: var(--space-3) 0;
-  border-top: 1px solid var(--border);
+.bp-blocks { display: grid; gap: var(--space-5); }
+.bp-block { padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.bp-block:first-child { padding-top: 0; border-top: none; }
+.bp-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: 10px;
 }
-.cf-factor-head {
-  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2);
-}
-.cf-factor-label {
-  font-size: var(--text-xs); font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.08em;
+.bp-block-title { margin: 0; font-size: var(--text-md); font-weight: 700; }
+.bp-block-kicker { font-size: var(--text-xs); color: var(--text-muted); }
+.bp-note {
+  font-size: var(--text-sm);
   color: var(--text-muted);
+  line-height: 1.55;
+  margin: 10px 0 0;
 }
-.cf-factor-weight { font-size: var(--text-xs); color: var(--text-muted); }
-.cf-factor-value { font-size: 22px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
-.cf-factor-body { margin-top: var(--space-1); }
-.cf-note { font-size: var(--text-sm); color: var(--text-muted); line-height: 1.5; }
-.cf-cards { display: grid; gap: var(--space-2); margin-top: 10px; }
-.cf-card-row {
+.bp-note--lead { margin: 0 0 10px; }
+.bp-note strong { color: var(--text-primary); font-weight: 600; }
+
+.bp-dti-figure {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -1.5px;
+}
+.bp-dti-math {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* The lenders' own scale, so the figure lands somewhere meaningful rather
+   than floating free. 0-60% across, since past 60 nothing conventional
+   qualifies and the extra width would only shrink the part that matters. */
+.bp-scale { margin-top: var(--space-4); }
+.bp-scale-track {
+  position: relative;
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.bp-scale-band--good { background: var(--good-tint); }
+.bp-scale-band--warn { background: var(--warn-tint); }
+.bp-scale-band--bad  { background: var(--bad-tint); }
+.bp-scale-marker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--text-primary);
+  border-radius: 1px;
+}
+.bp-scale-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.bp-missing-lead {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.55;
+}
+.bp-missing-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.bp-missing-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
   padding: var(--space-2) 10px;
-  background: var(--bg-secondary);
+  background: var(--warn-wash);
   border-radius: 6px;
 }
-.cf-card-name { font-size: var(--text-base); font-weight: 600; }
-.cf-lever {
-  margin-top: var(--space-1);
-  font-size: var(--text-sm); font-weight: 600;
-  color: var(--accent);
+.bp-missing-name { font-size: var(--text-base); font-weight: 600; }
+.bp-missing-bal {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
+
+/* The debts making up the DTI numerator. An estimated figure is tagged as one
+   wherever it appears — it is derived from the balance and the APR on the
+   common 1%-plus-interest shape, and issuers differ. */
+.bp-pay-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+}
+.bp-pay-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 5px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.bp-pay-row:last-child { border-bottom: none; }
+.bp-pay-name { font-size: var(--text-sm); color: var(--text-secondary); }
+.bp-pay-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  border-radius: 4px;
+  padding: 2px 5px;
+  cursor: help;
+}
+.bp-pay-amount {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.bp-interest-figure {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -1.5px;
+}
+
+/* One series, so no legend: the block heading names it. Bars take the neutral
+   accent and only the newest month takes the warning hue, and only when it is
+   the finding — colour that fires every month stops meaning anything. The
+   per-month value sits above its bar rather than on a hover layer, since eight
+   readings fit and a tooltip would hide them behind a gesture. */
+.bp-bars {
+  list-style: none;
+  margin: var(--space-5) 0 0;
+  padding: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  align-items: end;
+}
+.bp-bar-col {
+  display: grid;
+  grid-template-rows: auto 96px auto;
+  gap: 5px;
+  justify-items: center;
+  min-width: 0;
+}
+.bp-bar-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.bp-bar-track {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 100%;
+  padding: 0 3px;
+  box-sizing: border-box;
+}
+.bp-bar {
+  width: 100%;
+  background: var(--accent);
+  border-radius: 4px 4px 0 0;
+  min-height: 2px;
+}
+.bp-bar.is-latest { background: var(--amber); }
+.bp-bar-label {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.bp-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 11px;
+}
+.bp-facts li {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.55;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border);
+}
+.bp-facts strong { color: var(--text-primary); font-weight: 600; }
 
 /* Net worth banner */
 .ov-nw-banner {
@@ -315,6 +491,28 @@
   text-align: right;
   font-family: 'DM Mono', ui-monospace, monospace;
 }
+
+/* An account-backed row is a read-only reflection of the Credit cards list
+   above. Same metrics as .ov-debt-input so locked and editable rows line up in
+   the same columns, but with no border, no focus ring and no caret to suggest
+   otherwise. */
+.ov-debt-static {
+  display: block;
+  font-size: var(--text-base);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-primary);
+}
+.ov-debt-static.ov-num {
+  text-align: right;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.ov-debt-source-note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
 .ov-debt-input::placeholder { color: var(--text-faint); }
 
 /* Hide native number spinners by default; reveal on hover/focus so the
@@ -369,6 +567,9 @@ input[type="number"]:focus::-webkit-inner-spin-button {
   font-family: inherit;
 }
 .ov-apr-empty:hover { color: var(--accent); }
+/* The same "no APR" slot on a locked row: a statement, not an invitation. */
+.ov-apr-empty--static { cursor: default; }
+.ov-apr-empty--static:hover { color: var(--text-faint); }
 
 .ov-apr-info-wrap { position: relative; display: inline-flex; }
 .ov-apr-info-btn {

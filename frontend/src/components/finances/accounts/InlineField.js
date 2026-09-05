@@ -8,7 +8,9 @@ import React, { useEffect, useRef, useState } from 'react';
 //   value     — current displayed value (number | string | null)
 //   onChange  — fired with the parsed value on blur (string for text fields,
 //               number or null for numeric fields)
-//   type      — 'number' | 'text' (default 'text')
+//   type      — 'number' | 'text' | 'date' (default 'text'). 'date' renders a
+//               real date input (native calendar picker, still typeable) and
+//               commits on change; the others commit on blur.
 //   prefix    — string shown before value when not focused (e.g. '$')
 //   suffix    — string shown after value when not focused (e.g. '%')
 //   align     — 'left' | 'right' (default 'left')
@@ -17,6 +19,9 @@ import React, { useEffect, useRef, useState } from 'react';
 //   ariaLabel — accessible name, for fields with no visible <label>
 //   inputMode — passed to <input> (defaults from type)
 //   step, min, max — passed to <input>
+//   autoFocus — for a field a caller opened on purpose (see the credit-limit
+//               field in AccountListRow's drawer). The drawer mounts when it
+//               opens, so the focus lands with it rather than on page load.
 export default function InlineField({
   value,
   onChange,
@@ -30,6 +35,7 @@ export default function InlineField({
   step,
   min,
   max,
+  autoFocus = false,
 }) {
   const ref = useRef(null);
   const [focused, setFocused] = useState(false);
@@ -48,10 +54,35 @@ export default function InlineField({
 
   const empty = (value === null || value === undefined) || value === '';
 
+  // A real date input: the browser supplies a calendar picker and still lets
+  // the date be typed, which a text field with a YYYY-MM-DD placeholder only
+  // ever did the hard way. It needs none of the draft/prefix/suffix machinery
+  // below — a date input reports a value only once it holds a complete date,
+  // so a change *is* the commit, and partial typing never reaches onChange.
+  if (type === 'date') {
+    return (
+      <input
+        ref={ref}
+        className={`ifield ${empty ? 'ifield-empty' : ''} ${className}`}
+        type="date"
+        aria-label={ariaLabel}
+        value={value ?? ''}
+        min={min}
+        max={max}
+        onChange={(e) => onChange?.(e.target.value || null)}
+        autoFocus={autoFocus}
+      />
+    );
+  }
+
   const handleFocus = () => {
     setFocused(true);
     setDraft((value === null || value === undefined) ? '' : String(value));
-    requestAnimationFrame(() => ref.current?.select());
+    // Select-on-focus only where there is something to select. On an empty
+    // field the deferred select had nothing to do but race the first
+    // keystroke, which it swallowed — typing "3500" into an empty limit
+    // landed as "500".
+    if (!empty) requestAnimationFrame(() => ref.current?.select());
   };
 
   const handleBlur = () => {
@@ -94,6 +125,7 @@ export default function InlineField({
       step={step}
       min={min}
       max={max}
+      autoFocus={autoFocus}
     />
   );
 }

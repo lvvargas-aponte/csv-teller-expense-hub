@@ -3,7 +3,6 @@
 Reuses helpers in :mod:`analytics` so this stays a thin serializer over
 data the advisor already computes.
 """
-import logging
 from datetime import date
 from typing import Any, Dict, List
 
@@ -11,9 +10,7 @@ from fastapi import APIRouter
 
 import analytics
 import state
-from helpers import txn_direction
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -35,7 +32,13 @@ async def dashboard(months: int = 6) -> Dict[str, Any]:
         "spending_by_month": trimmed,
         "monthly_totals": monthly_totals,
         "net_worth_timeseries": analytics.compute_net_worth_timeseries(months),
-        "recurring_charges": analytics.detect_recurring_charges()[:10],
+        # Bills and subscriptions have their own sections on Commitments; this
+        # card is the third bucket — what repeats without being an obligation.
+        "recurring_charges": [
+            r for r in analytics.detect_recurring_charges()
+            if r.get("commitment_type") == "recurring_spend"
+            and r.get("status") != "dormant"
+        ][:10],
         "balance_trend": analytics.compute_balance_trend(),
         "spend_comparison": analytics.compute_month_to_date_comparison(),
     }
@@ -45,12 +48,16 @@ async def dashboard(months: int = 6) -> Dict[str, Any]:
 async def income_vs_expenses(months: int = 6) -> Dict[str, Any]:
     """Per-month income (inflows) vs. expenses (outflows) with surplus/deficit.
 
-    Income is the inverse of the expense filter in
-    ``analytics.group_debit_spending``: positive inflows on a non-credit
-    account, excluding tagged internal transfers.
+    Both sides go through the shared filters — ``analytics._is_expense`` and
+    ``analytics._is_income_candidate`` — rather than a second definition here.
+    The hand-rolled income test this replaced tested ``"credit" in
+    account_type``, and SimpleFIN puts the account's *display name* in that
+    field, so every card payment landing on a card counted as household
+    income. August reported $15,148 against a real payroll of $8,238.
     """
     months = max(3, min(24, int(months)))
 
+    credit_ids = analytics._credit_account_ids()
     income_by_month: Dict[str, float] = {}
     expense_by_month: Dict[str, float] = {}
 
@@ -71,15 +78,12 @@ async def income_vs_expenses(months: int = 6) -> Dict[str, Any]:
             expense_by_month[month_key] = expense_by_month.get(month_key, 0.0) + amount
             continue
 
-        # Income side: positive inflows on a non-credit account, excluding
-        # tagged internal transfers.
+        # Income side: the same test paycheck detection uses, so a card
+        # payment, a Zelle split and a P2P transfer are excluded here exactly
+        # as they are there.
         if txn.get("transfer_to_account_id"):
             continue
-        if txn_direction(txn) == "inflow" and amount > 0:
-            acct_type = (txn.get("account_type") or "").lower()
-            if "credit" in acct_type:
-                # Credit-card payments / refunds aren't household income.
-                continue
+        if amount > 0 and analytics._is_income_candidate(txn, credit_ids):
             income_by_month[month_key] = income_by_month.get(month_key, 0.0) + amount
 
     all_months = sorted(set(income_by_month) | set(expense_by_month))[-months:]

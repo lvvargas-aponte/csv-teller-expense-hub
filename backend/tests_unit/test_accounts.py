@@ -300,3 +300,173 @@ class TestAccountsMetadata:
         assert set(subtypes) == set(analytics._INVESTMENT_SUBTYPES)
         assert "roth ira" in subtypes
         assert subtypes == sorted(subtypes)
+
+
+class TestManualCreditAvailable:
+    """A manual card's entered available credit used to be overwritten with the
+    amount owed, so the Add form asked for a figure it then threw away — and
+    the Accounts row printed the balance twice, once captioned "available"."""
+
+    def _add(self, client, **over):
+        body = {
+            "institution": "Discover", "name": "Store Card", "type": "credit",
+            "ledger": 1200.0, "available": 3800.0,
+        }
+        body.update(over)
+        return client.post("/api/balances/manual", json=body).json()
+
+    def _row(self, client, acct_id):
+        rows = client.get("/api/balances/summary").json()["accounts"]
+        return next(r for r in rows if r["id"] == acct_id)
+
+    def test_entered_available_credit_survives_the_summary(self, client):
+        created = self._add(client)
+
+        row = self._row(client, created["id"])
+        assert row["ledger"] == 1200.0
+        assert row["available"] == 3800.0
+
+    def test_nothing_entered_still_mirrors_what_is_owed(self, client):
+        """The shape every SimpleFIN credit row has. The UI reads
+        available == ledger as "no available-credit figure known"."""
+        created = self._add(client, available=0.0)
+
+        row = self._row(client, created["id"])
+        assert row["available"] == row["ledger"] == 1200.0
+
+    def test_totals_ignore_available_on_a_credit_row(self, client):
+        """Debt and net worth are computed from `ledger`; changing what
+        `available` carries must not move either."""
+        self._add(client)
+        entered = client.get("/api/balances/summary").json()
+
+        state._manual_accounts.clear()
+        self._add(client, available=0.0)
+        mirrored = client.get("/api/balances/summary").json()
+
+        assert entered["total_credit_debt"] == mirrored["total_credit_debt"] == 1200.0
+        assert entered["net_worth"] == mirrored["net_worth"]
+
+
+class TestClosedAccounts:
+    """SimpleFIN has no open/closed concept — the protocol's Account object has
+    no status field at all — so a closed account keeps arriving on every fetch.
+    ``account_details.closed_on`` is the user's way to say so. A closed account
+    keeps its row and its history but counts toward no total."""
+
+    def _add(self, client, **over):
+        body = {
+            "institution": "Barclays", "name": "Old Card", "type": "credit",
+            "ledger": 500.0, "available": 0.0,
+        }
+        body.update(over)
+        return client.post("/api/balances/manual", json=body).json()["id"]
+
+    def _close(self, client, acct_id, on="2026-05-01"):
+        client.put(f"/api/accounts/{acct_id}/details", json={"closed_on": on})
+
+    def _row(self, summary, acct_id):
+        return next(r for r in summary["accounts"] if r["id"] == acct_id)
+
+    def test_closed_credit_leaves_the_totals_but_keeps_its_row(self, client):
+        acct_id = self._add(client)
+        before = client.get("/api/balances/summary").json()
+        assert before["total_credit_debt"] == 500.0
+
+        self._close(client, acct_id)
+        after = client.get("/api/balances/summary").json()
+
+        assert after["total_credit_debt"] == 0.0
+        assert after["net_worth"] == before["net_worth"] + 500.0
+        row = self._row(after, acct_id)
+        assert row["closed_on"] == "2026-05-01"
+
+    def test_closed_cash_leaves_the_cash_total(self, client):
+        acct_id = self._add(
+            client, type="depository", name="Old Savings",
+            available=2500.0, ledger=2500.0,
+        )
+        assert client.get("/api/balances/summary").json()["total_cash"] == 2500.0
+
+        self._close(client, acct_id)
+        after = client.get("/api/balances/summary").json()
+
+        assert after["total_cash"] == 0.0
+        assert self._row(after, acct_id)["closed_on"] == "2026-05-01"
+
+    def test_clearing_the_date_reopens_the_account(self, client):
+        acct_id = self._add(client)
+        self._close(client, acct_id)
+        assert client.get("/api/balances/summary").json()["total_credit_debt"] == 0.0
+
+        client.put(f"/api/accounts/{acct_id}/details", json={"closed_on": None})
+        after = client.get("/api/balances/summary").json()
+
+        assert after["total_credit_debt"] == 500.0
+        assert self._row(after, acct_id)["closed_on"] is None
+
+    def test_closed_card_is_absent_from_utilization(self, client):
+        """Its limit is gone with it — counting it would divide the balances by
+        headroom that no longer exists."""
+        acct_id = self._add(client)
+        client.put(
+            f"/api/accounts/{acct_id}/details",
+            json={"credit_limit": 2000.0},
+        )
+        before = client.get("/api/accounts/credit-health").json()
+        assert [a["account_id"] for a in before["accounts"]] == [acct_id]
+        assert before["overall_utilization_pct"] == 25.0
+
+        client.put(
+            f"/api/accounts/{acct_id}/details",
+            json={"credit_limit": 2000.0, "closed_on": "2026-05-01"},
+        )
+        after = client.get("/api/accounts/credit-health").json()
+
+        assert after["accounts"] == []
+        assert after["overall_utilization_pct"] is None
+
+
+class TestInstallmentVocabulary:
+    """The set lived in credit_health_service and credit_factors as two copies (the latter since deleted).
+    It now has one owner in analytics, served from here so the JS side does not
+    become a third."""
+
+    def test_metadata_exposes_the_installment_subtypes(self, client):
+        r = client.get("/api/accounts/metadata")
+
+        assert r.status_code == 200
+        subtypes = r.json()["installment_subtypes"]
+        assert set(subtypes) == set(analytics._INSTALLMENT_SUBTYPES)
+        assert "mortgage" in subtypes
+        assert subtypes == sorted(subtypes)
+
+    def test_is_installment_requires_a_credit_account(self):
+        assert analytics.is_installment("credit", "mortgage") is True
+        assert analytics.is_installment("credit", "MORTGAGE") is True
+        assert analytics.is_installment("credit", "credit_card") is False
+        # A checking account someone labelled "loan" is still not credit.
+        assert analytics.is_installment("depository", "loan") is False
+
+    def test_a_loan_is_still_left_out_of_utilization(self, client, monkeypatch):
+        """Guards the import refactor: the behaviour these two modules shared
+        must survive them no longer each declaring the set."""
+        monkeypatch.setattr(state, "SIMPLEFIN_ACCESS_URLS", [])
+        created = client.post(
+            "/api/balances/manual",
+            json={
+                "institution": "Truist", "name": "Mortgage", "type": "credit",
+                "subtype": "loan", "ledger": 400000.0, "available": 0.0,
+            },
+        ).json()
+        client.put(
+            f"/api/accounts/{created['id']}/details", json={"credit_limit": 500000.0}
+        )
+
+        health = client.get("/api/accounts/credit-health").json()
+
+        # Not merely unrated — absent. A 500k limit on a mortgage would swamp
+        # every card in the ratio, and the row itself carried no percentage to
+        # show, so the composition drops it rather than listing it blank.
+        assert all(a["account_id"] != created["id"] for a in health["accounts"])
+        assert health["overall_utilization_pct"] is None

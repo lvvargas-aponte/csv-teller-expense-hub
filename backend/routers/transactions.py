@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile, File
 
+import categories_service
 import categorization_service
 import state
 from csv_parser import CSVProcessorService, dedupe_key
@@ -215,6 +216,9 @@ async def upload_csv(
 
         if new_transactions:
             state._transactions_store.save()
+            # Register labels this import introduced, once for the batch, so a
+            # category the bank invented can still be renamed or merged.
+            categories_service.ensure_many(t.category for t in new_transactions)
 
         if resolved_account_id and statement_balance is not None:
             acct = state._manual_accounts[resolved_account_id]
@@ -540,64 +544,6 @@ async def bulk_set_reviewed(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"updated": len(updated), "not_found": not_found}
 
 
-@router.get("/categories")
-async def list_categories() -> Dict[str, Any]:
-    """Return all known categories: union of distinct transaction categories,
-    budget categories, and categorizer defaults. Case-insensitive dedup,
-    sorted alphabetically.
-
-    ``counts`` carries how many transactions currently carry each label,
-    keyed by the same canonical casing as ``categories``. Categories that
-    exist only as a budget or a built-in default report 0.
-    """
-    from categorizer import known_categories
-
-    names = sorted(known_categories(), key=str.lower)
-    counts = {name: 0 for name in names}
-    canonical = {name.lower(): name for name in names}
-    # Tallied in the store rather than by walking every transaction here.
-    for raw, n in state.stored_transactions.count_by_field("category").items():
-        name = canonical.get(raw.strip().lower())
-        if name:
-            counts[name] += n
-
-    return {"categories": names, "counts": counts}
-
-
-@router.delete("/categories/{name}")
-async def delete_category(name: str) -> Dict[str, Any]:
-    """Remove a category from circulation by clearing it on every transaction
-    that uses it (case-insensitive). Leaves Budget rows alone — the caller
-    can decide whether to also delete the budget.
-    """
-    target = (name or "").strip().lower()
-    if not target:
-        raise HTTPException(status_code=422, detail="Category name is required.")
-
-    cleared = 0
-    for tid, txn in list(state.stored_transactions.items()):
-        current = (txn.get("category") or "").strip().lower()
-        if current == target:
-            # The user asked for this category to stop existing, so the clear
-            # outranks whatever set it.
-            categorization_service.apply(txn, None, categorization_service.MANUAL)
-            state.stored_transactions[tid] = txn
-            cleared += 1
-
-    if cleared:
-        state._transactions_store.save()
-
-    budget_exists = bool(state.budgets) and any(
-        (k or "").strip().lower() == target for k in state.budgets.keys()
-    )
-
-    return {
-        "removed": name,
-        "cleared_txn_count": cleared,
-        "budget_exists": budget_exists,
-    }
-
-
 # Static-path PUT defined BEFORE the catch-all PUT below so FastAPI's
 # in-order matching doesn't route /transactions/categories into
 # /transactions/{transaction_id}.
@@ -605,8 +551,10 @@ async def delete_category(name: str) -> Dict[str, Any]:
 async def apply_categories(req: ApplyCategoriesRequest):
     """Apply a list of {transaction_id, category} assignments.
 
-    Each accepted assignment also flips ``reviewed=True`` because the user
-    explicitly chose a category. Empty-string category clears.
+    ``reviewed`` is left exactly as it was: categorising is one decision about
+    a row, and reviewing it is another. A suggested category the user accepted
+    still leaves the row in the queue until they review it themselves.
+    Empty-string category clears.
     """
     updated: List[Dict[str, Any]] = []
     not_found: List[str] = []
@@ -617,7 +565,6 @@ async def apply_categories(req: ApplyCategoriesRequest):
             continue
         t = state.stored_transactions[item.transaction_id]
         categorization_service.apply(t, item.category, categorization_service.MANUAL)
-        t["reviewed"] = True
         state.stored_transactions[item.transaction_id] = t
         updated.append(t)
 

@@ -27,6 +27,17 @@ export function pathForTab(tabId) {
   return TAB_TO_PATH[tabId] ?? '/';
 }
 
+// An insight's `action.target` is either a real path or a legacy tab id.
+// Both the click handler and the renderer need the resolved path — the
+// renderer to drop a link that points at the page it is already on — so the
+// resolution lives here rather than being written out twice.
+export function pathForTarget(target) {
+  if (!target) return null;
+  if (target.route) return target.route;
+  if (target.financesTab) return pathForTab(target.financesTab);
+  return null;
+}
+
 export function resolveLegacyRoute(storage) {
   let stored = null;
   try {

@@ -29,10 +29,6 @@ export const NAV = [
         path: '/plan/commitments',
         label: 'Commitments',
         icon: 'calendar',
-        children: [
-          { id: 'due', path: '/plan/commitments/due', label: 'Due soon' },
-          { id: 'recurring', path: '/plan/commitments/recurring', label: 'Recurring' },
-        ],
       },
     ],
   },

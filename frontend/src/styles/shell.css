@@ -66,6 +66,21 @@
   position: relative;
 }
 .dashboard-card .finances-section-title { margin: 0; }
+
+/* height: 100% above is for cards that sit in a grid cell and must fill it.
+   A card placed straight into a page (Debt) has no row to fill, and the
+   percentage resolves against the flex-sized .eh-content — which drew the
+   Credit Utilization card the full height of the page. The padding matches
+   .finances-section so a page-level card sits flush with the sections above
+   and below it; grid cards keep the denser 14px. The margin restores the
+   rhythm .dashboard-card zeroes out — .ov-card below it carries only a
+   margin-bottom, so without this the two cards touch. */
+.eh-content > .dashboard-card {
+  height: auto;
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
 .react-grid-item.react-grid-placeholder {
   background: var(--bg-selected);
   opacity: 0.4;
@@ -203,7 +218,7 @@
 .advisor-input-row { display: flex; gap: var(--space-2); align-items: flex-end; }
 .advisor-input { flex: 1; resize: vertical; min-height: 44px; }
 
-/* ── ExpensesHub Dashboard shell ──────────────────────────────────────── */
+/* ── Financial Freedom dashboard shell ──────────────────────────────────────── */
 .eh-app {
   display: flex;
   flex-direction: row;
@@ -224,8 +239,17 @@
   position: sticky;
   top: 0;
   height: 100vh;
+  /* No global border-box reset: without this the 40px of vertical padding is
+     added to 100vh and the footer sits below the fold on every screen. */
+  box-sizing: border-box;
   overflow-y: auto;
   overflow-x: hidden;
+  /* `position: sticky` always opens a stacking context, so anything inside the
+     rail is sealed into this layer no matter how high its own z-index climbs —
+     which is why the health-score popover kept painting under the page. The
+     rail sits above the content (topbar included, at 10) so its popover can
+     escape over the cards. The two never overlap otherwise. */
+  z-index: 30;
   transition: width 0.18s ease, min-width 0.18s ease;
 }
 
@@ -237,7 +261,12 @@
 /* The health card needs its label and number to mean anything, so it goes;
    the utility row survives as centred icons. */
 .eh-sidebar--collapsed .eh-health-card { display: none; }
-.eh-sidebar--collapsed .eh-sidebar-utils { padding-top: var(--space-3); }
+.eh-sidebar--collapsed .eh-sidebar-utils {
+  /* No room for two labelled cells on a 64px rail — stack the icons. */
+  flex-direction: column;
+  gap: 2px;
+  padding-top: var(--space-3);
+}
 .eh-sidebar--collapsed .eh-sidebar-util { justify-content: center; gap: 0; padding: 9px 0; }
 .eh-sidebar--collapsed .eh-sidebar-nav { padding: 0 var(--space-2); }
 .eh-sidebar--collapsed .eh-nav-item {
@@ -352,30 +381,53 @@
   display: flex; align-items: center; gap: var(--space-2);
 }
 /* The shared info bubble is styled for the dark banner; recolor it for the
-   light sidebar card and open it rightward so it clears the narrow rail. */
+   light sidebar card. */
 .eh-health-card-score .eh-info-btn {
   background: var(--accent); border-color: var(--accent); color: var(--text-inverse);
 }
-.eh-health-card-score .eh-info-panel { left: 0; right: auto; }
+/* This one panel cannot be positioned like the others. Absolute placement put
+   a 320px panel inside a 220px rail whose `overflow-x: hidden` cut it off, and
+   `top: 100%` opened it downward from a card already sitting at the bottom of
+   the viewport — so it ran off the screen and under the page behind it.
+   Fixed positioning escapes the rail's clipping (sticky ancestors don't
+   contain fixed descendants) and anchors it to the bottom-left of the window
+   instead, opening up and to the right into the page. The health card is
+   hidden on the collapsed rail, so 228px is always the right offset. */
+.eh-health-card-score .eh-info-panel {
+  position: fixed;
+  left: 228px;
+  right: auto;
+  bottom: var(--space-4);
+  top: auto;
+  /* Five signal bullets plus the weighting explanation outgrow a short
+     viewport; the panel scrolls rather than escaping the top of the screen. */
+  max-height: calc(100vh - 2 * var(--space-4));
+  overflow-y: auto;
+  z-index: 1200;
+}
 .eh-health-card-sub { font-size: var(--text-xs); color: var(--text-muted); }
 
-/* Utility row — help and theme. Shares the nav's icon rail and label
-   mechanics (.eh-nav-icon / .eh-nav-text, which the collapsed rules already
-   handle) but stays neutral on hover so it reads as ambient chrome, not as
-   another destination. */
+/* Utility row — help and theme, side by side so the footer does not push
+   past the viewport and hide the theme control below the fold. Shares the
+   nav's icon rail and label mechanics (.eh-nav-icon / .eh-nav-text, which the
+   collapsed rules already handle) but stays neutral on hover so it reads as
+   ambient chrome, not as another destination. */
 .eh-sidebar-utils {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 .eh-sidebar-util {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px var(--space-3);
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  padding: 7px 6px;
   border-radius: 8px;
   font-family: inherit;
   font-size: var(--text-sm);
@@ -415,7 +467,22 @@
   font-weight: 700;
   letter-spacing: -0.3px;
   color: var(--text-primary);
+  margin: 0;
 }
+/* The greeting moved here from the banner: it is pleasant, it is not a
+   finding, and it costs one line instead of a third of the fold. */
+.eh-topbar-date { font-size: var(--text-xs); color: var(--text-muted); margin-top: 1px; }
+.eh-topbar-controls { display: flex; align-items: center; gap: var(--space-3); }
+.eh-topbar-blur {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.eh-topbar-blur:hover { color: var(--text-primary); }
 .eh-range-pill {
   display: inline-flex;
   background: var(--accent-light);
@@ -475,62 +542,118 @@
 
 .eh-content { padding: var(--space-5) 28px; }
 
-/* Health banner */
-.eh-banner {
-  position: relative;
-  background: var(--brand-gradient);
+/* ── Balance-sheet hero ───────────────────────────────
+   Replaced a gradient banner and a row of four KPI tiles. The banner spent
+   ~180px on a greeting, two decorative circles and a line of encouragement;
+   the tiles gave four unequal readings equal weight, and one of them reported
+   a spending collapse whenever a sync ran late. */
+.eh-hero {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 20px var(--space-5);
-  margin-bottom: 20px;
-  color: var(--text-inverse);
+  padding: 20px 22px;
+  margin-bottom: var(--space-4);
+}
+.eh-hero-top {
   display: flex;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: var(--space-4);
-  /* Visible so the health-score info tooltip can extend below the banner.
-     Decorative circles are clipped by .eh-banner-decor instead. */
-  overflow: visible;
+  gap: var(--space-5);
+  flex-wrap: wrap;
 }
-.eh-banner-decor {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  overflow: hidden;
-  pointer-events: none;
+.eh-hero-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
-.eh-banner-decor::before, .eh-banner-decor::after {
-  content: '';
-  position: absolute;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.06);
-  pointer-events: none;
+.eh-hero-figure {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 44px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -2px;
+  margin-top: 6px;
+  color: var(--status-good-text);
+  transition: filter 0.3s;
 }
-.eh-banner-decor::before { width: 200px; height: 200px; right: -60px; top: -80px; }
-.eh-banner-decor::after  { width: 140px; height: 140px; right: 80px; bottom: -60px; background: rgba(255,255,255,0.04); }
-.eh-banner-left { position: relative; z-index: 1; flex: 1; min-width: 0; }
-.eh-banner-greet { font-size: var(--text-base); opacity: 0.8; }
-.eh-banner-msg   { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; margin-top: var(--space-1); }
-.eh-banner-sub   { font-size: var(--text-sm); opacity: 0.75; margin-top: var(--space-1); }
-.eh-banner-actions { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
-.eh-banner-btn {
-  background: rgba(255,255,255,0.15);
-  border: 1px solid rgba(255,255,255,0.2);
-  color: var(--text-inverse);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  padding: 5px var(--space-3);
+.eh-hero-figure.is-neg { color: var(--status-bad-text); }
+
+.eh-hero-readings {
+  display: flex;
+  gap: 28px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.eh-hero-reading { display: flex; flex-direction: column; gap: 1px; }
+.eh-hero-reading-label { font-size: 10px; color: var(--text-muted); }
+.eh-hero-reading-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: var(--text-xl);
+  font-weight: 500;
+  line-height: 1.1;
+}
+.eh-hero-reading-note { font-size: 10px; color: var(--text-faint); }
+
+/* One bar, the whole position to scale. A negative net worth reads as a
+   catastrophe until the composition shows a mortgage behind it. */
+.eh-hero-bar {
+  display: flex;
+  height: 26px;
+  margin-top: 18px;
   border-radius: 6px;
-  cursor: pointer;
-  font-family: inherit;
+  overflow: hidden;
+  gap: 2px;
 }
-.eh-banner-btn:hover { background: rgba(255,255,255,0.22); }
-.eh-banner-right {
-  position: relative; z-index: 1;
-  display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
-  text-align: right;
+.eh-hero-seg { display: block; }
+.eh-hero-key {
+  display: flex;
+  gap: 18px;
+  margin-top: 9px;
+  flex-wrap: wrap;
 }
-.eh-banner-score { font-size: 40px; font-weight: 700; line-height: 1; display: inline-flex; align-items: center; gap: var(--space-2); }
-.eh-banner-score-label { font-size: var(--text-xs); opacity: 0.7; margin-top: var(--space-1); }
-.eh-banner-score-coverage { font-size: 10px; opacity: 0.6; margin-top: 2px; }
+.eh-hero-key-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+}
+.eh-hero-swatch { width: 9px; height: 9px; border-radius: 2px; }
+.eh-hero-key-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  color: var(--text-muted);
+  transition: filter 0.3s;
+}
+.eh-hero-note {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+.eh-hero-note strong {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-weight: 500;
+  color: var(--status-good-text);
+}
+
+/* A late sync is a fact about the page, not a spending result, so it says so
+   in its own strip rather than inside a tile reporting a 100% drop. */
+.eh-stale {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--amber-wash);
+  border: 1px solid var(--amber-light);
+  border-radius: 10px;
+  font-size: var(--text-sm);
+  color: var(--status-warn-text);
+}
 
 /* Info popover — the one explain-this widget (components/ui/InfoPopover.js).
    The panel only exists while open, so there is no hover-only variant to
@@ -556,14 +679,15 @@
   top: calc(100% + 8px);
   right: 0;
   width: 320px;
-  background: var(--surface-inverse);
-  color: var(--text-inverse);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
   font-size: var(--text-sm);
   font-weight: 400;
   line-height: 1.5;
   padding: 10px var(--space-3);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  box-shadow: var(--shadow);
   letter-spacing: 0;
   text-align: left;
   z-index: 1000;
@@ -594,78 +718,10 @@
 [data-theme='dark'] .recharts-default-tooltip .recharts-tooltip-item-unit {
   color: var(--text-primary) !important;
 }
-.eh-info-panel-title { font-weight: 700; font-size: var(--text-sm); margin-bottom: var(--space-1); color: var(--brand-inverse-text); }
+.eh-info-panel-title { font-weight: 700; font-size: var(--text-sm); margin-bottom: var(--space-1); color: var(--accent-strong); }
 .eh-info-panel ul { margin: var(--space-1) 0 0 var(--space-4); padding: 0; }
 .eh-info-panel li { margin-bottom: 2px; }
 
-/* KPI row */
-.eh-kpi-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-3);
-  margin-bottom: 20px;
-}
-.eh-kpi {
-  position: relative;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: var(--space-4) 18px;
-  overflow: visible;
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.eh-kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
-.eh-kpi-label {
-  font-size: var(--text-xs); font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--text-faint);
-  display: flex; align-items: center; gap: 6px;
-}
-.eh-info--kpi .eh-info-btn {
-  width: 14px; height: 14px;
-  background: transparent;
-  border: 1px solid var(--text-faint);
-  color: var(--text-faint);
-  font-size: 9px;
-  font-style: italic;
-  font-weight: 700;
-  text-transform: none;
-}
-.eh-info--kpi .eh-info-btn:hover,
-.eh-info--kpi .eh-info-btn:focus-visible {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.eh-info--kpi .eh-info-panel {
-  width: 240px;
-  right: auto; left: 0;
-  top: auto; bottom: calc(100% + 8px);
-}
-.eh-kpi-value {
-  font-size: 22px; font-weight: 700;
-  letter-spacing: -0.5px;
-  margin-top: 6px;
-  font-family: 'DM Mono', ui-monospace, monospace;
-  transition: filter 0.3s;
-}
-.eh-kpi-value--neg { color: var(--red); }
-.eh-kpi-value--pos { color: var(--good-text); }
-.eh-kpi-note {
-  margin-top: 2px;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-muted);
-}
-.eh-kpi-delta {
-  font-size: var(--text-sm); font-weight: 700; margin-top: var(--space-1);
-  display: inline-flex; gap: var(--space-1); align-items: center;
-}
-.eh-kpi-delta-suffix { color: var(--text-muted); font-weight: 500; margin-left: var(--space-1); }
-.eh-kpi-bar {
-  position: absolute; left: 16px; right: 16px; bottom: 8px;
-  height: 3px; border-radius: 99px;
-  opacity: 0.4;
-}
 
 .eh-blur { filter: blur(8px); }
 
@@ -681,10 +737,8 @@
 /* Responsive */
 @media (max-width: 900px) {
   .eh-sidebar { display: none; }
-  .eh-kpi-row { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 480px) {
-  .eh-kpi-row { grid-template-columns: 1fr; }
   .eh-content { padding: var(--space-4); }
   .eh-topbar { padding: 0 var(--space-4); }
 }
@@ -790,10 +844,324 @@
 .eh-dcard-filter-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eh-dcard-filter-amt { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
-/* KPI hover lifts above the banner so the info tooltip isn't clipped by it. */
-.eh-kpi { z-index: 1; }
-.eh-kpi:hover, .eh-kpi:focus-within { z-index: 1100; }
-.eh-banner { z-index: 0; }
+.eh-needsyou-more {
+  align-self: center;
+  margin-top: var(--space-2);
+  background: none;
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.eh-needsyou-more:hover { color: var(--text-primary); }
+
+/* Credit Utilization — the "set limit" link on a card with no stored limit.
+   Colour is inherited so the row's status colour carries through, and the
+   button sits exactly where the percentage it replaces would. */
+.eh-util-setlimit {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.eh-util-setlimit:hover,
+.eh-util-setlimit:focus-visible { text-decoration: underline; }
+
+/* Credit Utilization — hierarchy. The card used to be a flat stack of 11-13px
+   grey text, so "one card is at 46% and climbing" read at the same weight as a
+   footnote. Three things carry the rank now: the overall figure is the only
+   large number, a flagged card gets a heavier name and a thicker bar, and the
+   10%/30% shelves are drawn into every track so position is seen, not worked
+   out. */
+.eh-util-month {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.eh-util-headline { margin-bottom: var(--space-1); }
+.eh-util-headline-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+.eh-util-overall {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.eh-util-overall-pct {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -1.5px;
+}
+.eh-util-overall-note {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+}
+.eh-util-headline-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* Amber, not red: 46% is the "Watch" band in `_status_for`, and the chip must
+   agree with the row it is counting. */
+.eh-util-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--amber-wash);
+  border: 1px solid var(--amber-light);
+  border-radius: 999px;
+  padding: 5px var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--status-warn-text);
+  white-space: nowrap;
+}
+.eh-util-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+
+.eh-util-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 10px;
+  color: var(--text-faint);
+  margin: var(--space-5) 0 10px;
+}
+.eh-util-legend-rule {
+  flex-grow: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.eh-util-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.eh-util-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.eh-util-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.eh-util-card-name {
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+.eh-util-card.is-flagged .eh-util-card-name {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.eh-util-card-pct {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: var(--text-md);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.eh-util-card.is-flagged .eh-util-card-pct { font-size: var(--text-lg); }
+
+.eh-util-track {
+  position: relative;
+  height: 10px;
+  background: var(--surface-muted);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.eh-util-track.is-flagged { height: 12px; }
+.eh-util-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px 0 0 4px;
+}
+.eh-util-ghost {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.eh-util-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-mid);
+}
+
+.eh-util-card-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.eh-util-card-say {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+.eh-util-card-say strong {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.eh-util-foot {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.eh-util-foot-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.eh-util-foot-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.eh-util-foot-value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: var(--text-lg);
+  font-weight: 500;
+}
+.eh-util-foot-value.is-muted { color: var(--text-secondary); }
+
+.eh-util-missing-apr {
+  margin-top: 10px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* Spending by Category — month drill-down under the chart.
+   `flex: 1` + `min-height: 0` is what makes this card behave in the grid: the
+   chart is a fixed 240px, so the drill-down absorbs whatever height the row
+   gives the card (.dashboard-card is height:100%, and the row is sized by the
+   taller Cash Flow card beside it) instead of leaving that space blank. The
+   list scrolls rather than pushing the card past its neighbour. */
+.eh-spendcat-drill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+}
+.eh-spendcat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+.eh-spendcat-month {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.eh-spendcat-month:hover { border-color: var(--border); color: var(--text-primary); }
+.eh-spendcat-total {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.eh-spendcat-none {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-style: italic;
+}
+.eh-spendcat-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.eh-spendcat-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 0;
+  font-size: var(--text-sm);
+}
+.eh-spendcat-swatch {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.eh-spendcat-name {
+  flex: none;
+  width: 33%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.eh-spendcat-bar {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+.eh-spendcat-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+.eh-spendcat-amt {
+  flex: none;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+/* Spending is the one metric where up is the bad direction. */
+.eh-spendcat-delta {
+  flex: none;
+  width: 52px;
+  text-align: right;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.eh-spendcat-delta--up   { color: var(--status-bad-text); }
+.eh-spendcat-delta--down { color: var(--status-good-text); }
+.eh-spendcat-delta--flat,
+.eh-spendcat-delta--none { color: var(--text-faint); }
 
 /* Recurring Charges — design-spec grid layout */
 .eh-recurring-grid {
@@ -843,17 +1211,57 @@
    by Category, a 240px chart, was drawn as an ~800px card next to Cash Flow
    (two charts plus the outlook) with the difference as empty card. Cards now
    size to their own content and bottoms are allowed to be ragged. */
+/* A wide main region and a narrow side region, each stacking on its own.
+   This is not one grid of cards: a grid row is as tall as its tallest member,
+   and Cash Flow runs ~1200px (it carries Monthly Spending, a 30-day outlook
+   AND income-vs-expenses). Sat in a row beside a ~450px Net Worth card, it
+   held that row open and left ~750px of dead space under Net Worth before the
+   next row could start. Two regions have no shared rows, so a tall card in one
+   pushes nothing in the other. */
 .eh-cards-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  align-items: start;
+  grid-template-columns: 2fr 1fr;
   gap: var(--space-4);
 }
 .eh-cards-grid > * { min-width: 0; }
-.eh-cards-grid .eh-card-full,
-.eh-card-full { grid-column: 1 / -1; }
-@media (max-width: 900px) {
+.eh-card-main,
+.eh-card-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+/* Both regions take the row's full height (the grid's default stretch), and
+   the last card in each absorbs whatever slack is left — so the two columns
+   finish flush instead of one trailing a ragged 100px above the other. Only
+   the last card grows: letting every card share the slack would quietly
+   restyle the ones whose height is deliberate. */
+.eh-card-main > :last-child,
+.eh-card-side > :last-child {
+  flex: 1 1 auto;
+}
+/* .dashboard-card carries `height: 100%` for the react-grid-layout cells it
+   was written for. Here the region is a flex column with a definite height, so
+   that 100% resolves against the whole column and every card tries to fill it
+   — which stretched Upcoming Bills by 160px of nothing. Height comes from the
+   flex item in this layout, so the cards hand it back. */
+.eh-card-main > .dashboard-card,
+.eh-card-side > .dashboard-card,
+.eh-card-pair > .dashboard-card {
+  height: auto;
+}
+/* The two short cards sit side by side inside the main region rather than each
+   taking its full width, which is what keeps them from reading as banners. */
+.eh-card-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.eh-card-full { margin-bottom: var(--space-4); }
+@media (max-width: 1100px) {
   .eh-cards-grid { grid-template-columns: 1fr; }
-  .eh-card-full { grid-column: 1; }
+}
+@media (max-width: 700px) {
+  .eh-card-pair { grid-template-columns: 1fr; }
 }
 

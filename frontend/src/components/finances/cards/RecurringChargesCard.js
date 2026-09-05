@@ -41,22 +41,6 @@ export function prettifyName(description = '') {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Categories that belong to Upcoming Bills (shown above on the Bills page),
-// so they shouldn't repeat in the Recurring Charges section. Mirrors the
-// backend ``BILL_CATEGORIES`` allowlist in ``routers/bills.py``.
-const BILL_CATEGORIES = new Set(['utilities', 'mortgage', 'rent']);
-
-// "Obviously needed" essentials — necessary spending that happens to repeat
-// monthly, but isn't a subscription or commitment the user can cancel. Filter
-// these out of the Bills-page Recurring Charges view so the list only shows
-// optional/managed commitments (insurance, subscriptions, therapy, etc.).
-const ESSENTIAL_CATEGORIES = new Set([
-  'groceries', 'grocery', 'gas', 'fuel', 'restaurants', 'restaurant',
-  'fast food', 'dining', 'food & dining', 'food and dining', 'coffee',
-  'transit', 'parking', 'rideshare', 'taxi', 'uber', 'lyft',
-  'general', 'uncategorized',
-]);
-
 // Project the next occurrence of a merchant's typical day-of-month, given the
 // last-seen date. Mirrors backend ``_next_due_date`` so the Bills detail view
 // shows the same "next due" the API would.
@@ -97,19 +81,12 @@ export default function RecurringChargesCard({ dashboard, loading, error, index,
   const data = dashboard ?? selfData;
   const effectiveLoading = loading || (selfFetch && !selfData && !selfErr);
   const effectiveError = error || selfErr;
-  const rawCharges = data?.recurring_charges || [];
-  // On the Bills page (variant='detail'), drop charges that are already shown
-  // in the Upcoming Bills card above, and drop daily essentials (groceries,
-  // gas, dining, etc.) that aren't manageable commitments. Dashboard keeps
-  // the full list.
-  const charges = variant === 'detail'
-    ? rawCharges.filter((c) => {
-        const cat = (c.category || '').trim().toLowerCase();
-        if (BILL_CATEGORIES.has(cat)) return false;
-        if (ESSENTIAL_CATEGORIES.has(cat)) return false;
-        return true;
-      })
-    : rawCharges;
+  // No client-side filtering: /api/dashboard already sends only merchants the
+  // detector bucketed as commitment_type "recurring_spend" and still seen
+  // recently. The category list that used to live here was a fourth copy of
+  // that rule, and it dropped every uncategorized merchant — which, once
+  // bills and subscriptions moved to their own sections, was all of them.
+  const charges = data?.recurring_charges || [];
   const empty = !effectiveLoading && !effectiveError && charges.length === 0;
   const total = charges.reduce((s, c) => s + (c.estimated_monthly_cost || 0), 0);
 
@@ -164,14 +141,14 @@ export default function RecurringChargesCard({ dashboard, loading, error, index,
                 const db = b.next ? b.next.daysUntil : 9999;
                 return da - db;
               })
-              .map(({ c, next }, i) => {
+              .map(({ c, next }) => {
                 const { icon, color } = pickIcon(c.sample_description, c.category);
                 const name = prettifyName(c.sample_description);
                 const dueLabel = next ? next.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
                 const daysLabel = next ? (next.daysUntil === 0 ? 'today' : `in ${next.daysUntil}d`) : '';
                 const urgent = next && next.daysUntil <= 5;
                 return (
-                  <tr key={`${c.merchant_key}-${i}`} style={{ borderTop: '1px solid var(--border)' }}>
+                  <tr key={c.merchant_key} style={{ borderTop: '1px solid var(--border)' }}>
                     <td style={{ padding: '8px 8px 8px 0' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{
@@ -207,14 +184,14 @@ export default function RecurringChargesCard({ dashboard, loading, error, index,
         </table>
       ) : (
         <div className="eh-recurring-grid">
-          {charges.map((c, i) => {
+          {charges.map((c) => {
             const { icon, color } = pickIcon(c.sample_description, c.category);
             const name = prettifyName(c.sample_description);
             const detail = c.category && c.category !== 'Uncategorized'
               ? c.category
               : `${c.months_seen || 0} months · ${c.occurrences || 0} charges`;
             return (
-              <div key={`${c.merchant_key}-${i}`} className="eh-recurring-row">
+              <div key={c.merchant_key} className="eh-recurring-row">
                 <div className="eh-recurring-icon" style={{ background: color }} aria-hidden="true">{icon}</div>
                 <div className="eh-recurring-info">
                   <div className="eh-recurring-name">{name}</div>

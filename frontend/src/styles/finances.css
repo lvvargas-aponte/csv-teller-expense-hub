@@ -97,9 +97,6 @@
 [data-theme='dark'] .tx-rail-merchant { background: var(--bg-secondary); border-color: var(--border); color: var(--text-secondary); }
 [data-theme='dark'] .tx-rail-catline,
 [data-theme='dark'] .tx-rail-catline b { color: var(--text-secondary); }
-[data-theme='dark'] .tx-rail-card--dark { background: var(--good-inverse-bg); border-color: var(--border-inverse); }
-[data-theme='dark'] .tx-rail-card--dark .tx-rail-big { color: var(--good-inverse-text); }
-[data-theme='dark'] .tx-rail-card--dark .tx-rail-hint { color: var(--text-inverse-muted); }
 
 /* Overview / Finances cards */
 [data-theme='dark'] .ov-card { background: var(--bg-card); border-color: var(--border); box-shadow: var(--shadow-sm); }

@@ -46,12 +46,12 @@ async def _ensure_user() -> Dict[str, str]:
     creds = _stored_creds()
     if creds:
         return creds
-    user_id = f"expense-hub-{uuid.uuid4().hex[:12]}"
+    user_id = f"financial-freedom-{uuid.uuid4().hex[:12]}"
     try:
         creds = await state.snaptrade.register_user(user_id)
     except Exception as e:
         logger.warning(f"[SnapTrade] register_user failed: {e}")
-        raise HTTPException(status_code=502, detail="SnapTrade user registration failed.")
+        raise HTTPException(status_code=502, detail="SnapTrade user registration failed.") from e
     if not creds.get("user_secret"):
         raise HTTPException(status_code=502, detail="SnapTrade did not return a user secret.")
     state.snaptrade_creds[_HOUSEHOLD] = creds
@@ -97,7 +97,7 @@ async def connect_snaptrade() -> Dict[str, str]:
         url = await state.snaptrade.login_url(creds["user_id"], creds["user_secret"])
     except Exception as e:
         logger.warning(f"[SnapTrade] login_url failed: {e}")
-        raise HTTPException(status_code=502, detail="Could not start the SnapTrade connection.")
+        raise HTTPException(status_code=502, detail="Could not start the SnapTrade connection.") from e
     if not url:
         raise HTTPException(status_code=502, detail="SnapTrade returned no connection URL.")
     return {"redirect_uri": url}
@@ -210,7 +210,7 @@ async def sync_snaptrade() -> Dict[str, Any]:
         )
     except Exception as e:
         logger.warning(f"[SnapTrade] holdings fetch failed: {e}")
-        raise HTTPException(status_code=502, detail="Could not fetch holdings from SnapTrade.")
+        raise HTTPException(status_code=502, detail="Could not fetch holdings from SnapTrade.") from e
 
     synced_accounts: List[Dict[str, Any]] = []
     results: List[Dict[str, Any]] = []
@@ -270,7 +270,7 @@ async def sync_snaptrade_account(account_id: str) -> Dict[str, Any]:
         )
     except Exception as e:
         logger.warning(f"[SnapTrade] single-account fetch failed for {account_id}: {e}")
-        raise HTTPException(status_code=502, detail="Could not fetch holdings from SnapTrade.")
+        raise HTTPException(status_code=502, detail="Could not fetch holdings from SnapTrade.") from e
 
     if portfolio is None:
         raise HTTPException(status_code=404, detail="Account not found in SnapTrade.")

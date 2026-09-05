@@ -16,9 +16,11 @@ Defense-in-depth against SSRF.  Every fetch passes through:
    allowlist + private-IP guard.  Auto-following redirects would let an
    allowed origin redirect to ``http://169.254.169.254/`` and read cloud
    metadata.
-5. **Byte cap + timeout** — streamed read with a hard 10 MB ceiling and
-   60 s total timeout.  Prevents a misconfigured server from hanging a
-   worker or eating memory.
+5. **Byte cap + timeout** — streamed read with a hard ``MAX_FETCH_BYTES``
+   ceiling and ``TOTAL_TIMEOUT``.  Prevents a misconfigured server from
+   hanging a worker.  The cap is deliberately large (see the constant) so
+   real multi-hundred-page documents import; it is a runaway-stream guard,
+   not a memory budget.
 
 The fetcher returns ``(bytes, content_type, final_url)``; the caller
 decides whether to route into the PDF or HTML extractor.
@@ -95,6 +97,12 @@ def get_allowed_hosts() -> set[str]:
         import seed_loader  # local import keeps the module boot-time clean
         return BASE_ALLOWED_HOSTS | seed_loader.list_runtime_allowed_hosts()
     except Exception:
+        # Falling back to the base set narrows the allowlist, so a user's
+        # custom seed hosts silently stop resolving. That has to be visible.
+        logger.warning(
+            "[url_fetcher] runtime allowlist unavailable; using base hosts only",
+            exc_info=True,
+        )
         return set(BASE_ALLOWED_HOSTS)
 
 
@@ -104,7 +112,7 @@ def get_allowed_hosts() -> set[str]:
 # fetchers (curl, archive.org bots, RSS readers); we still identify
 # ourselves honestly in the parenthetical so server logs aren't misled.
 USER_AGENT = (
-    "Mozilla/5.0 (compatible; ExpensesHub-Knowledge/1.0; "
+    "Mozilla/5.0 (compatible; FinancialFreedom-Knowledge/1.0; "
     "+local-only personal-finance research)"
 )
 
@@ -166,7 +174,10 @@ def _check_resolves_public(host: str) -> None:
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror as e:
-        raise FetchError(f"DNS lookup failed for {host}: {e}") from e
+        # The resolver's own text can carry internal detail; the caller only
+        # needs to know the name did not resolve.
+        logger.info("[url_fetcher] DNS lookup failed for %s: %s", host, e)
+        raise FetchError(f"DNS lookup failed for {host}") from e
 
     for info in infos:
         ip_str = info[4][0]
@@ -182,9 +193,14 @@ def _check_resolves_public(host: str) -> None:
             or ip.is_multicast
             or ip.is_unspecified
         ):
+            # The resolved address is internal topology — logged, not returned.
+            logger.warning(
+                "[url_fetcher] refusing %s: resolves to private address %s",
+                host, ip_str,
+            )
             raise FetchError(
-                f"Refusing to fetch {host}: resolves to {ip_str} "
-                f"(private/loopback/reserved address)"
+                f"Refusing to fetch {host}: it resolves to a "
+                f"private/loopback/reserved address"
             )
 
 

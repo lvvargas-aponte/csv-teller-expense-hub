@@ -26,8 +26,17 @@ test('every path is unique', () => {
 });
 
 test('ALL_PATHS flattens grandchildren, not just children', () => {
-  expect(ALL_PATHS).toContain('/plan/commitments/due');
-  expect(ALL_PATHS).toContain('/plan/commitments/recurring');
+  // Commitments lost its own grandchildren when bills, subscriptions and
+  // recurring spend became three sections of one page; Ask still has some,
+  // so the flattening still needs covering.
+  expect(ALL_PATHS).toContain('/ask/memory');
+});
+
+test('commitments is a single page, not a sub-tab strip', () => {
+  const plan = NAV.find((s) => s.id === 'plan');
+  const commitments = plan.children.find((c) => c.id === 'commitments');
+  expect(commitments.children).toBeUndefined();
+  expect(ALL_PATHS).toContain('/plan/commitments');
 });
 
 test('child paths are nested under their parent', () => {

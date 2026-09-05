@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import NeedsYouFeed from '../NeedsYouFeed';
 
 jest.mock('../../../api/dashboard', () => ({ getAlerts: jest.fn() }));
@@ -106,4 +107,58 @@ test('a non-alerts source failing alone still renders normally, no error banner'
 
   expect(await screen.findByText('Visa utilization at 61%')).toBeInTheDocument();
   expect(screen.queryByText(/could not load insights/i)).toBeNull();
+});
+
+// Seven alerts is more than the feed shows at once, and enough to tell the
+// cap apart from an off-by-one.
+const manyAlerts = Array.from({ length: 7 }, (_, i) => ({
+  severity: 'warn', category: 'budget', message: `Budget ${i} is over its cap`, tab: 'budgets',
+}));
+
+test('shows five insights and keeps the rest behind a toggle', async () => {
+  getAlerts.mockResolvedValue({ data: { alerts: manyAlerts, counts: {} } });
+  render(<NeedsYouFeed />);
+
+  expect(await screen.findAllByRole('listitem')).toHaveLength(5);
+
+  await userEvent.click(screen.getByRole('button', { name: 'Show 2 more' }));
+  expect(screen.getAllByRole('listitem')).toHaveLength(7);
+
+  await userEvent.click(screen.getByRole('button', { name: 'Show less' }));
+  expect(screen.getAllByRole('listitem')).toHaveLength(5);
+});
+
+test('no toggle when everything already fits', async () => {
+  getAlerts.mockResolvedValue({ data: { alerts: manyAlerts.slice(0, 5), counts: {} } });
+  render(<NeedsYouFeed />);
+
+  expect(await screen.findAllByRole('listitem')).toHaveLength(5);
+  expect(screen.queryByRole('button', { name: /Show/ })).not.toBeInTheDocument();
+});
+
+// The cashflow alert targets the dashboard, and this feed only renders on the
+// dashboard — the link would reload the page you are reading.
+test('an action pointing at the current page is not rendered', async () => {
+  getAlerts.mockResolvedValue({ data: { alerts: [
+    { severity: 'warn', category: 'cashflow', message: 'Spending is projected to exceed income', tab: 'dashboard' },
+    { severity: 'warn', category: 'budget', message: 'Dining is over its cap', tab: 'budgets' },
+  ], counts: {} } });
+  render(<NeedsYouFeed currentPath="/" />);
+
+  await screen.findByText(/projected to exceed income/);
+  // Every alert row carries the same "Take a look" label, so the assertion
+  // has to be per-row: the cashflow one loses its link, Budgets keeps one.
+  const rowFor = (text) =>
+    screen.getAllByRole('listitem').find((li) => li.textContent.includes(text));
+  expect(within(rowFor('projected to exceed income')).queryByRole('button')).toBeNull();
+  expect(within(rowFor('Dining is over its cap')).getByRole('button')).toBeInTheDocument();
+});
+
+test('the same action keeps its link on a page it does not point at', async () => {
+  getAlerts.mockResolvedValue({ data: { alerts: [
+    { severity: 'warn', category: 'cashflow', message: 'Spending is projected to exceed income', tab: 'dashboard' },
+  ], counts: {} } });
+  render(<NeedsYouFeed currentPath="/debt" />);
+
+  expect(await screen.findByRole('button', { name: 'Take a look →' })).toBeInTheDocument();
 });

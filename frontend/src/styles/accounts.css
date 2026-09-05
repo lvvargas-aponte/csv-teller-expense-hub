@@ -7,7 +7,18 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
-  margin-bottom: 14px;
+  margin-bottom: var(--space-2);
+}
+/* A sibling of the button row rather than a flex item in it: as an item, the
+   `max-width` that keeps it a caption also stopped `flex-basis: 100%` from
+   breaking it onto its own line, so it sat beside the buttons. */
+.acct-page-actions-note {
+  max-width: 62ch;
+  margin: 0 0 14px auto;
+  text-align: right;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
 }
 .acct-sync-glyph { display: inline-block; }
 .acct-sync-glyph.is-spinning { animation: acct-spin 0.9s linear infinite; }
@@ -225,11 +236,19 @@
 .acct-row-chevron.is-open { transform: rotate(90deg); }
 
 /* ── Inline detail drawer ── */
+/* The six credit fields used to sit in one 155px-wide row, which read as a
+   dense strip. They now sit 3 + 3, centred in the drawer.
+   Fixed 220px columns rather than `1fr`: stretching them to fill the row is
+   what pushed the boxes edge-to-edge, and a 320px-wide box holding "%" is all
+   padding anyway. Capping the column and centring the set puts the leftover
+   width into the margins instead. Column count is explicit — there are exactly
+   six fields, and `auto-fit` picked 4 + 2 at wide viewports. */
 .acct-drawer {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 14px 18px;
-  padding: var(--space-4) 18px 18px 72px;
+  grid-template-columns: repeat(3, minmax(0, 220px));
+  justify-content: center;
+  gap: var(--space-5) var(--space-6);
+  padding: var(--space-5);
   background: var(--bg-input);
   border-bottom: 1px solid var(--bg-root);
   animation: acct-drawer-in 0.18s ease both;
@@ -246,7 +265,7 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-faint);
-  margin-bottom: 3px;
+  margin-bottom: var(--space-1);
 }
 .acct-drawer-note {
   grid-column: 1 / -1;
@@ -300,13 +319,18 @@
   background: var(--bg-card);
   border-color: var(--border-mid);
   border-radius: 7px;
-  padding: 6px 9px;
+  padding: var(--space-2) var(--space-3);
 }
 .ifield--boxed:hover { background: var(--bg-card); }
 .ifield--boxed::placeholder { font-family: 'DM Sans', system-ui, sans-serif; }
 
+/* Three 220px columns need ~790px of drawer to sit centred without crowding
+   the edges; below that they step down rather than shrink. */
+@media (max-width: 900px) {
+  .acct-drawer { grid-template-columns: repeat(2, minmax(0, 220px)); }
+}
 @media (max-width: 620px) {
-  .acct-drawer { padding-left: 18px; }
+  .acct-drawer { grid-template-columns: minmax(0, 260px); }
   .acct-row { gap: 10px; padding: 14px; }
   .acct-row-hit { gap: 10px; padding: 14px; }
 }
@@ -337,6 +361,17 @@
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+/* Sits under the add button, inside the list card — no dashed rule of its own,
+   so it reads as a footnote to the button rather than another row. */
+.acct-add-note {
+  margin: 0;
+  padding: 0 var(--space-5) var(--space-3);
+  text-align: center;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.acct-add-note a { color: var(--accent); }
 
 /* ── Category combobox (used in EditModal + History inline edit) ── */
 .cat-combo { position: relative; display: inline-block; width: 100%; }

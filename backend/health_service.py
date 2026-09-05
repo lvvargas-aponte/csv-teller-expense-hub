@@ -11,7 +11,6 @@ runway, savings rate, credit utilization, debt-to-income and the 90-day
 net-worth trend. Version 1 (a port of the page component's JavaScript) weighted
 month-over-month spending noise at 40% and contained none of the first four.
 """
-import logging
 import statistics
 from datetime import date
 from typing import Any, Dict, List, Optional
@@ -20,8 +19,8 @@ import analytics
 import balances_service
 import credit_health_service
 import state
+from analytics import classify_account_bucket
 
-logger = logging.getLogger(__name__)
 
 SCORE_VERSION = 2
 
@@ -133,6 +132,17 @@ def _dti_signal(ratios: Dict[str, Any]) -> Dict[str, Any]:
         return _signal(
             "debt_to_income", "Debt-to-income", WEIGHT_DTI, None,
             "Needs your monthly income",
+        )
+    # A ratio missing its largest payment scores well for the wrong reason.
+    # Dropping out is right: the score renormalizes over the signals it can
+    # actually see, and reports the gap in `coverage_pct`.
+    missing = ratios.get("debts_missing_payment") or []
+    if missing:
+        names = ", ".join(m["name"] for m in missing[:2])
+        more = f" and {len(missing) - 2} more" if len(missing) > 2 else ""
+        return _signal(
+            "debt_to_income", "Debt-to-income", WEIGHT_DTI, None,
+            f"No minimum payment set for {names}{more}",
         )
     span = DTI_CEILING_PCT - DTI_COMFORTABLE_PCT
     sub = _clamp01((DTI_CEILING_PCT - pct) / span)
@@ -261,20 +271,104 @@ def _resolve_income(profile: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _monthly_debt_payments() -> float:
-    """Sum of configured minimum payments across the household's debts.
+# The shape most card issuers use for a minimum payment: a percentage of the
+# statement balance plus the cycle's interest, with a flat floor underneath.
+# It is a common shape, NOT a universal one — Discover bills 2%, Amex carries a
+# $40 floor — so a derived figure is an estimate and every surface that shows
+# one says so.
+MINIMUM_PAYMENT_PCT = 0.01
+MINIMUM_PAYMENT_FLOOR = 30.0
+# A cycle. Interest is accrued daily by the issuer, so the derivation uses the
+# daily periodic rate (APR / 365) across a cycle rather than APR / 12 — that is
+# the arithmetic on the statement.
+MINIMUM_PAYMENT_CYCLE_DAYS = 30
+
+
+def _apr_for(account_id: str) -> Optional[float]:
+    raw = (state.account_details.get(account_id) or {}).get("apr")
+    try:
+        apr = float(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+    return apr if apr and apr > 0 else None
+
+
+def _entered_minimum(account_id: str) -> Optional[float]:
+    raw = (state.account_details.get(account_id) or {}).get("minimum_payment")
+    try:
+        return float(raw) if raw not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _derived_minimum(balance: float, apr: Optional[float]) -> Optional[float]:
+    """A card's minimum payment, estimated from its balance and APR.
+
+    Revolving only. The percentage-plus-interest shape is a credit-card rule
+    and says nothing about a mortgage, whose payment is an amortisation
+    schedule the balance cannot reveal — an installment loan is never derived.
+    """
+    if apr is None or balance <= 0:
+        return None
+    daily_rate = apr / 100.0 / 365.0
+    interest = balance * daily_rate * MINIMUM_PAYMENT_CYCLE_DAYS
+    return round(max(MINIMUM_PAYMENT_FLOOR, balance * MINIMUM_PAYMENT_PCT + interest), 2)
+
+
+async def _debt_payment_rows() -> List[Dict[str, Any]]:
+    """Every open debt's monthly payment, and where the figure came from.
+
+    Order of preference per debt: the minimum the user entered, then one
+    derived from the balance and APR, then nothing. An entered figure always
+    wins — it was copied off a real statement, and no rule of thumb beats that.
+
+    A debt with no payment at all is returned with ``source: None`` rather than
+    skipped: DTI is only as good as its numerator, and a household whose
+    mortgage carries no payment sums to the cards that do — $148 against a
+    $419k loan — and reports a ratio in the single digits. Callers withhold the
+    figure rather than publish a confident wrong one.
+    """
+    summary = await balances_service.build_summary()
+    rows: List[Dict[str, Any]] = []
+
+    for acct in summary.accounts:
+        if classify_account_bucket(acct.type, acct.subtype) != "credit":
+            continue
+        balance = float(acct.ledger or 0.0)
+        # Nothing is due on a cleared card, so it commits none of the income —
+        # which is what DTI measures. A stored minimum on one is stale, not
+        # an obligation.
+        if acct.closed_on or balance <= 0:
+            continue
+
+        entered = _entered_minimum(acct.id)
+        if entered is not None:
+            amount, source = entered, "entered"
+        elif analytics.is_installment(acct.type, acct.subtype):
+            amount, source = None, None
+        else:
+            amount = _derived_minimum(balance, _apr_for(acct.id))
+            source = "estimated" if amount is not None else None
+
+        rows.append({
+            "account_id": acct.id,
+            "name": acct.name,
+            "balance": round(balance, 2),
+            "amount": amount,
+            "source": source,
+        })
+
+    rows.sort(key=lambda r: r["balance"], reverse=True)
+    return rows
+
+
+def _monthly_debt_payments(rows: List[Dict[str, Any]]) -> float:
+    """Sum of every debt's monthly payment.
 
     Installment loans count here even though they are excluded from revolving
     utilization — a mortgage payment is exactly what debt-to-income measures.
     """
-    total = 0.0
-    for details in state.account_details.values():
-        raw = (details or {}).get("minimum_payment")
-        try:
-            total += float(raw) if raw is not None else 0.0
-        except (TypeError, ValueError):
-            continue
-    return round(total, 2)
+    return round(sum(r["amount"] or 0.0 for r in rows), 2)
 
 
 def _target_runway_months(profile: Dict[str, Any]) -> int:
@@ -318,7 +412,12 @@ async def compute_ratios(today: Optional[date] = None) -> Dict[str, Any]:
         months_covered = None
         gap = None
 
-    debt_payments = _monthly_debt_payments()
+    debt_rows = await _debt_payment_rows()
+    debt_payments = _monthly_debt_payments(debt_rows)
+    debts_missing_payment = [
+        {k: r[k] for k in ("account_id", "name", "balance")}
+        for r in debt_rows if r["source"] is None
+    ]
     dti_pct = (
         round(debt_payments / monthly_income * 100.0, 1) if monthly_income else None
     )
@@ -339,6 +438,15 @@ async def compute_ratios(today: Optional[date] = None) -> Dict[str, Any]:
             "excluded_real_assets": round(summary.total_real_assets, 2),
         },
         "monthly_debt_payments": debt_payments,
+        # Per debt, what it commits monthly and whether that figure was read
+        # off a statement or estimated — so a surface can show which is which
+        # rather than presenting an estimate as fact.
+        "debt_payments": debt_rows,
         "dti_pct": dti_pct,
+        # The numerator is hand-entered, so it can be silently short. These are
+        # the debts it is short BY — a caller that shows a DTI figure without
+        # checking this can publish a single-digit ratio for a household
+        # carrying a mortgage.
+        "debts_missing_payment": debts_missing_payment,
         "as_of": today.isoformat(),
     }

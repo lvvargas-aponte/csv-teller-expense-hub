@@ -456,11 +456,15 @@
 .sh-owes-v--out { color: var(--text-secondary); }
 .sh-owes-none { font-size: var(--text-sm); color: var(--text-faint); }
 
+/* Wide enough for the two-button case (Edit + Withdraw, on a row you have
+   disputed) — at 84px they overflowed the column and sat on top of the
+   owes text. flex-wrap is the backstop if a longer label ever lands here. */
 .sh-row-act {
   flex-shrink: 0;
-  width: 84px;
+  width: 132px;
   padding-top: 1px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
 }
@@ -549,10 +553,14 @@
 .sh-empty b { font-size: var(--text-md); font-weight: 600; }
 .sh-empty span { font-size: 12.5px; color: var(--text-muted); }
 
+/* Sits above the list it explains — a key read after the rows is a key read
+   too late. Wraps because the three items outgrow a narrow column. */
 .sh-legend {
   display: flex;
-  gap: 22px;
-  padding: var(--space-1) 6px 0;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  padding: 0 6px;
+  margin-bottom: var(--space-1);
   font-size: 11.5px;
   color: var(--text-muted);
 }

@@ -106,6 +106,7 @@ test('without a 90-day delta it says this month, not a tripled guess', () => {
 });
 
 const alert = (severity, category, message, tab) => ({ severity, category, message, tab });
+const digest = (payload) => ({ id: 1, read: false, payload });
 
 describe('buildInsights — alerts', () => {
   test('turns each alert into an insight, error before warn before info', () => {
@@ -144,7 +145,6 @@ describe('buildInsights — alerts', () => {
 });
 
 describe('buildInsights — digest', () => {
-  const digest = (payload) => ({ id: 1, read: false, payload });
 
   test('ignores the digest alerts array, which duplicates /api/alerts', () => {
     const dup = alert('error', 'budget', 'Dining is $80 over its cap', 'budgets');
@@ -253,5 +253,69 @@ describe('buildInsights — presentation', () => {
   test('every insight carries a numeric priority', () => {
     const out = buildInsights({ alerts: [alert('warn', 'budget', 'x', 'budgets')] });
     expect(typeof out[0].priority).toBe('number');
+  });
+});
+
+describe('buildInsights — where an action lands', () => {
+  test('the payoff-plan action points at Debt, where the planner lives', () => {
+    const out = buildInsights({
+      summary: { accounts: [{ id: 'a1', type: 'credit', name: 'JetBlue Plus', ledger: -4200 }] },
+      accountDetails: { a1: { apr: 22.5 } },
+    });
+    const row = out.find((i) => i.id === 'largest-balance');
+    expect(row.action.target).toEqual({ financesTab: 'debt' });
+  });
+
+  test('the no-APR nudge does not claim the planner is on this page', () => {
+    const out = buildInsights({
+      summary: { accounts: [{ id: 'a1', type: 'credit', name: 'JetBlue Plus', ledger: -4200 }] },
+      accountDetails: {},
+    });
+    expect(out.find((i) => i.id === 'largest-balance').body).not.toMatch(/below/);
+  });
+
+  test('a price-hike action goes straight to commitments, not through a redirect', () => {
+    const out = buildInsights({
+      digest: digest({
+        subscriptions: {
+          price_increases: [
+            { merchant_key: 'netflix', sample_description: 'NETFLIX.COM', price_change_pct: 14.0, latest_amount: 22.99 },
+          ],
+        },
+      }),
+    });
+    expect(out.find((i) => i.id.startsWith('sub-hike')).action.target)
+      .toEqual({ route: '/plan/commitments' });
+  });
+});
+
+describe('buildInsights — several price hikes collapse into one row', () => {
+  const threeHikes = {
+    subscriptions: {
+      price_increases: [
+        { merchant_key: 'netflix', sample_description: 'NETFLIX.COM', price_change_pct: 14, latest_amount: 20 },
+        { merchant_key: 'spotify', sample_description: 'SPOTIFY', price_change_pct: 10, latest_amount: 12 },
+        { merchant_key: 'claude',  sample_description: 'CLAUDE.AI', price_change_pct: 30, latest_amount: 8 },
+      ],
+    },
+  };
+
+  test('three hikes make one row that names the count and the combined cost', () => {
+    const rows = buildInsights({ digest: digest(threeHikes) })
+      .filter((i) => i.id.startsWith('sub-hike'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].title).toBe('3 subscriptions went up in price');
+    expect(rows[0].body).toMatch(/NETFLIX\.COM, SPOTIFY and 1 more/);
+    expect(rows[0].body).toMatch(/\$40/);
+  });
+
+  test('the grouped row keeps a stable id while the same hikes stand', () => {
+    const id = () => buildInsights({ digest: digest(threeHikes) })
+      .find((i) => i.id.startsWith('sub-hike')).id;
+    expect(id()).toBe(id());
+    // Order from the backend is not guaranteed, so identity must not depend on it.
+    const reversed = { subscriptions: { price_increases: [...threeHikes.subscriptions.price_increases].reverse() } };
+    expect(buildInsights({ digest: digest(reversed) })
+      .find((i) => i.id.startsWith('sub-hike')).id).toBe(id());
   });
 });

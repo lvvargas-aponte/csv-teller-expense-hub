@@ -41,7 +41,7 @@ export default function Sidebar({
         <div className="eh-sidebar-logo-icon" aria-hidden="true">
           <Icon name="ask" size={18} />
         </div>
-        <div className="eh-sidebar-logo-text">Fin</div>
+        <div className="eh-sidebar-logo-text">Financial Freedom</div>
       </div>
 
       <nav className="eh-sidebar-nav" aria-label="Main">

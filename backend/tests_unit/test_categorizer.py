@@ -222,7 +222,7 @@ class TestApplyCategoriesEndpoint:
         )
         return [t["id"] for t in r.json()["transactions"]]
 
-    def test_applies_assignments_and_marks_reviewed(self, client):
+    def test_applies_assignments_without_touching_reviewed(self, client):
         ids = self._upload_two(client)
         r = client.put("/api/transactions/categories", json={
             "items": [
@@ -234,8 +234,9 @@ class TestApplyCategoriesEndpoint:
         assert r.json()["updated"] == 2
         assert state.stored_transactions[ids[0]]["category"] == "Groceries"
         assert state.stored_transactions[ids[1]]["category"] == "Gas"
-        assert state.stored_transactions[ids[0]]["reviewed"] is True
-        assert state.stored_transactions[ids[1]]["reviewed"] is True
+        # Categorising is not reviewing — the rows stay in the queue.
+        assert state.stored_transactions[ids[0]]["reviewed"] is False
+        assert state.stored_transactions[ids[1]]["reviewed"] is False
 
     def test_empty_string_clears_category(self, client):
         ids = self._upload_two(client)

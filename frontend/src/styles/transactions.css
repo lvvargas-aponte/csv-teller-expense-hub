@@ -6,9 +6,9 @@
 /* There is no top bar: help and theme live in the sidebar footer, and
    navigation lives in the sidebar itself.
    .tx-sync-btn is theme-following now (var(--bg-secondary)/var(--accent)).
-   .tx-bulk-bar and .ov-apr-tooltip are still deliberately dark regardless
-   of page theme — see --surface-inverse / --good-inverse-* in tokens.css.
-   The rail's shared card follows the theme (--good-wash/--good-tint). */
+   .tx-bulk-bar follows the theme too (--bg-secondary / --border).
+   .ov-apr-tooltip is still deliberately dark regardless of page theme —
+   see --surface-inverse in tokens.css. */
 
 /* Transactions screen shell: table column + supporting rail column. */
 .tx-layout {
@@ -157,7 +157,8 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) 14px;
-  background: var(--surface-inverse);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: 10px;
   margin-bottom: 10px;
   animation: txSlideDown 0.18s ease;
@@ -167,9 +168,9 @@
   to { opacity: 1; transform: translateY(0); }
 }
 .tx-bulk-count {
-  font-size: var(--text-base); font-weight: 600; color: var(--brand-inverse-text); flex-shrink: 0;
+  font-size: var(--text-base); font-weight: 600; color: var(--accent-strong); flex-shrink: 0;
 }
-.tx-bulk-owed { font-size: var(--text-sm); color: var(--text-inverse-muted); }
+.tx-bulk-owed { font-size: var(--text-sm); color: var(--text-muted); }
 .tx-bulk-spacer { flex: 1; }
 .tx-bulk-btn {
   display: inline-flex; align-items: center; gap: 5px;
@@ -178,19 +179,19 @@
   cursor: pointer; border: 1px solid; transition: all 0.14s; white-space: nowrap;
 }
 .tx-bulk-btn--ghost {
-  background: rgba(255,255,255,0.07); color: var(--text-inverse-muted);
-  border-color: rgba(255,255,255,0.12);
+  background: var(--bg-card); color: var(--text-secondary);
+  border-color: var(--border-mid);
 }
-.tx-bulk-btn--ghost:hover { background: rgba(255,255,255,0.12); color: var(--text-inverse); }
+.tx-bulk-btn--ghost:hover { background: var(--surface-muted); color: var(--text-primary); }
 .tx-bulk-btn--green {
-  background: var(--good-inverse-wash); color: var(--good-inverse-text);
-  border-color: var(--good-inverse-border);
+  background: var(--good-wash); color: var(--good-text);
+  border-color: var(--good-tint);
 }
-.tx-bulk-btn--green:hover { background: var(--good-inverse-wash-hover); }
+.tx-bulk-btn--green:hover { background: var(--good-tint); }
 .tx-bulk-btn--deselect {
-  background: none; color: var(--text-inverse-muted); border-color: transparent;
+  background: none; color: var(--text-muted); border-color: transparent;
 }
-.tx-bulk-btn--deselect:hover { color: var(--text-inverse); }
+.tx-bulk-btn--deselect:hover { color: var(--text-primary); }
 
 /* Filter bar */
 .tx-filter-bar {
@@ -920,21 +921,32 @@ tr.tx-detail-row > td {
 }
 .tx-rail-empty { font-size: var(--text-sm); color: var(--text-disabled); text-align: center; padding: var(--space-2) 0; }
 
-.tx-rail-card--good {
-  background: var(--good-wash);
-  border-color: var(--good-tint);
-  color: var(--text-primary);
+/* Balance card — in/out under the net figure. The net leads in the neutral
+   heading colour and only turns red when money actually left, so a negative
+   month reads at a glance without colouring every ordinary one. */
+.tx-rail-big--out { color: var(--bad-text); }
+.tx-rail-flows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 10px 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
 }
-.tx-rail-card--good .tx-rail-title { color: var(--text-muted); }
-.tx-rail-card--good .tx-rail-big { color: var(--good-text); }
-.tx-rail-card--good .tx-rail-big small { color: var(--text-muted); }
-.tx-rail-card--good .tx-rail-hint { color: var(--text-muted); margin-top: var(--space-2); }
-.tx-rail-btn--sheet {
-  background: transparent;
-  border-color: var(--good-tint);
-  color: var(--good-text);
+.tx-rail-flowline {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
 }
-.tx-rail-btn--sheet:hover:not(:disabled) { background: var(--good-tint); }
+.tx-rail-flowline b {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-weight: 500;
+}
+.tx-rail-in  { color: var(--good-text); }
+.tx-rail-out { color: var(--text-secondary); }
 
 /* Rail moves above the table when there's no room beside it — never hidden,
    never pushed below the fold. The handoff spec says 1180px, but that

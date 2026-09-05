@@ -17,7 +17,7 @@ import {
   buildCreditRow, buildCashRow, buildAssetRow, investmentValue, summarize,
 } from './accounts/accountMath';
 import { fmt$, toYMD } from '../../utils/formatting';
-import { classifyAccountBucket, loadInvestmentSubtypes } from '../../utils/accountBucket';
+import { classifyAccountBucket, loadAccountVocabulary } from '../../utils/accountBucket';
 import { userMessage } from '../../utils/errorMessage';
 
 // AccountsTab — one summary bar, a connection-health strip, then collapsible
@@ -62,17 +62,32 @@ export default function AccountsTab({
   const loading = summary !== undefined ? !!summaryLoading : externalLoading;
   const error   = summary !== undefined ? summaryError    : externalError;
 
-  const accounts = useMemo(() => effectiveSummary?.accounts ?? [], [effectiveSummary]);
+  // Closed accounts are excluded outright. They contribute to no total on this
+  // page, and the drawer that reopens one lives on /debt, which lists them
+  // under "Closed" — so there is nothing here for them to be part of.
+  const accounts = useMemo(
+    () => (effectiveSummary?.accounts ?? []).filter((a) => !a.closed_on),
+    [effectiveSummary],
+  );
   const cacheFetchedAt = effectiveSummary?.cache_fetched_at;
 
   // Grouping goes through the shared classifier, not a bare `type` test — a
   // Roth IRA held as a manual depository account belongs under Investments
   // here and in the cash total, same as everywhere else in the app.
-  const [bucketOf, setBucketOf] = useState(() => classifyAccountBucket);
+  // `classifyAccountBucket` reads module-level subtype sets that the loader
+  // mutates in place, so its identity never changes even though its answers
+  // do. Storing the function itself meant `Object.is` matched, React bailed
+  // out of the re-render, and the lists below never re-bucketed with the
+  // server vocabulary. A version counter is what actually moves.
+  const [vocabVersion, setVocabVersion] = useState(0);
   useEffect(() => {
     // The server's subtype vocabulary lands after first paint; re-bucket then.
-    loadInvestmentSubtypes().then(() => setBucketOf(() => classifyAccountBucket));
+    loadAccountVocabulary().then(() => setVocabVersion((v) => v + 1));
   }, []);
+  const bucketOf = useMemo(() => {
+    void vocabVersion;
+    return classifyAccountBucket;
+  }, [vocabVersion]);
 
   const creditRows = useMemo(
     () => accounts
@@ -216,6 +231,14 @@ export default function AccountsTab({
         </button>
       </div>
 
+      {/* This button is the loudest thing on a page whose whole subject is
+          connected accounts, so it reads as the way to link one. It isn't — it
+          opens the manual form. The strip immediately below is the way. */}
+      <p className="acct-page-actions-note">
+        Adds an account you keep by hand — the balance is whatever you type, and
+        nothing updates it. Connect a bank or card below for one that syncs.
+      </p>
+
       <ConnectionsStrip
         health={health}
         summary={effectiveSummary}
@@ -256,7 +279,7 @@ export default function AccountsTab({
             cacheFetchedAt={cacheFetchedAt}
             amount={row.owed}
             amountClass={row.owed === 0 ? 'is-zero' : ''}
-            subAmount={(row.limit !== null || !row.manual)
+            subAmount={row.available !== null
               ? `${fmt$(row.available)} available`
               : null}
           />
@@ -424,6 +447,7 @@ export function createFieldUpdateHandler(detailsRef, setDetailsMap) {
       statement_day:   toInt(next.statement_day),
       due_day:         toInt(next.due_day),
       opened_on:       next.opened_on || null,
+      closed_on:       next.closed_on || null,
       valuation_updated_on: next.valuation_updated_on || null,
       secured_by_account_id: next.secured_by_account_id || null,
       tax_treatment:   next.tax_treatment || null,

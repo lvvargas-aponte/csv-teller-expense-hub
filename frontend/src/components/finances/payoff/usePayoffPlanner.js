@@ -4,13 +4,28 @@ import {
 import axios from 'axios';
 import { API_BASE } from '../../../utils/formatting';
 import { userMessage } from '../../../utils/errorMessage';
-import { getAllAccountDetails, upsertAccountDetails } from '../../../api/accountDetails';
 import { blankRow, sortByStrategy } from './helpers';
 
+const str = (v) => ((v !== null && v !== undefined && v !== '') ? String(v) : '');
+
+// A shared empty map, so an omitted `detailsMap` is the same object on every
+// render. A `= {}` default is a fresh object each call, which would re-run the
+// reconcile effect below forever.
+const NO_DETAILS = {};
+
 // Owns all PayoffPlanner state + side-effects: rows, strategy, extra payment,
-// results, advice, prefill from credit accounts, and the calc/advice fetches.
-// The parent component just wires these to subcomponents.
-export function usePayoffPlanner(creditAccounts) {
+// results, advice, and the calc/advice fetches.
+//
+// Account-backed rows track the Credit cards & loans list above rather than
+// snapshotting it. This used to seed once behind a `prefilled` flag, off its own
+// `getAllAccountDetails()` call — so an APR or minimum entered in that list
+// after first paint never reached the planner, and two copies of the same
+// details record drifted apart. `detailsMap` now comes from DebtPage, which
+// already owns it.
+//
+// Nothing here writes: an account's balance, APR and minimum are read-only in
+// the planner and edited in the Credit cards drawer above.
+export function usePayoffPlanner(creditAccounts, detailsMap = NO_DETAILS) {
   const [rows,          setRows]          = useState([]);
   const [strategy,      setStrategy]      = useState('avalanche');
   const [extra,         setExtra]         = useState('200');
@@ -20,66 +35,60 @@ export function usePayoffPlanner(creditAccounts) {
   const [advice,        setAdvice]        = useState(null);
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [adviceError,   setAdviceError]   = useState(null);
-  const [prefilled,     setPrefilled]     = useState(false);
-  // Mirrors each account's full details record so persistApr can send it
-  // back whole — the PUT is create-or-replace, so sending `{ apr }` alone
-  // would silently null out credit_limit, minimum_payment, statement/due
-  // day, opened_on and notes for that account.
-  const detailsRef = useRef({});
+  // What each account-backed row's balance was last seeded to. A balance typed
+  // into the planner is a what-if — the real one comes from the bank — so it is
+  // kept until the bank's own figure moves, rather than being overwritten every
+  // time an unrelated APR is edited.
+  const seededBalances = useRef({});
 
-  // Prefill once when credit accounts become available.
+  // The fields the planner shows for one account, as the source data has them.
+  const sourceRow = useCallback((acct) => {
+    const details = detailsMap[acct.id] || {};
+    return {
+      accountId:   acct.id,
+      name:        `${acct.institution} ${acct.name}`.trim(),
+      balance:     (acct.ledger !== null && acct.ledger !== undefined)
+        ? String(Math.abs(parseFloat(acct.ledger))) : '',
+      apr:         str(details.apr),
+      min_payment: str(details.minimum_payment),
+    };
+  }, [detailsMap]);
+
+  // Reconcile account-backed rows with the source whenever it changes: accounts
+  // that appeared get a row, accounts that went away (a card closed, a balance
+  // cleared) lose theirs, and the rest are refreshed in place. Rows the user
+  // added by hand have no accountId and no source, so they pass through
+  // untouched.
   useEffect(() => {
-    if (prefilled || creditAccounts.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      let detailsMap = {};
-      try {
-        const r = await getAllAccountDetails();
-        detailsMap = r.data || {};
-      } catch { /* no details configured yet */ }
-      detailsRef.current = detailsMap;
-      const enriched = creditAccounts.map((acct) => {
-        const details = detailsMap[acct.id] || null;
-        return {
-          _id:         crypto.randomUUID(),
-          accountId:   acct.id,
-          name:        `${acct.institution} ${acct.name}`.trim(),
-          balance:     (acct.ledger !== null && acct.ledger !== undefined) ? String(Math.abs(parseFloat(acct.ledger))) : '',
-          apr:         (details?.apr !== null && details?.apr !== undefined) ? String(details.apr) : '',
-          min_payment: (details?.minimum_payment !== null && details?.minimum_payment !== undefined) ? String(details.minimum_payment) : '',
-        };
+    setRows((prev) => {
+      const byId = new Map(prev.filter((r) => r.accountId).map((r) => [r.accountId, r]));
+      const manual = prev.filter((r) => !r.accountId);
+      const next = creditAccounts.map((acct) => {
+        const src = sourceRow(acct);
+        const existing = byId.get(acct.id);
+        if (!existing) {
+          seededBalances.current[acct.id] = src.balance;
+          // Derived from the account, not generated: a setState updater must
+          // be pure, and StrictMode double-invokes it — a fresh UUID each
+          // time gave the discarded and the kept run different React keys,
+          // remounting every row on mount.
+          return { _id: `acct-${acct.id}`, ...src };
+        }
+        // Keep a hand-typed balance unless the bank's own figure has moved.
+        const bankMoved = seededBalances.current[acct.id] !== src.balance;
+        if (bankMoved) seededBalances.current[acct.id] = src.balance;
+        return { ...existing, ...src, balance: bankMoved ? src.balance : existing.balance };
       });
-      if (!cancelled) {
-        setRows(sortByStrategy(enriched, 'avalanche'));
-        setPrefilled(true);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [creditAccounts, prefilled]);
+      // Same ordering the one-shot prefill used to apply, now kept in step as
+      // rows arrive or their APR and balance change.
+      return sortByStrategy([...next, ...manual], strategy);
+    });
+  }, [creditAccounts, sourceRow, strategy]);
 
   const setRow = useCallback((id, key, val) => {
     setRows((prev) => prev.map((r) => (r._id === id ? { ...r, [key]: val } : r)));
     setResults(null);
   }, []);
-
-  const persistApr = useCallback(async (id, apr) => {
-    const row = rows.find((r) => r._id === id);
-    if (!row?.accountId) return;
-    const value = apr === '' || apr === null || apr === undefined ? null : parseFloat(apr);
-    if (value !== null && Number.isNaN(value)) return;
-    // Same full-record payload as InvestmentsTab's handleTaxTreatmentChange:
-    // the PUT replaces the side-car record wholesale, so every field not
-    // carried over from what's already on file would be silently cleared.
-    const prev = detailsRef.current[row.accountId] || {};
-    const next = { ...prev, apr: value };
-    detailsRef.current = { ...detailsRef.current, [row.accountId]: next };
-    try {
-      await upsertAccountDetails(row.accountId, next);
-    } catch (e) {
-      detailsRef.current = { ...detailsRef.current, [row.accountId]: prev };
-      setError(userMessage(e, 'Failed to save APR.'));
-    }
-  }, [rows]);
 
   const addRow = useCallback(() => setRows((prev) => [...prev, blankRow()]), []);
   const removeRow = useCallback((id) => {
@@ -178,7 +187,7 @@ export function usePayoffPlanner(creditAccounts) {
     loading, error,
     advice, adviceLoading, adviceError,
     orderById, totalMonths, totalPaid,
-    setRow, persistApr, addRow, removeRow,
+    setRow, addRow, removeRow,
     handleStrategyChange, setExtraPayment,
     handleCalculate, handleGetAdvice,
   };

@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional
 
+import categories_service
 import state
 from helpers import txn_direction
 # Re-exported under the private names this module has always used, so the
@@ -976,32 +977,19 @@ def compute_goal_statuses() -> List[Dict[str, Any]]:
 # noisy categories like gas stations (where the spread is typically > 1.0).
 _RECURRING_AMOUNT_SPREAD = 0.60
 
-# Categories where the merchant is *always* a recurring bill, regardless of how
-# much the dollar amount swings month-to-month (utilities follow the weather,
-# insurance bumps mid-year, phone plans get one-off fees). For these we skip
-# the amount-spread filter as long as the cadence is monthly-ish.
-_ALWAYS_RECURRING_CATEGORIES = frozenset({
-    "utilities",
-    "insurance",
-    "rent",
-    "mortgage",
-    "phone",
-    "internet",
-    "subscription",
-    "subscriptions",
-})
-
-# Categories that move money between household pockets rather than out of it.
-# Match is case-insensitive against the trimmed category. Kept in lowercase
-# so callers can compare via ``.strip().lower()``.
-_NON_SPENDING_CATEGORIES = frozenset({
-    "cc payment",
-    "credit card payment",
-    "payments and credits",
-    "zelle out",
-    "transfer",
-    "transfers",
-})
+# Which categories behave which way is data on the category row now, not a
+# constant here — see ``categories_service.ROLES``. These used to be frozensets
+# of lowercase names, which meant renaming a category silently changed
+# recurring detection with nothing raising. The role travels with the row, so
+# the behavior survives the rename.
+#
+#   always_recurring — waive the amount-spread filter (utilities follow the
+#     weather, insurance bumps mid-year, phone plans collect one-off fees) as
+#     long as the cadence is monthly-ish
+#   non_spending     — moves money between household pockets, not out of them
+#
+# Matching stays case-insensitive against the trimmed category, so call sites
+# still compare via ``.strip().lower()``.
 
 
 # Tighter spread for merchants with no category vouching for them. A real
@@ -1015,19 +1003,10 @@ _RECURRING_TIGHT_SPREAD = 0.35
 # pattern survived a full billing cycle.
 _MIN_MONTHS_UNTRUSTED = 3
 
-# Categories that mark a merchant as a subscription rather than a bill.
-_SUBSCRIPTION_CATEGORIES = frozenset({
-    "subscription",
-    "subscriptions",
-    "entertainment",
-    "streaming",
-    "music",
-})
-
-# Categories that mark a merchant as an obligatory bill. Superset of
-# ``_ALWAYS_RECURRING_CATEGORIES`` — the two differ in purpose: that one
-# waives the amount-spread gate, this one routes to the Bills section.
-_BILL_CATEGORIES = _ALWAYS_RECURRING_CATEGORIES | {"loan", "loans", "childcare"}
+# The ``subscription`` role marks a merchant as a subscription rather than a
+# bill; ``bill`` routes it to the Bills section. They overlap heavily — the
+# seed gives Subscriptions both — but differ in purpose, so they stay two
+# roles rather than one with an exception list.
 
 # Bills the user never categorized. Matched against the RAW description, not
 # the merchant key — ``merchant_key._ACH_TAIL_RE`` strips exactly these tokens
@@ -1040,7 +1019,7 @@ _BILL_DESCRIPTION_RE = re.compile(
 
 # Paying a card or moving money between own accounts. These reach the detector
 # only when the transaction was never categorized — a categorized one is
-# already filtered by ``_NON_SPENDING_CATEGORIES`` in ``_is_expense``.
+# already filtered by the ``non_spending`` role in ``_is_expense``.
 _CARD_PAYMENT_RE = re.compile(
     r"(e-?payment|e-?pymt|online\s+p(?:m|ay)t|online\s+payment|autopay"
     # Bank of America writes "ONLINE/MOBILE PAYMENT" — the slash keeps it out
@@ -1062,8 +1041,8 @@ _ISSUER_PAYMENT_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Repeats that are consequences of a balance, not commitments to anything.
-_NON_COMMITMENT_CATEGORIES = frozenset({"interest", "fees"})
+# The ``non_commitment`` role: repeats that are consequences of a balance
+# rather than commitments to anything.
 
 
 def _is_card_payment(description: str) -> bool:
@@ -1091,11 +1070,11 @@ def _classify_commitment(description: str, category: str) -> Optional[str]:
     so the bill/subscription rule lives in exactly one place.
     """
     cat = (category or "").strip().lower()
-    if cat in _NON_COMMITMENT_CATEGORIES:
+    if cat in categories_service.names_with_role(categories_service.NON_COMMITMENT):
         return None
-    if cat in _SUBSCRIPTION_CATEGORIES:
+    if cat in categories_service.names_with_role(categories_service.SUBSCRIPTION):
         return "subscription"
-    if cat in _BILL_CATEGORIES:
+    if cat in categories_service.names_with_role(categories_service.BILL):
         return "bill"
     # Uncategorized from here on: fall back to what the bank wrote.
     if _is_card_payment(description):
@@ -1125,7 +1104,7 @@ def _is_expense(txn: Dict[str, Any]) -> bool:
     if txn.get("transfer_to_account_id"):
         return False
     category = (txn.get("category") or "").strip().lower()
-    if category in _NON_SPENDING_CATEGORIES:
+    if category in categories_service.names_with_role(categories_service.NON_SPENDING):
         return False
     # Not gated on a missing category: these rows often carry a wrong one
     # ("BANK OF AMERICA PAYMENT" filed under Service, "Payment to Chase card
@@ -1305,7 +1284,8 @@ def _survives_recurrence_gates(
             return False
         return spread <= _RECURRING_TIGHT_SPREAD
 
-    if (category or "").strip().lower() in _ALWAYS_RECURRING_CATEGORIES:
+    always = categories_service.names_with_role(categories_service.ALWAYS_RECURRING)
+    if (category or "").strip().lower() in always:
         return True
     return spread <= _RECURRING_AMOUNT_SPREAD
 

@@ -245,6 +245,31 @@ class CategoryRulePatch(BaseModel):
     position: Optional[int] = None
 
 
+class CategoryCreate(BaseModel):
+    name: str
+    color: Optional[str] = None
+    # See categories_service.ROLES — a category can carry several, because
+    # "Subscriptions" is always-recurring and a bill and a subscription.
+    roles: Optional[List[str]] = None
+
+
+class CategoryPatch(BaseModel):
+    """Partial edit. Renaming has its own endpoint — it rewrites every
+    reference, which this does not."""
+    color: Optional[str] = None
+    roles: Optional[List[str]] = None
+    archived: Optional[bool] = None
+    sort: Optional[int] = None
+
+
+class CategoryRenameRequest(BaseModel):
+    name: str
+
+
+class CategoryMergeRequest(BaseModel):
+    into_id: int
+
+
 class RulePreviewRequest(BaseModel):
     """Ask what a rule would do before committing to it."""
     pattern: str

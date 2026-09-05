@@ -1,7 +1,7 @@
 """Trajectory integration tests for the Fin agent harness.
 
 Scripts ``chat_ollama`` to emit specific tool-call sequences against a
-seeded ``expense_hub_test`` DB and asserts on the trajectory shape — which
+seeded ``financial_freedom_test`` DB and asserts on the trajectory shape — which
 tools were called, with what arguments, in what order — not just the final
 string. Real DB, real tool handlers; only the LLM is mocked.
 """

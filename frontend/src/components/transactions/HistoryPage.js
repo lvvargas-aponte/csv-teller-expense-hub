@@ -350,7 +350,6 @@ export default function HistoryPage() {
         }}
         openTxn={detailTxn}
         draft={detailDraft}
-        personName={personNames.person_2}
         onOpenDetail={openDetail}
         onApplyToSimilar={applyToSimilar}
       />

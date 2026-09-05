@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path= Path(__file__).parent.parent / ".env")
+load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 _PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -72,7 +72,7 @@ DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
 # Database — Postgres + pgvector. Defaults target the `db` service in docker-compose.
 DATABASE_URL: str = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://expense:expense_dev@db:5432/expense_hub",
+    "postgresql+asyncpg://finfree:finfree_dev@db:5432/financial_freedom",
 )
 
 # Fin agent harness — the advisor always runs the tool-use loop.

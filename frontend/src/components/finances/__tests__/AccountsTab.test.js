@@ -105,19 +105,34 @@ test('rendering the page makes no aggregator calls', async () => {
 });
 
 test('credit accounts are listed here, and the link to Debt is kept', async () => {
-  renderTab([creditAccount({ name: 'Chase Sapphire' })]);
+  renderTab([creditAccount({ name: 'Chase Sapphire' })], {
+    details: { c1: { credit_limit: 3500 } },
+  });
 
   // This page answers "what is linked?", so the account itself is on it...
   const row = await screen.findByRole('group', { name: 'Chase Sapphire' });
-  // ...leading with what's owed (the ledger), with the bank's available
-  // credit demoted to the sub-line. Scoped to the row: with a single card
-  // the section total carries the same figure.
+  // ...leading with what's owed (the ledger), with available credit demoted to
+  // the sub-line. That figure is limit − owed, not the summary's `available`:
+  // balances_service copies the owed amount into that field for every credit
+  // account, so printing it gave the same number twice. Scoped to the row —
+  // with a single card the section total carries the same figure.
   expect(within(row).getByText('$1,488.35')).toBeInTheDocument();
   expect(within(row).getByText(/\$2,011\.65 available/)).toBeInTheDocument();
 
   // ...and the route through to the editing surface survives alongside it.
   const link = screen.getByRole('link', { name: /debt/i });
   expect(link).toHaveAttribute('href', '/debt');
+});
+
+// The summary reports `available` equal to `ledger` for every synced credit
+// account, so this row used to print the balance twice — once as owed and once
+// captioned "available".
+test('a synced card with no limit set shows no available-credit line', async () => {
+  renderTab([creditAccount({ name: 'Chase Sapphire', available: 1488.35 })]);
+
+  const row = await screen.findByRole('group', { name: 'Chase Sapphire' });
+  expect(within(row).getByText('$1,488.35')).toBeInTheDocument();
+  expect(within(row).queryByText(/available/i)).toBeNull();
 });
 
 test('a manual card with no limit set hides available credit rather than showing $0', async () => {
@@ -553,4 +568,26 @@ test('the delete handler refuses a non-manual account, even called directly', as
   expect(refresh).not.toHaveBeenCalled();
 
   window.confirm.mockRestore();
+});
+
+// "+ Add account" is the loudest control on a page about connected accounts,
+// but it opens the manual form. The caption under it says so.
+test('captions the add button as the manual path, not the connect one', async () => {
+  renderTab([creditAccount()]);
+
+  const note = await screen.findByText(/keep by hand/i);
+  expect(note).toHaveTextContent(/nothing updates it/i);
+  expect(note).toHaveTextContent(/connect a bank or card below/i);
+});
+
+// The Debt page lists closed cards under "Closed"; this page has no section
+// for them and no total they belong to, so they are dropped outright.
+test('a closed account is not listed', async () => {
+  renderTab([
+    creditAccount({ name: 'Chase Sapphire' }),
+    creditAccount({ id: 'c2', name: 'Old Store Card', closed_on: '2026-05-01' }),
+  ]);
+
+  await screen.findByText('Chase Sapphire');
+  expect(screen.queryByText('Old Store Card')).toBeNull();
 });

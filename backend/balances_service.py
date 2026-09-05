@@ -175,7 +175,15 @@ def _append_manual_accounts(
             total_cash += available
         elif bucket == "credit":
             ledger = round(starting_ledger + delta, 2)
-            available = ledger
+            # Available credit is a starting point too: spending raises what is
+            # owed and lowers what is left to spend by the same amount. This
+            # used to be overwritten with ``ledger``, which silently discarded
+            # the figure the Add form asked the user for.
+            #
+            # With nothing entered it still falls back to ``ledger`` — the shape
+            # every SimpleFIN credit row has, and the one the UI reads as "no
+            # available-credit figure known" (see buildCreditRow).
+            available = round(starting_available - delta, 2) if starting_available else ledger
             starting = starting_ledger
             total_credit_debt += ledger
         else:
@@ -289,6 +297,88 @@ def _compute_real_assets(accounts: List[AccountBalance]) -> float:
 _CASH_BUCKETS = ("cash", "other")
 
 
+def _retained_simplefin_accounts(
+    fetched_ids: set,
+    url_errors: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Cached rows belonging to connections that did not answer this round.
+
+    The cache is written from whatever came back, so a failed access URL — which
+    returns no accounts at all — used to erase every account behind it. A total
+    outage therefore replaced the last good snapshot with nothing: the Debt page
+    read $0.00 and net worth jumped as though the balances had been paid off.
+
+    A connection that could not be reached has told us nothing about its
+    accounts, which is not the same as telling us they are gone. Its cached rows
+    are kept until it answers again. Anything actually fetched wins, so a
+    connection that did answer still replaces its own rows — including dropping
+    an account it no longer returns.
+    """
+    if not url_errors:
+        return []
+
+    known = state._balances_cache.get(connection_health.CONNECTIONS_KEY) or {}
+    stale_institutions = set()
+    for err in url_errors:
+        entry = known.get(err.get("id")) or {}
+        stale_institutions.update(entry.get("institutions") or [])
+
+    if not stale_institutions:
+        # A connection that has never synced successfully has no institutions
+        # on file, so nothing can be attributed to it. Nothing to keep.
+        return []
+
+    return [
+        a for a in (state._balances_cache.get("simplefin_accounts") or [])
+        if a.get("id") not in fetched_ids
+        and normalize_institution(a.get("institution") or "") in stale_institutions
+    ]
+
+
+def _record_simplefin_snapshots(accounts: List[AccountBalance]) -> None:
+    """Mirror each synced account into ``accounts`` and snapshot its balance.
+
+    Without the mirror row there is no snapshot: ``balance_snapshots.account_id``
+    is a foreign key onto ``accounts(id)``, and a SimpleFIN account lived only
+    in the balances cache. So every insert for one was rejected and the table
+    held nothing but the Teller and SnapTrade accounts — a third of the
+    household. Net worth is computed from that table, which is why the trend
+    banner, the timeseries chart and ``build_summary`` each reported a
+    different figure on the same page.
+
+    SnapTrade has done both halves since it was added
+    (``routers/snaptrade.py``); this is the same two calls for the other
+    provider. Never fatal: a snapshot is history, and losing a point is not
+    worth failing a sync that already has the balances.
+    """
+    from db.accounts_repo import get_repo
+
+    repo = get_repo()
+    for acct in accounts:
+        try:
+            repo.upsert_synced_account(
+                {
+                    "id": acct.id,
+                    "name": acct.name,
+                    "type": acct.type,
+                    "subtype": acct.subtype or "",
+                    "institution": {"name": acct.institution},
+                },
+                source="simplefin",
+            )
+            repo.insert_balance_snapshot(
+                account_id=acct.id,
+                source="simplefin",
+                available=acct.available,
+                ledger=acct.ledger,
+                raw={"available": acct.available, "ledger": acct.ledger},
+            )
+        except Exception as e:
+            logger.warning(
+                "[SimpleFIN] could not snapshot %s (%s): %s", acct.id, acct.name, e
+            )
+
+
 async def persist_simplefin_balances(
     url_batches: List[Tuple[str, List[Dict[str, Any]]]],
     url_errors: Optional[List[Dict[str, Any]]] = None,
@@ -336,6 +426,26 @@ async def persist_simplefin_balances(
             available=available,
             ledger=ledger,
         ))
+
+    # Carry forward whatever the failed connections told us last time, before
+    # the cache is rewritten from this round's answers.
+    for raw in _retained_simplefin_accounts(
+        {a.id for a in accounts_out}, url_errors or []
+    ):
+        try:
+            kept = to_account_balance(raw, "simplefin")
+        except Exception as e:
+            logger.warning(f"[SimpleFIN] skipping malformed cached account: {e}")
+            continue
+        accounts_out.append(kept)
+        # Already in this app's convention (debt positive), unlike raw_balance.
+        bucket = classify_account_bucket(kept.type, kept.subtype)
+        if bucket == "credit":
+            total_credit_debt += float(kept.ledger or 0.0)
+        elif bucket in _CASH_BUCKETS:
+            total_cash += float(kept.available or 0.0)
+
+    _record_simplefin_snapshots(accounts_out)
 
     # Balances first, health second: a failure between the two leaves health
     # describing an older sync than the balances, which reads as "stale", not
@@ -400,6 +510,17 @@ def _attach_tax_treatment(accounts: List[AccountBalance]) -> None:
         acct.tax_treatment_set_by_user = described["set_by_user"]
 
 
+def _attach_closed(accounts: List[AccountBalance]) -> None:
+    """Stamp each row with the date the user declared the account closed.
+
+    SimpleFIN has no open/closed concept, so a closed account keeps arriving on
+    every fetch. The declaration lives in ``account_details`` beside the other
+    facts the provider cannot supply (limit, APR, opened date).
+    """
+    for a in accounts:
+        a.closed_on = (state.account_details.get(a.id) or {}).get("closed_on") or None
+
+
 def _summary(
     accounts: List[AccountBalance],
     total_cash: float,
@@ -407,8 +528,26 @@ def _summary(
     *,
     from_cache: bool,
 ) -> BalancesSummary:
-    total_investments = _compute_investments(accounts)
-    total_real_assets = _compute_real_assets(accounts)
+    from analytics import classify_account_bucket
+
+    # Closed accounts stay in ``accounts`` — the UI lists them under "Closed",
+    # and their transactions and history are still real — but they are worth
+    # nothing and owe nothing, so every total is computed without them.
+    # Subtracting here rather than filtering inside the three appenders keeps
+    # this the one place that decides what a total contains.
+    _attach_closed(accounts)
+    for a in accounts:
+        if not a.closed_on:
+            continue
+        bucket = classify_account_bucket(a.type, a.subtype)
+        if bucket in _CASH_BUCKETS:
+            total_cash -= float(a.available or 0.0)
+        elif bucket == "credit":
+            total_credit_debt -= float(a.ledger or 0.0)
+
+    open_accounts = [a for a in accounts if not a.closed_on]
+    total_investments = _compute_investments(open_accounts)
+    total_real_assets = _compute_real_assets(open_accounts)
     _attach_equity(accounts)
     _attach_tax_treatment(accounts)
     return BalancesSummary(

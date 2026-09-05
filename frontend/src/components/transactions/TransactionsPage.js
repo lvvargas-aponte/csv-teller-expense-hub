@@ -433,6 +433,8 @@ export default function TransactionsPage({ view }) {
                 dedupingNow={dedupingNow}
                 onPickCsv={sync.handleCsvPicked}
                 onFindDuplicates={handleFindDuplicates}
+                onSendToSheet={sync.sendToSheet}
+                sendingSheet={sync.sendingSheet}
               />
 
               {selected.size > 0 && (
@@ -524,11 +526,8 @@ export default function TransactionsPage({ view }) {
               }}
               openTxn={detailTxn}
               draft={detailDraft}
-              personName={personNames.person_2}
               onOpenDetail={openDetail}
               onApplyToSimilar={applyToSimilar}
-              onSendToSheet={sync.sendToSheet}
-              sendingSheet={sync.sendingSheet}
             />
           </div>
         ) : view === 'shared' ? (

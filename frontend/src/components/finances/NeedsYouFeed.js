@@ -6,13 +6,20 @@ import { getLatestDigest, markDigestRead } from '../../api/digest';
 import { getAllTransactions } from '../../api/transactions';
 import { getAllAccountDetails } from '../../api/accountDetails';
 import { buildInsights } from '../../utils/insightBuilder';
+import { pathForTarget } from '../../legacyRoutes';
+
+// The feed is the first thing on Home and has no upper bound of its own — a
+// week with several alerts pushed everything else below the fold. Five is
+// what fits beside the cards next to it; the rest stay one click away.
+const VISIBLE_LIMIT = 5;
 
 // summary/dashboard arrive as props that start null and fill in asynchronously
 // (DashboardTab, FinancesPage). Fetching lives in one mount-only effect; the
 // insight list is a separate memo so it recomputes once those props land,
 // instead of being frozen at whatever they were on first render.
-export default function NeedsYouFeed({ summary, dashboard, onNavigate }) {
+export default function NeedsYouFeed({ summary, dashboard, onNavigate, currentPath }) {
   const [loaded, setLoaded] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [alertsFailed, setAlertsFailed] = useState(false);
   const [digest, setDigest] = useState(null);
@@ -69,6 +76,9 @@ export default function NeedsYouFeed({ summary, dashboard, onNavigate }) {
     ? 'Could not load insights — is the backend running?' : null;
   const empty = !loading && !error && insights.length === 0;
 
+  const shown = (!insights || expanded) ? insights : insights.slice(0, VISIBLE_LIMIT);
+  const hiddenCount = insights ? insights.length - (shown ? shown.length : 0) : 0;
+
   return (
     <DashboardCard
       title="Needs you"
@@ -78,7 +88,7 @@ export default function NeedsYouFeed({ summary, dashboard, onNavigate }) {
       emptyText="Nothing needs you right now."
     >
       <ul style={{ display: 'grid', gap: 6, margin: 0, padding: 0, listStyle: 'none' }}>
-        {insights && insights.map((insight) => (
+        {shown && shown.map((insight) => (
           <li
             key={insight.id}
             style={{
@@ -109,7 +119,10 @@ export default function NeedsYouFeed({ summary, dashboard, onNavigate }) {
               </span>
               <span style={{ fontWeight: 700, fontSize: 13 }}>{insight.title}</span>
               <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{insight.body}</span>
-              {insight.action && (
+              {/* A link to the page you are reading is not an action. The
+                  cashflow alert targets the dashboard, and this feed only
+                  renders on the dashboard. */}
+              {insight.action && pathForTarget(insight.action.target) !== currentPath && (
                 <button
                   type="button"
                   onClick={() => onNavigate && onNavigate(insight.action.target)}
@@ -131,6 +144,15 @@ export default function NeedsYouFeed({ summary, dashboard, onNavigate }) {
           </li>
         ))}
       </ul>
+      {(hiddenCount > 0 || expanded) && (
+        <button
+          type="button"
+          className="eh-needsyou-more"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? 'Show less' : `Show ${hiddenCount} more`}
+        </button>
+      )}
     </DashboardCard>
   );
 }

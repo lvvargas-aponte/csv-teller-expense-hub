@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { NavLink, useNavigate, useParams } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import DashboardTab from './DashboardTab';
 import AccountsTab from './AccountsTab';
 import DebtPage from './DebtPage';
@@ -14,23 +14,21 @@ import { useCategories } from '../../hooks/useCategories';
 import RecurringChargesCard from './cards/RecurringChargesCard';
 import UpcomingBillsCard from './cards/UpcomingBillsCard';
 import { getBalancesSummary } from '../../api/balances';
-import { pathForTab } from '../../legacyRoutes';
+import { pathForTab, pathForTarget } from '../../legacyRoutes';
 import { NAV } from '../../navConfig';
 
-const COMMITMENTS_TABS = NAV
-  .find((s) => s.id === 'plan').children
-  .find((c) => c.id === 'commitments').children;
+// Optional-chained: an unguarded .children turned a rename in navConfig into
+// a crash at module load, before any test could report it.
+const ASK_TABS = NAV.find((s) => s.id === 'ask')?.children ?? [];
 
-const ASK_TABS = NAV.find((s) => s.id === 'ask').children;
-
-export default function FinancesPage({ section, view, subView, healthScore, healthSignals }) {
+export default function FinancesPage({ section, view, healthScore, healthSignals }) {
   const navigate = useNavigate();
   const { pane } = useParams();
+  const { pathname } = useLocation();
 
   const handleInsightAction = useCallback((target) => {
-    if (!target) return;
-    if (target.financesTab) navigate(pathForTab(target.financesTab));
-    else if (target.route)  navigate(target.route);
+    const path = pathForTarget(target);
+    if (path) navigate(path);
   }, [navigate]);
 
   const openSettings = useCallback(
@@ -88,6 +86,7 @@ export default function FinancesPage({ section, view, subView, healthScore, heal
             summary={summary}
             onNavigate={handleTabNavigate}
             onInsightAction={handleInsightAction}
+            currentPath={pathname}
           />
         )}
 
@@ -127,14 +126,14 @@ export default function FinancesPage({ section, view, subView, healthScore, heal
 
         {section === 'plan' && view === 'commitments' && (
           <SimplePage title="Commitments">
-            <SubTabs tabs={COMMITMENTS_TABS} label="Commitments views" />
-            {subView === 'due' && (
-              <div style={{ display: 'grid', gap: 16 }}>
-                <UpcomingBillsCard onNavigateToAccounts={() => navigate('/debt')} />
-                <RecurringChargesCard variant="detail" />
-              </div>
-            )}
-            {subView === 'recurring' && <SubscriptionsSection />}
+            {/* Three kinds of repeat, three sections, one page: what is owed
+                soon, what renews, and what merely recurs. The detector's
+                commitment_type decides which list each merchant lands in. */}
+            <div style={{ display: 'grid', gap: 16 }}>
+              <UpcomingBillsCard onNavigateToAccounts={() => navigate('/debt')} />
+              <SubscriptionsSection />
+              <RecurringChargesCard variant="detail" />
+            </div>
           </SimplePage>
         )}
 

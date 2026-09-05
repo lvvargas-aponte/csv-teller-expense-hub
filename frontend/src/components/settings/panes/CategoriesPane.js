@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import SettingsCard from '../SettingsCard';
 import categoryColor from '../categoryColor';
+import CategoryRow from './CategoryRow';
 
 function RuleRow({ rule, categories, onChange, onRemove }) {
   return (
@@ -74,6 +75,7 @@ function LearnedRuleRow({ rule, onToggle, onRemove, busy }) {
           type="checkbox"
           checked={rule.enabled}
           disabled={busy}
+          aria-label={`Rule for ${rule.pattern} is on`}
           onChange={(e) => onToggle(rule, e.target.checked)}
         />
         <span className="set-rule-toggle-text">On</span>
@@ -100,7 +102,25 @@ export default function CategoriesPane({
   onToggleLearned,
   onRemoveLearned,
   learnedBusy = false,
+  categoryRows = [],
+  categoriesBusy = false,
+  showArchived = false,
+  onShowArchivedChange,
+  onRenameCategory,
+  onPatchCategory,
+  onMergeCategory,
+  onDeleteCategory,
+  onCreateCategory,
 }) {
+  const [newCategory, setNewCategory] = useState('');
+
+  const addCategory = () => {
+    const name = newCategory.trim();
+    if (!name) return;
+    setNewCategory('');
+    onCreateCategory(name);
+  };
+
   const addRule = () => {
     onRulesChange([
       ...rules,
@@ -130,20 +150,50 @@ export default function CategoriesPane({
 
       <SettingsCard
         title="Categories"
-        hint={`${categories.length} in use`}
+        hint={`${categoryRows.length} in use`}
+        flush
       >
-        <div className="set-chips">
-          {categories.map((name) => (
-            <span key={name} className="set-chip">
-              <span
-                className="set-chip-dot"
-                style={{ background: categoryColor(name) }}
-                aria-hidden="true"
-              />
-              {name}
-              <span className="set-chip-count">{counts?.[name] ?? 0}</span>
-            </span>
-          ))}
+        {categoryRows.length === 0 ? (
+          <div className="set-empty">No categories yet.</div>
+        ) : categoryRows.map((row) => (
+          <CategoryRow
+            key={row.id}
+            category={row}
+            count={counts?.[row.name] ?? 0}
+            siblings={categoryRows.filter((c) => c.id !== row.id)}
+            busy={categoriesBusy}
+            onRename={onRenameCategory}
+            onPatch={onPatchCategory}
+            onMerge={onMergeCategory}
+            onDelete={onDeleteCategory}
+          />
+        ))}
+        <div className="set-cat-add">
+          <input
+            className="form-input"
+            value={newCategory}
+            placeholder="New category"
+            aria-label="New category name"
+            disabled={categoriesBusy}
+            onChange={(e) => setNewCategory(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') addCategory(); }}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={categoriesBusy || !newCategory.trim()}
+            onClick={addCategory}
+          >
+            Add
+          </button>
+          <label className="set-cat-showarchived">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => onShowArchivedChange(e.target.checked)}
+            />
+            <span>Show archived</span>
+          </label>
         </div>
       </SettingsCard>
 

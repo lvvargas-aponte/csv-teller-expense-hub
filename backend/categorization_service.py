@@ -20,7 +20,11 @@ themselves — see the PgStore live-dict contract.
 """
 from __future__ import annotations
 
+import logging
+
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 MANUAL = "manual"
 RULE = "rule"
@@ -65,7 +69,12 @@ def can_assign(txn: Dict[str, Any], source: str) -> bool:
     return _RANK.get(source, 0) >= _RANK[holder]
 
 
-def apply(txn: Dict[str, Any], category: Optional[str], source: str) -> bool:
+def apply(
+    txn: Dict[str, Any],
+    category: Optional[str],
+    source: str,
+    register: bool = True,
+) -> bool:
     """Set ``txn``'s category and provenance when ``source`` is allowed to.
 
     Returns whether the write happened, so a bulk caller can report how many
@@ -73,6 +82,9 @@ def apply(txn: Dict[str, Any], category: Optional[str], source: str) -> bool:
 
     Passing ``None`` or ``""`` clears the category, and clearing obeys the
     same precedence — the AI does not get to erase a label you typed.
+
+    ``register=False`` skips ensuring the category row exists, for a bulk
+    caller that has already done it once for the whole batch.
     """
     if source not in _RANK:
         raise ValueError(f"unknown category source {source!r}; expected one of {SOURCES}")
@@ -82,7 +94,25 @@ def apply(txn: Dict[str, Any], category: Optional[str], source: str) -> bool:
     cleaned = _clean(category)
     txn["category"] = cleaned
     txn["category_source"] = source if cleaned else None
+    if cleaned and register:
+        _register(cleaned)
     return True
+
+
+def _register(name: str) -> None:
+    """Make sure a category the user just used exists as an editable row.
+
+    Typing a new label in the transactions table is a legitimate way to
+    create a category, and one that never became a row could not be renamed,
+    merged or archived. Best-effort: failing to register must not fail the
+    assignment the user asked for.
+    """
+    try:
+        import categories_service
+
+        categories_service.ensure_many([name])
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[categorization] category registration skipped: {e}")
 
 
 def stamp_ingest(txn: Dict[str, Any]) -> Dict[str, Any]:
@@ -167,11 +197,15 @@ def apply_rule(rule: Dict[str, Any]) -> Dict[str, Any]:
     matched = 0
     updated = 0
 
+    # Once for the sweep rather than once per row.
+    if rule.get("category"):
+        _register(rule["category"])
+
     for tid, txn in list(state.stored_transactions.items()):
         if not _matches(txn, rule, alias_map):
             continue
         matched += 1
-        if apply(txn, rule.get("category"), RULE):
+        if apply(txn, rule.get("category"), RULE, register=False):
             state.stored_transactions[tid] = txn  # write-back per PgStore contract
             updated += 1
 

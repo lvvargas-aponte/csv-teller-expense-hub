@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { aprBadgeClass } from './helpers';
 
-export function AprCell({ value, onChange }) {
+// `readOnly` renders the badge without the click-to-edit affordance: an
+// account's APR is edited in the Credit cards drawer, not here.
+export function AprCell({ value, onChange, readOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState(value || '');
   const inputRef = useRef(null);
@@ -22,7 +24,7 @@ export function AprCell({ value, onChange }) {
     if (e.key === 'Escape') setEditing(false);
   };
 
-  if (editing) {
+  if (editing && !readOnly) {
     return (
       <div className="ov-apr-cell">
         <input
@@ -42,6 +44,17 @@ export function AprCell({ value, onChange }) {
   }
 
   const v = parseFloat(value) || 0;
+
+  if (readOnly) {
+    return (
+      <div className="ov-apr-cell">
+        {v > 0
+          ? <span className={`ov-apr-badge ${aprBadgeClass(value)}`}>{v}%</span>
+          : <span className="ov-apr-empty ov-apr-empty--static">No APR</span>}
+      </div>
+    );
+  }
+
   return (
     <div className="ov-apr-cell">
       {v > 0 ? (

@@ -187,6 +187,20 @@ async def refresh_balance_snapshots() -> Dict[str, Any]:
             src = "snaptrade"
         else:
             src = "simplefin"
+        # A synced account may have no ``accounts`` row yet, and the snapshot's
+        # foreign key would reject it — which is exactly how SimpleFIN accounts
+        # stayed out of the net-worth history. Mirror first, then snapshot.
+        if not acct.manual:
+            repo.upsert_synced_account(
+                {
+                    "id": acct.id,
+                    "name": acct.name,
+                    "type": acct.type,
+                    "subtype": acct.subtype or "",
+                    "institution": {"name": acct.institution},
+                },
+                source=src,
+            )
         repo.insert_balance_snapshot(
             account_id=acct.id,
             source=src,

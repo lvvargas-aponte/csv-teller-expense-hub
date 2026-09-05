@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { fmt$, calculateHalf, merchantKey } from '../../utils/formatting';
+import { fmt$, fmtSigned, merchantKey, txnDirection } from '../../utils/formatting';
 import Spin from '../ui/Spin';
 
 function RailProgressCard({ txns, progress, onOpenDetail }) {
@@ -51,31 +51,43 @@ function RailSimilarCard({ matches, openTxn, pending, onApplyToSimilar, applying
   );
 }
 
-function RailSharedCard({ txns, personName, onSendToSheet, sendingSheet }) {
-  const shared = useMemo(() => txns.filter((t) => t.is_shared), [txns]);
-  const owed = useMemo(
-    () => shared.reduce((sum, t) => sum + (Number(t.person_2_owes) || calculateHalf(t.amount)), 0),
-    [shared]
-  );
+// Money in / out / net across the rows currently on screen, so narrowing the
+// filter to one month answers "what did that month actually do".
+function RailBalanceCard({ txns }) {
+  const { inflow, outflow } = useMemo(() => {
+    let inflow = 0;
+    let outflow = 0;
+    txns.forEach((t) => {
+      const amount = Math.abs(parseFloat(t.amount) || 0);
+      if (txnDirection(t) === 'inflow') inflow += amount;
+      else outflow += amount;
+    });
+    return { inflow, outflow };
+  }, [txns]);
+
+  const net = inflow - outflow;
   return (
-    <div className="tx-rail-card tx-rail-card--dark">
-      <h3 className="tx-rail-title">Shared with {personName || 'Person 2'}</h3>
-      <div className="tx-rail-big">
-        {fmt$(owed)}<small>owed to you</small>
+    <div className="tx-rail-card" data-testid="rail-balance">
+      <h3 className="tx-rail-title">Balance in this view</h3>
+      <div
+        className={`tx-rail-big${net < 0 ? ' tx-rail-big--out' : ''}`}
+        data-testid="rail-net"
+      >
+        {fmtSigned(net)}<small>net</small>
+      </div>
+      <div className="tx-rail-flows">
+        <div className="tx-rail-flowline">
+          <span>Money in</span>
+          <b className="tx-rail-in">{fmt$(inflow)}</b>
+        </div>
+        <div className="tx-rail-flowline">
+          <span>Money out</span>
+          <b className="tx-rail-out">{fmt$(outflow)}</b>
+        </div>
       </div>
       <div className="tx-rail-hint">
-        Across {shared.length} shared transaction{shared.length === 1 ? '' : 's'} in this view.
+        Across {txns.length} transaction{txns.length === 1 ? '' : 's'} in this view.
       </div>
-      {onSendToSheet && (
-        <button
-          type="button"
-          className="tx-btn tx-rail-btn tx-rail-btn--sheet"
-          onClick={onSendToSheet}
-          disabled={shared.length === 0 || sendingSheet}
-        >
-          {sendingSheet ? <Spin /> : null} Send to Sheet ({shared.length})
-        </button>
-      )}
     </div>
   );
 }
@@ -84,7 +96,7 @@ function RailCategoriesCard({ txns }) {
   const top = useMemo(() => {
     const totals = {};
     txns.forEach((t) => {
-      if (t.transaction_type === 'credit') return;
+      if (txnDirection(t) === 'inflow') return;
       const cat = t.category || 'Uncategorized';
       totals[cat] = (totals[cat] || 0) + Math.abs(parseFloat(t.amount) || 0);
     });
@@ -119,11 +131,8 @@ export default function TransactionsRail({
   progress,
   openTxn = null,
   draft = null,
-  personName,
   onOpenDetail,
   onApplyToSimilar,
-  onSendToSheet = null,
-  sendingSheet = false,
 }) {
   const [applying, setApplying] = useState(false);
 
@@ -160,12 +169,7 @@ export default function TransactionsRail({
           applying={applying}
         />
       )}
-      <RailSharedCard
-        txns={txns}
-        personName={personName}
-        onSendToSheet={onSendToSheet}
-        sendingSheet={sendingSheet}
-      />
+      <RailBalanceCard txns={txns} />
       <RailCategoriesCard txns={txns} />
     </aside>
   );

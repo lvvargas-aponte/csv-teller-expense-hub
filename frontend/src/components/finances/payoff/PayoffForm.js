@@ -1,10 +1,16 @@
 import React from 'react';
 import Spin from '../../ui/Spin';
+import { fmt$ } from '../../../utils/formatting';
 import { AprCell, AprLegend } from './AprCell';
 
+// A row backed by a real account is read-only here: its balance comes from the
+// bank, and its APR and minimum are edited in the Credit cards drawer above,
+// which is the one place those facts live. Rows added with "+ Add debt" have no
+// account behind them, so they stay editable — otherwise the button would do
+// nothing useful.
 export default function PayoffForm({
   rows, strategy, extra, error, loading, orderById,
-  onSetRow, onPersistApr, onAddRow, onRemoveRow,
+  onSetRow, onAddRow, onRemoveRow,
   onStrategyChange, onExtraChange, onCalculate,
 }) {
   return (
@@ -52,6 +58,7 @@ export default function PayoffForm({
               </tr>
             ) : rows.map((r, idx) => {
               const order = orderById.get(r._id);
+              const locked = !!r.accountId;
               // The strategy is part of the key on purpose: switching strategies
               // re-mounts each row so the entrance animation re-plays in the
               // new sort order.
@@ -62,50 +69,71 @@ export default function PayoffForm({
                     {order ? <span className="ov-order-badge">{order}</span> : <span style={{ display: 'inline-block', width: 20 }} />}
                   </td>
                   <td>
-                    <input
-                      className="ov-debt-input"
-                      type="text"
-                      placeholder="Account name"
-                      value={r.name}
-                      onChange={(e) => onSetRow(r._id, 'name', e.target.value)}
-                    />
+                    {locked ? (
+                      <span className="ov-debt-static">{r.name}</span>
+                    ) : (
+                      <input
+                        className="ov-debt-input"
+                        type="text"
+                        placeholder="Account name"
+                        value={r.name}
+                        onChange={(e) => onSetRow(r._id, 'name', e.target.value)}
+                      />
+                    )}
                   </td>
                   <td>
-                    <div className="ov-debt-input-wrap">
-                      <span className="ov-debt-input-prefix">$</span>
-                      <input
-                        className="ov-debt-input ov-num"
-                        type="number" min="0" step="0.01" placeholder="0.00"
-                        value={r.balance}
-                        onChange={(e) => onSetRow(r._id, 'balance', e.target.value)}
-                      />
-                    </div>
+                    {locked ? (
+                      <span className="ov-debt-static ov-num">{fmt$(r.balance)}</span>
+                    ) : (
+                      <div className="ov-debt-input-wrap">
+                        <span className="ov-debt-input-prefix">$</span>
+                        <input
+                          className="ov-debt-input ov-num"
+                          type="number" min="0" step="0.01" placeholder="0.00"
+                          value={r.balance}
+                          onChange={(e) => onSetRow(r._id, 'balance', e.target.value)}
+                        />
+                      </div>
+                    )}
                   </td>
                   <td>
                     <AprCell
                       value={r.apr}
-                      onChange={(v) => { onSetRow(r._id, 'apr', v); onPersistApr?.(r._id, v); }}
+                      readOnly={locked}
+                      onChange={(v) => onSetRow(r._id, 'apr', v)}
                     />
                   </td>
                   <td>
-                    <div className="ov-debt-input-wrap">
-                      <span className="ov-debt-input-prefix">$</span>
-                      <input
-                        className="ov-debt-input ov-num"
-                        type="number" min="0" step="0.01" placeholder="0.00"
-                        value={r.min_payment}
-                        onChange={(e) => onSetRow(r._id, 'min_payment', e.target.value)}
-                      />
-                    </div>
+                    {locked ? (
+                      <span className="ov-debt-static ov-num">
+                        {r.min_payment === '' ? '—' : fmt$(r.min_payment)}
+                      </span>
+                    ) : (
+                      <div className="ov-debt-input-wrap">
+                        <span className="ov-debt-input-prefix">$</span>
+                        <input
+                          className="ov-debt-input ov-num"
+                          type="number" min="0" step="0.01" placeholder="0.00"
+                          value={r.min_payment}
+                          onChange={(e) => onSetRow(r._id, 'min_payment', e.target.value)}
+                        />
+                      </div>
+                    )}
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button
-                      type="button"
-                      className="ov-icon-btn ov-icon-btn--danger"
-                      onClick={() => onRemoveRow(r._id)}
-                      aria-label="Remove debt"
-                      title="Remove"
-                    ><span aria-hidden="true">✕</span></button>
+                    {/* Removing an account-backed row would achieve nothing —
+                        the planner reconciles against the credit list, so it
+                        would reappear on the next render. Close or delete the
+                        account itself to take it out. */}
+                    {!locked && (
+                      <button
+                        type="button"
+                        className="ov-icon-btn ov-icon-btn--danger"
+                        onClick={() => onRemoveRow(r._id)}
+                        aria-label="Remove debt"
+                        title="Remove"
+                      ><span aria-hidden="true">✕</span></button>
+                    )}
                   </td>
                 </tr>
               );
@@ -113,6 +141,11 @@ export default function PayoffForm({
           </tbody>
         </table>
       </div>
+
+      <p className="ov-debt-source-note">
+        Balances, APR and minimums come from Credit cards above — edit them there.
+        &ldquo;Add debt&rdquo; is for a balance this app does not track.
+      </p>
 
       <button type="button" className="ov-btn ov-btn-ghost ov-btn-sm" onClick={onAddRow}>
         + Add debt
@@ -127,7 +160,6 @@ export default function PayoffForm({
             type="number" min="0" step="10" placeholder="0"
             value={extra}
             onChange={(e) => onExtraChange(e.target.value)}
-            aria-label="Extra monthly payment"
           />
         </div>
       </div>

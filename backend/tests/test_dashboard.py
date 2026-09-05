@@ -139,3 +139,132 @@ class TestPartialMonthComparison:
         assert by_month[current]["is_partial"] == (
             today.day < _last_day_of_month(today)
         )
+
+
+def _seed_inflow(
+    tid: str, date_str: str, amount: float, description: str,
+    account_type: str = "checking", account_id: str = "", category: str = "",
+) -> None:
+    state.stored_transactions[tid] = {
+        "id": tid,
+        "transaction_id": tid,
+        "date": date_str,
+        "description": description,
+        "amount": amount,
+        "transaction_type": "credit",
+        "account_type": account_type,
+        "account_id": account_id,
+        "category": category,
+        "source": "simplefin",
+        "is_shared": False,
+    }
+
+
+def _seed_outflow(tid: str, date_str: str, amount: float, description: str,
+                  category: str = "") -> None:
+    state.stored_transactions[tid] = {
+        "id": tid,
+        "transaction_id": tid,
+        "date": date_str,
+        "description": description,
+        "amount": amount,
+        "transaction_type": "debit",
+        "category": category,
+        "source": "simplefin",
+        "is_shared": False,
+    }
+
+
+def _prior_month() -> str:
+    today = date.today()
+    last = date(today.year, today.month, 1) - timedelta(days=1)
+    return f"{last.year:04d}-{last.month:02d}"
+
+
+class TestIncomeIsNotEveryInflow:
+    """The endpoint used to define income itself instead of reusing the
+    detector's test, and its version asked whether ``account_type`` contained
+    the word "credit". SimpleFIN puts the account's *display name* in that
+    field, so "Amazon Prime Rewards Visa Signature (5637)" passed and every
+    card payment counted as household income — $15,148 reported for a month
+    whose real payroll was $8,238.
+    """
+
+    def test_a_card_payment_is_not_income(self, client):
+        month = _prior_month()
+        _seed_inflow("pay", f"{month}-03", 3844.55, "ACME PAYROLL")
+        _seed_inflow(
+            "cardpmt", f"{month}-15", 2953.03, "ONLINE/MOBILE PAYMENT CONF#z1",
+            account_type="Customized Cash Rewards Visa Signature (7473)",
+        )
+
+        rows = client.get("/api/dashboard/income-vs-expenses").json()["rows"]
+        by_month = {r["month"]: r for r in rows}
+
+        assert by_month[month]["income"] == 3844.55
+
+    def test_a_p2p_transfer_is_not_income(self, client):
+        month = _prior_month()
+        _seed_inflow("pay", f"{month}-03", 3844.55, "ACME PAYROLL")
+        _seed_inflow("p2p", f"{month}-10", 1000.0, "LUZ VARGAS P2P")
+        _seed_inflow("zelle", f"{month}-12", 1305.93, "Zelle payment from A B")
+
+        rows = client.get("/api/dashboard/income-vs-expenses").json()["rows"]
+        by_month = {r["month"]: r for r in rows}
+
+        assert by_month[month]["income"] == 3844.55
+
+
+class TestCardPaymentsAreNotSpending:
+    """A card payment moves money between the household's own accounts; the
+    spending it settles was counted when each purchase posted to the card.
+    Counting the payment too reports the same money twice — $3,395 of one
+    month's $12,555, which is what drove the savings rate to -50%.
+    """
+
+    def test_an_uncategorized_card_payment_is_not_spending(self, client):
+        month = _prior_month()
+        _seed_outflow("buy", f"{month}-04", 120.0, "GROCERY STORE")
+        _seed_outflow("pmt", f"{month}-20", 2953.03, "BANK OF AMERICA PAYMENT z1i7ub")
+
+        rows = client.get("/api/dashboard/income-vs-expenses").json()["rows"]
+        by_month = {r["month"]: r for r in rows}
+
+        assert by_month[month]["expenses"] == 120.0
+
+    def test_a_miscategorized_card_payment_is_not_spending(self, client):
+        """These rows often carry a wrong category rather than none — the real
+        data files "BANK OF AMERICA PAYMENT" under Service — so a category is
+        no evidence the row is real spending."""
+        month = _prior_month()
+        _seed_outflow("buy", f"{month}-04", 120.0, "GROCERY STORE")
+        _seed_outflow(
+            "pmt", f"{month}-20", 1722.92,
+            "Payment to Chase card ending in 5637", category="General",
+        )
+
+        rows = client.get("/api/dashboard/income-vs-expenses").json()["rows"]
+        by_month = {r["month"]: r for r in rows}
+
+        assert by_month[month]["expenses"] == 120.0
+
+    def test_a_loan_payment_is_still_spending(self, client):
+        """Nothing was counted when the mortgage was drawn, so unlike a card
+        payment it has no purchase side to double — it must keep counting."""
+        month = _prior_month()
+        _seed_outflow("mtg", f"{month}-05", 3053.14, "TRUIST MORTG OLB MTGPMT 4008583934 WEB")
+
+        rows = client.get("/api/dashboard/income-vs-expenses").json()["rows"]
+        by_month = {r["month"]: r for r in rows}
+
+        assert by_month[month]["expenses"] == 3053.14
+
+    def test_a_real_bill_carrying_the_word_payment_still_counts(self, client):
+        month = _prior_month()
+        _seed_outflow("ins", f"{month}-06", 86.48, "PROG PREMIER INS PREM XXXXX1773")
+        _seed_outflow("util", f"{month}-08", 83.88, "CITYOFRALUTIL BILLPAY PPD ID: 000")
+
+        rows = client.get("/api/dashboard/income-vs-expenses").json()["rows"]
+        by_month = {r["month"]: r for r in rows}
+
+        assert by_month[month]["expenses"] == 170.36

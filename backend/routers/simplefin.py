@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 
+import categories_service
 import categorization_service
 import state
 from category_normalizer import normalize as normalize_category
@@ -144,6 +145,7 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                         filtered.append((t, txn_date))
 
                 added = 0
+                seen_categories = set()
                 for t, txn_date in filtered:
                     amt = float(t.get("amount", 0))
                     txn = CsvTransaction(
@@ -160,6 +162,8 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                         transaction_type="credit" if amt > 0 else "debit",
                         account_type=account.get("name", ""),
                     )
+                    if txn.category:
+                        seen_categories.add(txn.category)
                     key = dedupe_key(
                         txn.date, txn.amount, txn.description, txn.transaction_type,
                     )
@@ -188,6 +192,10 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                         existing["direction"] = derive_direction(txn.transaction_type)
                         state.stored_transactions[txn.transaction_id] = existing
 
+                # Register labels the feed introduced, once per account rather
+                # than per row, so a category the bank invented can still be
+                # renamed or merged.
+                categories_service.ensure_many(seen_categories)
                 total_fetched += len(filtered)
                 total_added += added
                 results.append({

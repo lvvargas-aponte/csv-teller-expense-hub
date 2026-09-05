@@ -82,9 +82,11 @@ export default function App() {
             <Route path="/plan" element={<Navigate to="/plan/budgets" replace />} />
             <Route path="/plan/budgets" element={<FinancesPage section="plan" view="budgets" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/plan/goals" element={<FinancesPage section="plan" view="goals" healthScore={healthScore} healthSignals={healthSignals} />} />
-            <Route path="/plan/commitments" element={<Navigate to="/plan/commitments/due" replace />} />
-            <Route path="/plan/commitments/due" element={<FinancesPage section="plan" view="commitments" subView="due" healthScore={healthScore} healthSignals={healthSignals} />} />
-            <Route path="/plan/commitments/recurring" element={<FinancesPage section="plan" view="commitments" subView="recurring" healthScore={healthScore} healthSignals={healthSignals} />} />
+            <Route path="/plan/commitments" element={<FinancesPage section="plan" view="commitments" healthScore={healthScore} healthSignals={healthSignals} />} />
+            {/* Bills, subscriptions and recurring spend are three sections of
+                one page now; the old split paths still land somewhere. */}
+            <Route path="/plan/commitments/due" element={<Navigate to="/plan/commitments" replace />} />
+            <Route path="/plan/commitments/recurring" element={<Navigate to="/plan/commitments" replace />} />
             <Route path="/ask" element={<FinancesPage section="ask" view="chat" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/ask/memory" element={<FinancesPage section="ask" view="memory" healthScore={healthScore} healthSignals={healthSignals} />} />
             <Route path="/settings" element={<FinancesPage section="settings" healthScore={healthScore} healthSignals={healthSignals} />} />

@@ -7,9 +7,9 @@
  * showed as cash on one page and an investment on the other. Everything that
  * needs to know what an account *is* calls `classifyAccountBucket`.
  *
- * The subtype list exists in two languages, so it drifts. `loadInvestmentSubtypes`
- * pulls the authoritative list from the backend once per session; the bundled
- * constant below is the offline fallback.
+ * The subtype lists exist in two languages, so they drift. `loadAccountVocabulary`
+ * pulls the authoritative ones from the backend in a single call once per
+ * session; the bundled constants below are the offline fallback.
  */
 import { getAccountsMetadata } from '../api/accounts';
 
@@ -19,23 +19,45 @@ export const INVESTMENT_SUBTYPES = new Set([
   'sep_ira', 'simple_ira', '529',
 ]);
 
-let serverSubtypes = null;
+// Installment debt: a fixed principal on a fixed schedule, as opposed to a
+// revolving line. It has no credit limit to be a percentage of, so the backend
+// leaves it out of utilization — and avalanche/snowball ordering does not apply
+// to it either, so the payoff planner leaves it out too.
+export const INSTALLMENT_SUBTYPES = new Set([
+  'loan', 'mortgage', 'student', 'auto',
+]);
 
-/** Install the server's subtype list (or `null` / `[]` to fall back). */
+let serverSubtypes = null;
+let serverInstallment = null;
+
+const asSet = (list) => (list && list.length
+  ? new Set(list.map((s) => String(s).toLowerCase().trim()))
+  : null);
+
+/** Install the server's investment subtypes (or `null` / `[]` to fall back). */
 export function setInvestmentSubtypes(subtypes) {
-  serverSubtypes = subtypes && subtypes.length
-    ? new Set(subtypes.map((s) => String(s).toLowerCase().trim()))
-    : null;
+  serverSubtypes = asSet(subtypes);
+}
+
+/** Install the server's installment subtypes (or `null` / `[]` to fall back). */
+export function setInstallmentSubtypes(subtypes) {
+  serverInstallment = asSet(subtypes);
 }
 
 let pendingLoad = null;
 
-/** Fetch the server's subtype list once per session; failures keep the fallback. */
-export function loadInvestmentSubtypes() {
+/**
+ * Fetch both subtype lists once per session; failures keep the bundled ones.
+ * One request covers both — /accounts/metadata returns them together.
+ */
+export function loadAccountVocabulary() {
   if (!pendingLoad) {
     pendingLoad = getAccountsMetadata()
-      .then((r) => setInvestmentSubtypes(r.data?.investment_subtypes))
-      .catch(() => { /* offline or old backend — the bundled list stands */ });
+      .then((r) => {
+        setInvestmentSubtypes(r.data?.investment_subtypes);
+        setInstallmentSubtypes(r.data?.installment_subtypes);
+      })
+      .catch(() => { /* offline or old backend — the bundled lists stand */ });
   }
   return pendingLoad;
 }
@@ -52,4 +74,12 @@ export function classifyAccountBucket(account) {
   if (type === 'depository') return 'cash';
   if (type === 'credit') return 'credit';
   return 'other';
+}
+
+// A credit account that is a loan rather than a card. Mirrors
+// `analytics.is_installment`; the subtype list comes from the same endpoint.
+export function isInstallmentLoan(account) {
+  if (classifyAccountBucket(account) !== 'credit') return false;
+  const subtype = (account?.subtype || '').toLowerCase().trim();
+  return (serverInstallment || INSTALLMENT_SUBTYPES).has(subtype);
 }

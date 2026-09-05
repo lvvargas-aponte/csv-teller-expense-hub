@@ -1,3 +1,6 @@
+import { classifyAccountBucket } from './accountBucket';
+import { txnDirection } from './formatting';
+
 // Build curated "insight cards" from data already loaded by FinancesPage.
 // Each rule guards itself; if data is missing, that rule is skipped. The
 // caller falls back to a neutral nudge if buildInsights returns [].
@@ -53,9 +56,7 @@ function isExpense(t) {
   if (t.transfer_to_account_id) return false;
   const category = String(t.category || '').trim().toLowerCase();
   if (NON_SPENDING_CATEGORIES.has(category)) return false;
-  const direction = t.direction
-    || ((t.transaction_type || 'debit') === 'debit' ? 'outflow' : 'inflow');
-  return direction === 'outflow';
+  return txnDirection(t) === 'outflow';
 }
 
 // ── Rule 1: Large uncategorized spending ──────────────────────────────────────
@@ -146,7 +147,10 @@ function ruleNetWorthUp(dashboard) {
 // ── Rule 4: Largest credit card balance ───────────────────────────────────────
 function ruleLargestBalance(summary, accountDetails = {}) {
   const accounts = summary?.accounts || [];
-  const credit = accounts.filter((a) => a.type === 'credit');
+  // Through the shared classifier, not a bare `type` test: a card whose
+  // bucket comes from its subtype would otherwise be invisible here while
+  // /debt and the home hero both count it.
+  const credit = accounts.filter((a) => classifyAccountBucket(a) === 'credit');
   if (credit.length === 0) return null;
   // ledger represents balance owed for credit accounts in this app's shape.
   let biggest = null;
@@ -170,8 +174,11 @@ function ruleLargestBalance(summary, accountDetails = {}) {
           ((monthlyInterest !== null && monthlyInterest !== undefined)
             ? ` At ${apr}% APR, that costs about ${fmt$(monthlyInterest)}/month in interest. ` +
               `Prioritizing this in your payoff plan saves the most.`
-            : ' Add an APR in the Debt Payoff Planner below to see what it costs you each month.'),
-    action: { label: 'See payoff plan →', target: { financesTab: 'accounts' } },
+            // "below" was true on the old combined overview tab. The planner
+            // now lives on Debt, which is a page away from this feed.
+            : ' Add an APR in the Debt Payoff Planner to see what it costs you each month.'),
+    // The payoff planner is on Debt (DebtPage), never on Accounts.
+    action: { label: 'See payoff plan →', target: { financesTab: 'debt' } },
     priority: 20,
   };
 }
@@ -223,21 +230,49 @@ function ruleAlerts(alerts, hikes = []) {
 
 // The digest's own `alerts` array is collect_alerts() truncated — the same rows
 // /api/alerts returns, only staler. Only the parts with no other home are read.
+// One row per hike buried the rest of the feed the week six of them landed —
+// six near-identical "Subscription price went up" cards say no more than one
+// card naming the count, and they all lead to the same page anyway.
+const HIKE_ACTION = {
+  label: 'Review subscriptions →',
+  target: { route: '/plan/commitments' },
+};
+
 function ruleSubscriptionPriceHikes(digest) {
   const hikes = digest?.payload?.subscriptions?.price_increases;
   if (!Array.isArray(hikes) || hikes.length === 0) return [];
-  return hikes.map((h) => ({
-    id: `sub-hike-${h.merchant_key}`,
+  if (hikes.length === 1) {
+    const h = hikes[0];
+    return [{
+      id: `sub-hike-${h.merchant_key}`,
+      icon: 'calendar',
+      iconBg: TAG_COLORS.amber.bg,
+      tag: 'Heads up',
+      tagClass: TAG_COLORS.amber.cls,
+      title: 'Subscription price went up',
+      body: `${h.sample_description} rose ${Math.round(h.price_change_pct)}% to ` +
+            `${fmt$(h.latest_amount)}. Worth deciding whether to keep it.`,
+      action: HIKE_ACTION,
+      priority: 65,
+    }];
+  }
+  const named = hikes.slice(0, 2).map((h) => h.sample_description).join(', ');
+  const rest = hikes.length - 2;
+  const total = hikes.reduce((sum, h) => sum + (parseFloat(h.latest_amount) || 0), 0);
+  return [{
+    // Identity is the set of merchants, so the row is stable while the same
+    // hikes stand and changes when one drops out or a new one lands.
+    id: `sub-hikes-${hikes.map((h) => h.merchant_key).sort().join('|')}`,
     icon: 'calendar',
     iconBg: TAG_COLORS.amber.bg,
     tag: 'Heads up',
     tagClass: TAG_COLORS.amber.cls,
-    title: 'Subscription price went up',
-    body: `${h.sample_description} rose ${Math.round(h.price_change_pct)}% to ` +
-          `${fmt$(h.latest_amount)}. Worth deciding whether to keep it.`,
-    action: { label: 'Review subscriptions →', target: { route: '/plan/commitments/recurring' } },
+    title: `${hikes.length} subscriptions went up in price`,
+    body: `${named}${rest > 0 ? ` and ${rest} more` : ''} now cost ${fmt$(total)} ` +
+          `between them. Worth deciding which to keep.`,
+    action: HIKE_ACTION,
     priority: 65,
-  }));
+  }];
 }
 
 // ── Weekly digest narrative ────────────────────────────────────────────────

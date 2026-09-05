@@ -3,7 +3,7 @@ import Spin from '../ui/Spin';
 import { fmt$ } from '../../utils/formatting';
 import { listGoals, createGoal, deleteGoal } from '../../api/goals';
 import { getBalancesSummary } from '../../api/balances';
-import { classifyAccountBucket, loadInvestmentSubtypes } from '../../utils/accountBucket';
+import { classifyAccountBucket, loadAccountVocabulary } from '../../utils/accountBucket';
 
 // Where a goal's money can actually sit. Filtering on `type === 'depository'`
 // excluded every brokerage, so a house deposit held in a taxable account
@@ -28,7 +28,7 @@ export default function GoalsSection() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([listGoals(), getBalancesSummary(false), loadInvestmentSubtypes()])
+    Promise.all([listGoals(), getBalancesSummary(false), loadAccountVocabulary()])
       .then(([g, b]) => {
         setGoals(g.data);
         setAccounts((b.data?.accounts ?? [])

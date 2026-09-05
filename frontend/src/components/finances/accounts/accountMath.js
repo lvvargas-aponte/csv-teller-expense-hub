@@ -8,17 +8,28 @@ const num = (v) => {
 // Merge a balances-summary account with its user-supplied details into the
 // shape the row / summary bar render from.
 //
-// Available credit normally comes from the bank. For manual accounts there is
-// no bank to ask, so a user-entered credit limit derives it — editing the limit
-// on a manual card updates its available credit and, through it, the summary
-// bar. Synced cards keep the provider's number so an edited limit can never
-// silently contradict the bank.
+// Available credit is derived, never taken from the provider: SimpleFIN has no
+// available-credit figure, and balances_service copies the owed amount into
+// `available` for every credit account (see its credit branches). Preferring
+// that number is what made a card with a $19,200 limit and $438 owed report
+// "$438 available".
+//
+// A manually-added card is the one case where the field can be genuine — the
+// user typed it into the Add form — and the only way to tell is that it differs
+// from what's owed. A stored limit still wins over it: limit − owed stays right
+// as the balance moves, while a typed figure goes stale.
+//
+// `available` is null when nothing is known. Callers must drop the sub-line in
+// that case rather than printing 0, which reads as a maxed-out card.
 export function buildCreditRow(account, details = {}) {
   const owed = num(account.ledger) ?? 0;
   const limit = num(details.credit_limit);
   const reported = num(account.available);
   const derived = limit === null ? null : Math.max(0, limit - owed);
-  const available = account.manual ? (derived ?? reported ?? 0) : (reported ?? derived ?? 0);
+  const entered = (account.manual && reported !== null && Math.abs(reported - owed) > 0.005)
+    ? reported
+    : null;
+  const available = derived ?? entered;
 
   return {
     account,
@@ -34,6 +45,10 @@ export function buildCreditRow(account, details = {}) {
     statementDay: num(details.statement_day),
     dueDay: num(details.due_day),
     openedOn: details.opened_on ?? null,
+    // Details first, summary second: the drawer writes closed_on through the
+    // optimistic details merge, and the summary only catches up on the next
+    // refetch. Reading the summary alone left the row unchanged until reload.
+    closedOn: details.closed_on ?? account.closed_on ?? null,
     utilPct: limit && limit > 0 ? (owed / limit) * 100 : null,
     dueInDays: daysUntilNextDue(details.due_day),
     // The "starting" figure a manual account's edit is stored against — not

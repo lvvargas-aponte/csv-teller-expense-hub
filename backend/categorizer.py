@@ -19,11 +19,14 @@ Design choices:
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 import category_rules
 import state
 from llm_client import ask_ollama
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CATEGORIES: List[str] = [
     "Groceries",
@@ -45,14 +48,25 @@ DEFAULT_CATEGORIES: List[str] = [
 
 
 def known_categories() -> List[str]:
-    """Return the union of distinct transaction categories + user's budget
-    categories + the built-in defaults.
+    """The categories the suggester is allowed to answer with.
 
-    Priority (first occurrence wins, case-insensitive): transaction-assigned
-    categories → budgets → defaults. This way the LLM suggester picks from
-    the labels the user has actually used elsewhere before falling back to
-    the seed list.
+    Reads the ``categories`` table, which is the label set now — archived
+    ones are excluded, because archiving means "stop offering this" while
+    leaving the history that used it intact.
+
+    Falls back to deriving the union the way this did before the table
+    existed (transaction labels → budget keys → built-in defaults) so a DB
+    failure narrows the suggester's vocabulary rather than emptying it.
     """
+    try:
+        import categories_service
+
+        known = categories_service.names(include_archived=False)
+        if known:
+            return known
+    except Exception as e:
+        logger.debug(f"[categorizer] category table read skipped: {e}")
+
     seen_lower: dict[str, str] = {}
     txn_categories = [
         (t.get("category") or "")

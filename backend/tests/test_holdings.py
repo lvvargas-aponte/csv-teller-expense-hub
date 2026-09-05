@@ -2,7 +2,7 @@
 
 The SnapTrade *client* is mocked — these tests exercise the SQL path
 (``holdings`` table, ``replace_holdings``, ``get_holdings``) and the sync
-router end-to-end against the real ``expense_hub_test`` database.
+router end-to-end against the real ``financial_freedom_test`` database.
 """
 from unittest.mock import AsyncMock, patch
 

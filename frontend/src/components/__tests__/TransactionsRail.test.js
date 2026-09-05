@@ -107,53 +107,46 @@ describe('apply-to-similar card', () => {
   });
 });
 
-describe('shared card', () => {
-  test('sums person_2_owes with a half-amount fallback', () => {
+describe('balance card', () => {
+  test('splits the visible rows into money in, money out and a net', () => {
     renderRail({
       txns: [
-        txn('s1', { is_shared: true, person_2_owes: 3 }),
-        txn('s2', { is_shared: true, person_2_owes: 0, amount: -10 }), // falls back to 5.00
-        txn('p1', { is_shared: false, person_2_owes: 99 }),
+        txn('in', { amount: 500, transaction_type: 'credit' }),
+        txn('out1', { amount: -120 }),
+        txn('out2', { amount: -80 }),
       ],
     });
-    expect(screen.getByText('Shared with Bob')).toBeInTheDocument();
-    expect(screen.getByText('$8.00')).toBeInTheDocument();
-    expect(screen.getByText(/Across 2 shared transactions/)).toBeInTheDocument();
+    const card = screen.getByTestId('rail-balance');
+    expect(within(card).getByText('Money in')).toBeInTheDocument();
+    expect(within(card).getByText('$500.00')).toBeInTheDocument();
+    expect(within(card).getByText('$200.00')).toBeInTheDocument();
+    expect(screen.getByTestId('rail-net')).toHaveTextContent('$300.00');
+    expect(within(card).getByText(/Across 3 transactions/)).toBeInTheDocument();
   });
 
-  test('Send to Sheet renders only when a handler is provided', () => {
-    renderRail({});
+  test('prefers the canonical direction field over the CR/DR badge', () => {
+    renderRail({
+      // transaction_type still says debit; direction is what the backfill wrote.
+      txns: [txn('r', { amount: 40, transaction_type: 'debit', direction: 'inflow' })],
+    });
+    const card = screen.getByTestId('rail-balance');
+    expect(screen.getByTestId('rail-net')).toHaveTextContent('$40.00');
+    expect(within(card).getByText('Money in').nextSibling).toHaveTextContent('$40.00');
+  });
+
+  test('a net that went out reads negative', () => {
+    renderRail({ txns: [txn('o', { amount: -25 })] });
+    const card = screen.getByTestId('rail-balance');
+    const net = screen.getByTestId('rail-net');
+    expect(net).toHaveTextContent('-$25.00');
+    expect(net).toHaveClass('tx-rail-big--out');
+    expect(within(card).getByText(/Across 1 transaction in this view/)).toBeInTheDocument();
+  });
+
+  test('the shared card it replaced is gone', () => {
+    renderRail({ txns: [txn('s', { is_shared: true, person_2_owes: 3 })] });
+    expect(screen.queryByText(/Shared with/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Send to Sheet/ })).not.toBeInTheDocument();
-  });
-
-  test('Send to Sheet shows the shared count and disables while sending', () => {
-    const onSendToSheet = jest.fn();
-    const shared = [txn('s1', { is_shared: true }), txn('s2', { is_shared: true })];
-    const { rerender } = render(
-      <TransactionsRail
-        txns={shared}
-        progress={{ reviewed: 0, total: 2 }}
-        personName="Bob"
-        onOpenDetail={jest.fn()}
-        onApplyToSimilar={jest.fn()}
-        onSendToSheet={onSendToSheet}
-      />
-    );
-    const btn = screen.getByRole('button', { name: /Send to Sheet \(2\)/ });
-    fireEvent.click(btn);
-    expect(onSendToSheet).toHaveBeenCalled();
-    rerender(
-      <TransactionsRail
-        txns={shared}
-        progress={{ reviewed: 0, total: 2 }}
-        personName="Bob"
-        onOpenDetail={jest.fn()}
-        onApplyToSimilar={jest.fn()}
-        onSendToSheet={onSendToSheet}
-        sendingSheet
-      />
-    );
-    expect(screen.getByRole('button', { name: /Send to Sheet \(2\)/ })).toBeDisabled();
   });
 });
 

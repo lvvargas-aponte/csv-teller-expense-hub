@@ -262,6 +262,12 @@ export default function SharedPage() {
         <SharedFilters rows={rows} value={filter} onChange={setFilter} peerName={peerName} />
       )}
 
+      <div className="sh-legend">
+        <i><span className="sh-k sh-k--me" /> Paid by you</i>
+        <i><span className="sh-k sh-k--peer" /> Paid by {peerName}</i>
+        <i>Only rows with a split are counted toward settle up.</i>
+      </div>
+
       <div className="sh-list">
         {loading ? (
           <div className="sh-empty"><span>Loading…</span></div>
@@ -284,12 +290,6 @@ export default function SharedPage() {
             />
           ))
         )}
-      </div>
-
-      <div className="sh-legend">
-        <i><span className="sh-k sh-k--me" /> Paid by you</i>
-        <i><span className="sh-k sh-k--peer" /> Paid by {peerName}</i>
-        <i>Only rows with a split are counted toward settle up.</i>
       </div>
     </div>
   );

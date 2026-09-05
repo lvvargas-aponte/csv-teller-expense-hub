@@ -6,9 +6,14 @@ import { getProfile, updateProfile } from '../../../api/profile';
 import {
   getCategoryRules, replaceCategoryRules, patchCategoryRule, deleteCategoryRule,
 } from '../../../api/categoryRules';
+import {
+  listCategoryRows, createCategory, patchCategory, renameCategory, mergeCategory,
+  deleteCategoryById,
+} from '../../../api/categories';
 
 jest.mock('../../../api/profile');
 jest.mock('../../../api/categoryRules');
+jest.mock('../../../api/categories');
 
 const EMPTY_PROFILE = {
   risk_tolerance: null, time_horizon_years: null, dependents: null,
@@ -32,6 +37,7 @@ beforeEach(() => {
   getCategoryRules.mockResolvedValue({ data: [] });
   updateProfile.mockResolvedValue({ data: EMPTY_PROFILE });
   replaceCategoryRules.mockResolvedValue({ data: [] });
+  listCategoryRows.mockResolvedValue({ data: { rows: [], categories: [], counts: {} } });
 });
 
 const awaitLoad = () => screen.findByRole('heading', { name: /financial profile/i });
@@ -138,8 +144,18 @@ test('discard restores the last saved values', async () => {
   expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
 });
 
-test('category chips show live transaction counts', async () => {
+test('category rows show live transaction counts', async () => {
   const user = userEvent.setup();
+  listCategoryRows.mockResolvedValue({
+    data: {
+      rows: [
+        { id: 1, name: 'Groceries', color: null, roles: [], archived: false, sort: 0 },
+        { id: 2, name: 'Transport', color: null, roles: [], archived: false, sort: 1 },
+      ],
+      categories: ['Groceries', 'Transport'],
+      counts: { Groceries: 42, Transport: 18 },
+    },
+  });
   renderPage();
   await awaitLoad();
   await user.click(screen.getByRole('tab', { name: /categories & rules/i }));
@@ -281,7 +297,7 @@ describe('merchant rules learned from transactions', () => {
     render(<SettingsPage initialPane="categories" categories={['Dining']} />);
     await screen.findByText('chipotle');
 
-    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('checkbox', { name: 'Rule for chipotle is on' }));
 
     await waitFor(() => expect(patchCategoryRule).toHaveBeenCalledWith(7, { enabled: false }));
     expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
@@ -303,5 +319,124 @@ describe('merchant rules learned from transactions', () => {
     getCategoryRules.mockResolvedValue({ data: [] });
     render(<SettingsPage initialPane="categories" categories={['Dining']} />);
     expect(await screen.findByText(/Nothing learned yet/)).toBeInTheDocument();
+  });
+});
+
+describe('editing categories', () => {
+  const ROWS = [
+    { id: 1, name: 'Groceries', color: null, roles: [], archived: false, sort: 0 },
+    { id: 2, name: 'Subscriptions', color: null, roles: ['bill', 'subscription'], archived: false, sort: 1 },
+  ];
+
+  async function openCategories(rows = ROWS) {
+    const user = userEvent.setup();
+    listCategoryRows.mockResolvedValue({
+      data: { rows, categories: rows.map((r) => r.name), counts: {} },
+    });
+    renderPage();
+    await awaitLoad();
+    await user.click(screen.getByRole('tab', { name: /categories & rules/i }));
+    await screen.findByText('Groceries');
+    return user;
+  }
+
+  test('renaming commits against the server rather than the Save bar', async () => {
+    // A rename rewrites every transaction, budget and rule that used the old
+    // name — there is no coherent "discard" for that.
+    const user = await openCategories();
+    renameCategory.mockResolvedValue({ data: { ...ROWS[0], name: 'Food' } });
+
+    await user.click(screen.getByRole('button', { name: 'Groceries' }));
+    const input = screen.getByLabelText('Rename Groceries');
+    await user.clear(input);
+    await user.type(input, 'Food{Enter}');
+
+    await waitFor(() => expect(renameCategory).toHaveBeenCalledWith(1, 'Food'));
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+  });
+
+  test('renaming to the same name does not call the server', async () => {
+    const user = await openCategories();
+    await user.click(screen.getByRole('button', { name: 'Groceries' }));
+    await user.click(document.body);
+    expect(renameCategory).not.toHaveBeenCalled();
+  });
+
+  test('shows the roles that drive how a category is treated', async () => {
+    await openCategories();
+    expect(screen.getByText('Bill')).toBeInTheDocument();
+    expect(screen.getByText('Subscription')).toBeInTheDocument();
+  });
+
+  test('a role can be toggled on', async () => {
+    const user = await openCategories();
+    patchCategory.mockResolvedValue({ data: ROWS[0] });
+
+    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Not spending' }));
+
+    await waitFor(() => expect(patchCategory).toHaveBeenCalledWith(1, { roles: ['non_spending'] }));
+  });
+
+  test('merging folds one category into another', async () => {
+    const user = await openCategories();
+    mergeCategory.mockResolvedValue({ data: ROWS[1] });
+
+    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
+    await user.selectOptions(
+      screen.getByLabelText('Merge Groceries into another category'), '2',
+    );
+
+    await waitFor(() => expect(mergeCategory).toHaveBeenCalledWith(1, 2));
+  });
+
+  test('archiving is offered as the non-destructive option', async () => {
+    const user = await openCategories();
+    patchCategory.mockResolvedValue({ data: { ...ROWS[0], archived: true } });
+
+    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    await waitFor(() => expect(patchCategory).toHaveBeenCalledWith(1, { archived: true }));
+  });
+
+  test('deleting asks first, because no undo puts the labels back', async () => {
+    const user = await openCategories();
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+
+    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(deleteCategoryById).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  test('deleting proceeds once confirmed', async () => {
+    const user = await openCategories();
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    deleteCategoryById.mockResolvedValue({ data: { removed: 'Groceries' } });
+
+    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(deleteCategoryById).toHaveBeenCalledWith(1));
+    confirmSpy.mockRestore();
+  });
+
+  test('adding a category creates it', async () => {
+    const user = await openCategories();
+    createCategory.mockResolvedValue({ data: { id: 3, name: 'Pets', roles: [] } });
+
+    await user.type(screen.getByLabelText('New category name'), 'Pets');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => expect(createCategory).toHaveBeenCalledWith('Pets'));
+  });
+
+  test('archived categories are hidden until asked for', async () => {
+    const user = await openCategories();
+    await user.click(screen.getByRole('checkbox', { name: 'Show archived' }));
+    await waitFor(() => expect(listCategoryRows).toHaveBeenCalledWith(true));
   });
 });

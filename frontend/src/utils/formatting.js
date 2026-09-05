@@ -88,6 +88,12 @@ export const formatCategory = (cat) =>
 export const merchantKey = (desc = '') =>
   desc.replace(/[^A-Za-z ]/g, ' ').trim().split(/\s+/).slice(0, 2).join(' ').toUpperCase();
 
+// Money-flow direction of one transaction. `direction` is the canonical field;
+// `transaction_type` is the older CR/DR badge, kept as the fallback for rows
+// that predate the backfill.
+export const txnDirection = (t) =>
+  t.direction || ((t.transaction_type || 'debit') === 'debit' ? 'outflow' : 'inflow');
+
 export function txnMonthKey(dateStr) {
   if (!dateStr) return null;
   // ISO format (YYYY-MM-DD from SimpleFIN): append T00:00:00 so it's treated as local time, not UTC.

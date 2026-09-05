@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import SpendingByCategoryCard from '../SpendingByCategoryCard';
 
 // jsdom has no ResizeObserver, so recharts' <ResponsiveContainer> never
@@ -71,4 +72,71 @@ test('"Other" gets its own neutral token, not a positional chart colour', () => 
 
   const otherIcon = screen.getByLabelText('Other legend icon');
   expect(otherIcon.outerHTML).toContain('fill="var(--text-faint)"');
+});
+
+// The drill-down is what fills the card's height, so it lists every category
+// the month has — not the chart's top-8 + "Other", which would hide the very
+// rows a drill-down exists to show.
+const twoMonths = {
+  months: ['2026-06', '2026-07'],
+  spending_by_month: {
+    '2026-06': { Groceries: 400, Dining: 200, Transport: 100 },
+    '2026-07': { Groceries: 500, Dining: 100, Transport: 100, Health: 50 },
+  },
+};
+
+// The chart's own category filter is a <ul> of <li> too, so every breakdown
+// assertion scopes to the labelled list rather than to every listitem on screen.
+const breakdown = () =>
+  within(screen.getByRole('list', { name: 'Category breakdown' })).getAllByRole('listitem');
+
+test('drill-down lists the latest month, ranked, with a total', () => {
+  render(<SpendingByCategoryCard dashboard={twoMonths} loading={false} error={null} />);
+
+  expect(screen.getByRole('combobox', { name: 'Month to break down' })).toHaveValue('2026-07');
+  expect(screen.getByText('$750.00')).toBeInTheDocument();
+
+  const names = breakdown().map((li) => li.textContent);
+  expect(names[0]).toContain('Groceries');
+  expect(names[names.length - 1]).toContain('Health');
+});
+
+test('each row reports its move against the prior month', () => {
+  render(<SpendingByCategoryCard dashboard={twoMonths} loading={false} error={null} />);
+
+  const row = (name) => breakdown().find((li) => li.textContent.includes(name));
+
+  expect(row('Groceries')).toHaveTextContent('↑ 25%');
+  expect(row('Dining')).toHaveTextContent('↓ 50%');
+  expect(row('Transport')).toHaveTextContent('Flat');
+  // Absent in June, so there is no percentage to move by.
+  expect(row('Health')).toHaveTextContent('New');
+});
+
+test('picking another month rebuilds the breakdown', async () => {
+  const user = userEvent.setup();
+  render(<SpendingByCategoryCard dashboard={twoMonths} loading={false} error={null} />);
+
+  await user.selectOptions(
+    screen.getByRole('combobox', { name: 'Month to break down' }),
+    '2026-06',
+  );
+
+  expect(screen.getByText('$700.00')).toBeInTheDocument();
+  // Health has no June row, and June is the first month in the window, so
+  // nothing in the breakdown has a prior month to move against.
+  expect(breakdown().map((li) => li.textContent).join(' ')).not.toContain('Health');
+  expect(breakdown().map((li) => li.textContent).join(' ')).not.toMatch(/[↑↓]|New|Flat/);
+});
+
+test('a month with no spending says so instead of rendering an empty list', () => {
+  render(
+    <SpendingByCategoryCard
+      dashboard={{ months: ['2026-06', '2026-07'], spending_by_month: { '2026-06': { Groceries: 10 }, '2026-07': {} } }}
+      loading={false}
+      error={null}
+    />,
+  );
+
+  expect(screen.getByText('No spending in July 2026.')).toBeInTheDocument();
 });

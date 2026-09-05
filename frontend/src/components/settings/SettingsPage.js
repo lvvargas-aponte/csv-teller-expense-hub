@@ -5,6 +5,10 @@ import useSettingsDraft from './useSettingsDraft';
 import FinancialProfilePane from './panes/FinancialProfilePane';
 import CategoriesPane from './panes/CategoriesPane';
 import { patchCategoryRule, deleteCategoryRule } from '../../api/categoryRules';
+import {
+  listCategoryRows, createCategory, patchCategory, renameCategory, mergeCategory,
+  deleteCategoryById,
+} from '../../api/categories';
 import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext';
 
 const PANES = [
@@ -24,6 +28,7 @@ const TOAST_MS = 2200;
 export default function SettingsPage({
   initialPane = 'profile',
   categories = [], categoryCounts = {},
+  onCategoriesChanged,
 }) {
   const [pane, setPane] = useState(initialPane);
   const [toast, setToast] = useState(false);
@@ -53,6 +58,76 @@ export default function SettingsPage({
     (rule) => withLearnedReload(() => deleteCategoryRule(rule.id)),
     [withLearnedReload],
   );
+
+  // Categories are server rows too. A rename rewrites every transaction,
+  // budget and rule that used the old name, so it commits on the spot rather
+  // than sitting in the draft the Save bar collects — there is no coherent
+  // "discard" for a change that already touched history.
+  const [categoryRows, setCategoryRows] = useState([]);
+  const [categoriesBusy, setCategoriesBusy] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [categoryError, setCategoryError] = useState(null);
+
+  const reloadCategories = useCallback(async (includeArchived = showArchived) => {
+    try {
+      const { data } = await listCategoryRows(includeArchived);
+      setCategoryRows(data.rows || []);
+      onCategoriesChanged?.();
+    } catch {
+      setCategoryError('Could not load categories.');
+    }
+  }, [showArchived, onCategoriesChanged]);
+
+  useEffect(() => { reloadCategories(); }, [reloadCategories]);
+
+  const withCategoryReload = useCallback(async (fn) => {
+    setCategoriesBusy(true);
+    setCategoryError(null);
+    try {
+      await fn();
+      await reloadCategories();
+    } catch {
+      setCategoryError('That change could not be saved — please try again.');
+    } finally {
+      setCategoriesBusy(false);
+    }
+  }, [reloadCategories]);
+
+  const handleShowArchived = useCallback((next) => {
+    setShowArchived(next);
+    reloadCategories(next);
+  }, [reloadCategories]);
+
+  const renameCategoryRow = useCallback(
+    (category, name) => withCategoryReload(() => renameCategory(category.id, name)),
+    [withCategoryReload],
+  );
+
+  const patchCategoryRow = useCallback(
+    (category, fields) => withCategoryReload(() => patchCategory(category.id, fields)),
+    [withCategoryReload],
+  );
+
+  const mergeCategoryRow = useCallback(
+    (category, intoId) => withCategoryReload(() => mergeCategory(category.id, intoId)),
+    [withCategoryReload],
+  );
+
+  const createCategoryRow = useCallback(
+    (name) => withCategoryReload(() => createCategory(name)),
+    [withCategoryReload],
+  );
+
+  const deleteCategoryRow = useCallback((category) => {
+    // Deleting strips the label off every transaction that carried it, which
+    // no undo puts back — so this one asks.
+    const ok = window.confirm(
+      `Delete "${category.name}"? Transactions using it lose their category. `
+      + 'Archiving instead keeps the history and just stops offering it.',
+    );
+    if (!ok) return undefined;
+    return withCategoryReload(() => deleteCategoryById(category.id));
+  }, [withCategoryReload]);
 
   // Deep links from the Accounts page land on a specific pane.
   useEffect(() => { setPane(initialPane); }, [initialPane]);
@@ -140,6 +215,15 @@ export default function SettingsPage({
             onToggleLearned={toggleLearned}
             onRemoveLearned={removeLearned}
             learnedBusy={learnedBusy}
+            categoryRows={categoryRows}
+            categoriesBusy={categoriesBusy}
+            showArchived={showArchived}
+            onShowArchivedChange={handleShowArchived}
+            onRenameCategory={renameCategoryRow}
+            onPatchCategory={patchCategoryRow}
+            onMergeCategory={mergeCategoryRow}
+            onDeleteCategory={deleteCategoryRow}
+            onCreateCategory={createCategoryRow}
           />
         )}
       </div>
@@ -160,6 +244,10 @@ export default function SettingsPage({
             </button>
           </div>
         </div>
+      )}
+
+      {categoryError && (
+        <div className="set-inline-error" role="alert">{categoryError}</div>
       )}
 
       {toast && <div className="set-toast" role="status">✓ Settings saved</div>}

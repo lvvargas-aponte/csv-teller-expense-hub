@@ -1,5 +1,6 @@
 """Application entry point — app setup, middleware, and router registration."""
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from routers import (
     subscriptions, sync, tools, user_facts,
 )
 # Aliased: these routers share a name with a top-level service module.
+from routers import categories as categories_router
 from routers import category_rules as category_rules_router
 from routers import retirement as retirement_router
 from routers import simplefin as simplefin_router
@@ -36,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not SPREADSHEET_ID:
         logger.warning("SPREADSHEET_ID not configured — Google Sheets export will not work")
     if not SIMPLEFIN_ACCESS_URLS:
@@ -75,7 +77,7 @@ async def lifespan(app: FastAPI):
         scheduler_task.cancel()
 
 
-app = FastAPI(title="Bank Statement API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Financial Freedom API", version="1.0.0", lifespan=lifespan)
 
 # CRA dev server hosts; production deploys terminate at a reverse proxy and
 # don't hit FastAPI directly, so this allowlist intentionally only covers
@@ -102,6 +104,7 @@ app.include_router(advisor.router,      prefix="/api")
 app.include_router(budgets.router,      prefix="/api")
 app.include_router(goals.router,        prefix="/api")
 app.include_router(profile.router,      prefix="/api")
+app.include_router(categories_router.router, prefix="/api")
 app.include_router(category_rules_router.router, prefix="/api")
 app.include_router(layout.router,       prefix="/api")
 app.include_router(alerts.router,       prefix="/api")
@@ -135,7 +138,7 @@ else:
 
 @app.get("/")
 async def root() -> dict:
-    return {"message": "Bank Statement API is running"}
+    return {"message": "Financial Freedom API is running"}
 
 
 @app.get("/health")

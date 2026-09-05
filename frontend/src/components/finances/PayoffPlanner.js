@@ -6,15 +6,22 @@ import PayoffForm from './payoff/PayoffForm';
 import PayoffResults from './payoff/PayoffResults';
 import PayoffAdvice from './payoff/PayoffAdvice';
 
-export default function PayoffPlanner({ creditAccounts = [] }) {
-  const planner = usePayoffPlanner(creditAccounts);
+// `detailsMap` comes from DebtPage, which owns the credit list this planner
+// mirrors. The planner used to fetch its own copy, which went stale the moment
+// that list was edited. It is a read-only view of those accounts.
+export default function PayoffPlanner({ creditAccounts = [], detailsMap }) {
+  const planner = usePayoffPlanner(creditAccounts, detailsMap);
 
   return (
     <div className="ov-card">
       <div className="ov-card-header">
         <div>
           <h2 className="ov-card-title">Debt Payoff Planner</h2>
-          <div className="ov-card-subtitle">Enter APR and minimum payments to see your payoff timeline</div>
+          {/* Says "credit cards" so the missing mortgage reads as deliberate:
+              DebtPage keeps installment loans out of the queue. */}
+          <div className="ov-card-subtitle">
+            Credit cards only — enter APR and minimum payments to see your payoff timeline
+          </div>
         </div>
         <button
           type="button"
@@ -38,7 +45,6 @@ export default function PayoffPlanner({ creditAccounts = [] }) {
           loading={planner.loading}
           orderById={planner.orderById}
           onSetRow={planner.setRow}
-          onPersistApr={planner.persistApr}
           onAddRow={planner.addRow}
           onRemoveRow={planner.removeRow}
           onStrategyChange={planner.handleStrategyChange}

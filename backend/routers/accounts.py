@@ -1,6 +1,5 @@
 """Account routes: list accounts, delete account, and per-account
 user-supplied details (APR, due day, etc.)."""
-import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
@@ -10,7 +9,6 @@ import state
 from institution_normalizer import normalize as normalize_institution
 from models import AccountDetails, AccountDetailsIn
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Synthetic account id standing in for a whole failed access URL — SimpleFIN
@@ -92,7 +90,13 @@ async def get_accounts_metadata() -> Dict[str, Any]:
     The subtype list exists in Python and again in JS; served from here it has
     one owner, and the JS copy is only a fallback for an offline load.
     """
-    return {"investment_subtypes": sorted(analytics._INVESTMENT_SUBTYPES)}
+    return {
+        "investment_subtypes": sorted(analytics._INVESTMENT_SUBTYPES),
+        # Which credit accounts are installment loans rather than revolving
+        # lines. The frontend lists them separately and keeps them out of the
+        # payoff planner, whose avalanche/snowball ordering does not apply.
+        "installment_subtypes": sorted(analytics._INSTALLMENT_SUBTYPES),
+    }
 
 
 @router.get("/accounts")
@@ -149,6 +153,64 @@ def _promote_simplefin_account_to_manual_shadow(account_id: str) -> Optional[Dic
     return shadow
 
 
+def _require_deletable(account_id: str, purge: bool) -> None:
+    """Reject a delete the app has no connection to carry out.
+
+    A purge of an account that only exists locally is always allowed — there
+    is nothing to ask a provider about.
+    """
+    if state.SIMPLEFIN_ACCESS_URLS or account_id.startswith(_SF_ERROR_PREFIX):
+        return
+    if purge and account_id in state._manual_accounts:
+        return
+    raise HTTPException(status_code=409, detail="No SimpleFIN connections configured.")
+
+
+def _purge_account_everywhere(account_id: str) -> bool:
+    """Drop every local trace of one account. True when something was there.
+
+    Four stores hold a piece of an account and each has to be asked
+    separately: the manual record, the SimpleFIN balances cache, the
+    APR/limit details, and the ``accounts`` row (whose cascade takes the
+    balance snapshots with it). Missing one leaves an account that is half
+    deleted — invisible on the page but still counted in a total.
+
+    SimpleFIN has no per-account revoke, so this is local state only; the
+    access URL is untouched (see ``/simplefin/connections``).
+    """
+    existed = False
+
+    if account_id in state._manual_accounts:
+        del state._manual_accounts[account_id]
+        state._manual_accounts_store.save()
+        existed = True
+
+    sf_cached = state._balances_cache.get("simplefin_accounts") or []
+    if any(a.get("id") == account_id for a in sf_cached):
+        state._balances_cache_store.data["simplefin_accounts"] = [
+            a for a in sf_cached if a.get("id") != account_id
+        ]
+        state._balances_cache_store.save()
+        existed = True
+
+    if account_id in state.account_details:
+        del state.account_details[account_id]
+        state._account_details_store.save()
+
+    from db.accounts_repo import get_repo
+    if get_repo().delete_manual_account(account_id):
+        existed = True
+
+    return existed
+
+
+def _is_simplefin_account(account_id: str) -> bool:
+    return any(
+        a.get("id") == account_id
+        for a in (state._balances_cache.get("simplefin_accounts") or [])
+    )
+
+
 @router.delete("/accounts/{account_id}")
 async def delete_account(
     account_id: str,
@@ -170,12 +232,7 @@ async def delete_account(
     ``?purge=true`` variant removes the local record entirely — the frontend
     gates this behind a "type 'delete' to confirm" prompt.
     """
-    if (
-        not state.SIMPLEFIN_ACCESS_URLS
-        and not account_id.startswith(_SF_ERROR_PREFIX)
-    ):
-        if not (purge and account_id in state._manual_accounts):
-            raise HTTPException(status_code=500, detail="No SimpleFIN connections configured.")
+    _require_deletable(account_id, purge)
 
     # SimpleFIN error placeholder — SimpleFIN reports errors per access URL,
     # not per account, so removing it drops the whole connection (every
@@ -187,45 +244,14 @@ async def delete_account(
         await remove_simplefin_connection(account_id[len(_SF_ERROR_PREFIX):])
         return {"deleted": account_id, "purged": True}
 
-    is_simplefin_account = any(
-        a.get("id") == account_id
-        for a in (state._balances_cache.get("simplefin_accounts") or [])
-    )
-
     if purge:
-        # Hard delete: drop the local manual shadow + details. SimpleFIN
-        # accounts have no per-account revoke endpoint, so purging one just
-        # drops local state (the access URL itself is untouched; see
-        # /simplefin/connections).
-        existed = False
-        if account_id in state._manual_accounts:
-            del state._manual_accounts[account_id]
-            state._manual_accounts_store.save()
-            existed = True
-
-        sf_cached = state._balances_cache.get("simplefin_accounts") or []
-        if any(a.get("id") == account_id for a in sf_cached):
-            state._balances_cache_store.data["simplefin_accounts"] = [
-                a for a in sf_cached if a.get("id") != account_id
-            ]
-            state._balances_cache_store.save()
-            existed = True
-
-        if account_id in state.account_details:
-            del state.account_details[account_id]
-            state._account_details_store.save()
-
-        from db.accounts_repo import get_repo
-        if get_repo().delete_manual_account(account_id):
-            existed = True
-
-        if not existed:
+        if not _purge_account_everywhere(account_id):
             raise HTTPException(status_code=404, detail="Account not found.")
         return {"deleted": account_id, "purged": True}
 
     # SimpleFIN: no per-account revoke — hide locally, leave the access URL
     # (and every other account behind it) untouched.
-    if is_simplefin_account:
+    if _is_simplefin_account(account_id):
         if not _promote_simplefin_account_to_manual_shadow(account_id):
             raise HTTPException(status_code=404, detail="Account not found.")
         return {"deleted": account_id, "purged": False}
@@ -298,6 +324,7 @@ async def upsert_account_details(account_id: str, req: AccountDetailsIn):
         "statement_day":   req.statement_day,
         "due_day":         req.due_day,
         "opened_on":       req.opened_on,
+        "closed_on":       req.closed_on,
         "valuation_updated_on": req.valuation_updated_on,
         "secured_by_account_id": req.secured_by_account_id,
         "tax_treatment":   req.tax_treatment,
