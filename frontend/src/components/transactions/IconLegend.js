@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const LEGEND = [
   { icon: 'DR', label: 'Debit', detail: 'Money going out. Click to flip to credit.' },
@@ -12,14 +13,51 @@ const LEGEND = [
   { icon: '🗑', label: 'Delete', detail: 'Permanently remove this transaction. Asks to confirm first.' },
 ];
 
+const PANEL_W = 280;
+const MARGIN = 12;
+
 export default function IconLegend() {
   const [open, setOpen] = useState(false);
+  const [panelStyle, setPanelStyle] = useState(null);
   const wrapRef = useRef(null);
+  const panelRef = useRef(null);
+
+  // The table card clips overflow in both axes, so the panel is portalled to
+  // the body and positioned against the button's viewport rect instead.
+  const updatePanelPos = useCallback(() => {
+    if (!wrapRef.current) return;
+    const r = wrapRef.current.getBoundingClientRect();
+    const width = Math.min(PANEL_W, window.innerWidth - MARGIN * 2);
+    const left = Math.min(
+      Math.max(MARGIN, r.right - width),
+      window.innerWidth - width - MARGIN,
+    );
+    setPanelStyle({
+      position: 'fixed',
+      top: r.bottom + 6,
+      left,
+      width,
+      maxHeight: window.innerHeight - r.bottom - MARGIN * 2,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    updatePanelPos();
+    window.addEventListener('scroll', updatePanelPos, true);
+    window.addEventListener('resize', updatePanelPos);
+    return () => {
+      window.removeEventListener('scroll', updatePanelPos, true);
+      window.removeEventListener('resize', updatePanelPos);
+    };
+  }, [open, updatePanelPos]);
 
   useEffect(() => {
     if (!open) return undefined;
     const onDocClick = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+      const insideWrap = wrapRef.current && wrapRef.current.contains(e.target);
+      const insidePanel = panelRef.current && panelRef.current.contains(e.target);
+      if (!insideWrap && !insidePanel) setOpen(false);
     };
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onDocClick);
@@ -41,12 +79,14 @@ export default function IconLegend() {
         aria-expanded={open}
         aria-controls="icon-legend-panel"
       >?</button>
-      {open && (
+      {open && panelStyle && createPortal(
         <div
+          ref={panelRef}
           id="icon-legend-panel"
           role="region"
           aria-label="Icon legend"
           className="icon-legend-panel"
+          style={panelStyle}
         >
           <div className="icon-legend-title">Icon legend</div>
           {LEGEND.map((row) => (
@@ -58,7 +98,8 @@ export default function IconLegend() {
               </div>
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

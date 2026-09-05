@@ -6,9 +6,9 @@
 /* There is no top bar: help and theme live in the sidebar footer, and
    navigation lives in the sidebar itself.
    .tx-sync-btn is theme-following now (var(--bg-secondary)/var(--accent)).
-   .tx-bulk-bar, .tx-rail-card--dark and .ov-apr-tooltip are still
-   deliberately dark regardless of page theme — see --surface-inverse /
-   --good-inverse-* in tokens.css. */
+   .tx-bulk-bar and .ov-apr-tooltip are still deliberately dark regardless
+   of page theme — see --surface-inverse / --good-inverse-* in tokens.css.
+   The rail's shared card follows the theme (--good-wash/--good-tint). */
 
 /* Transactions screen shell: table column + supporting rail column. */
 .tx-layout {
@@ -412,8 +412,10 @@
   background: var(--accent-light); color: var(--accent); border-color: var(--accent-strong);
 }
 .icon-legend-panel {
-  position: absolute; top: 26px; right: 0; z-index: 200;
-  width: 280px; max-width: calc(100vw - 32px); padding: var(--space-3);
+  z-index: 400;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-3);
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -896,37 +898,61 @@ tr.tx-detail-row > td {
 }
 .tx-rail-empty { font-size: var(--text-sm); color: var(--text-disabled); text-align: center; padding: var(--space-2) 0; }
 
-.tx-rail-card--dark {
-  background: var(--good-inverse-bg);
-  border-color: var(--border-inverse);
-  color: var(--text-inverse);
+.tx-rail-card--good {
+  background: var(--good-wash);
+  border-color: var(--good-tint);
+  color: var(--text-primary);
 }
-.tx-rail-card--dark .tx-rail-title { color: var(--text-inverse-muted); }
-.tx-rail-card--dark .tx-rail-big { color: var(--good-inverse-text); }
-.tx-rail-card--dark .tx-rail-big small { color: var(--text-inverse-muted); }
-.tx-rail-card--dark .tx-rail-hint { color: var(--text-inverse-muted); margin-top: var(--space-2); }
+.tx-rail-card--good .tx-rail-title { color: var(--text-muted); }
+.tx-rail-card--good .tx-rail-big { color: var(--good-text); }
+.tx-rail-card--good .tx-rail-big small { color: var(--text-muted); }
+.tx-rail-card--good .tx-rail-hint { color: var(--text-muted); margin-top: var(--space-2); }
 .tx-rail-btn--sheet {
-  background: var(--good-inverse-wash);
-  border-color: var(--good-inverse-border);
-  color: var(--good-inverse-text);
+  background: transparent;
+  border-color: var(--good-tint);
+  color: var(--good-text);
 }
-.tx-rail-btn--sheet:hover:not(:disabled) { background: var(--good-inverse-wash-hover); }
+.tx-rail-btn--sheet:hover:not(:disabled) { background: var(--good-tint); }
 
-/* Rail stacks below the table when there's no room beside it — never hidden.
-   The handoff spec says 1180px, but that assumed no app sidebar; ours is
-   ~220px and the table needs ~950px, so the side-by-side layout only fits
-   comfortably above ~1600px. */
-@media (max-width: 1600px) {
+/* Rail moves above the table when there's no room beside it — never hidden,
+   never pushed below the fold. The handoff spec says 1180px, but that
+   assumed no app sidebar; ours is ~220px and the table's own min-width is
+   720px (620px once Source drops below 1320px), so with the 296px rail plus
+   gutters side-by-side still fits down to ~1300px — the table scrolls inside
+   its own wrapper before the rail gives up its column.
+
+   Below that the rail becomes a sticky strip pinned to the top of the
+   viewport: `order: -1` puts it ahead of the table without reordering the
+   DOM (the table stays first for keyboard and screen-reader order), and the
+   cards condense to one nowrap row that scrolls sideways rather than wrapping
+   into a multi-row block that would eat the viewport. */
+@media (max-width: 1300px) {
   .tx-layout { flex-direction: column; }
   .tx-rail {
+    order: -1;
     width: auto;
     align-self: stretch;
-    position: static;
+    position: sticky;
+    top: 0;
+    z-index: 60;
     flex-direction: row;
-    flex-wrap: wrap;
-    padding: 0 clamp(var(--space-4), 3vw, var(--space-7)) 40px;
+    flex-wrap: nowrap;
+    gap: var(--space-2);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--space-3) clamp(var(--space-4), 3vw, var(--space-7));
+    background: var(--bg-root);
+    border-bottom: 1px solid var(--border);
   }
-  .tx-rail > * { flex: 1 1 240px; }
+  .tx-rail > * { flex: 0 0 clamp(212px, 28vw, 260px); }
+  /* Condensed card metrics so the pinned strip stays ~180px tall. */
+  .tx-rail-card { padding: 10px var(--space-3); }
+  .tx-rail-title { margin-bottom: 6px; }
+  .tx-rail-big { font-size: 21px; }
+  .tx-rail-bar { margin: var(--space-2) 0 6px; }
+  .tx-rail-merchant { margin-bottom: 6px; }
+  .tx-rail-btn { margin-top: 8px; }
+  .tx-page-wrap { min-height: 0; }
   .tx-table td { padding-left: 9px; padding-right: 9px; }
   .tx-table thead th { padding-left: 9px; padding-right: 9px; }
 }
