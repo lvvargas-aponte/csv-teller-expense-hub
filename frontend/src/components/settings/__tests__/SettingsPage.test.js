@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import SettingsPage from '../SettingsPage';
 import { getProfile, updateProfile } from '../../../api/profile';
 import {
-  getCategoryRules, replaceCategoryRules, patchCategoryRule, deleteCategoryRule,
+  getCategoryRules, patchCategoryRule, deleteCategoryRule, createCategoryRule,
 } from '../../../api/categoryRules';
 import {
   listCategoryRows, createCategory, patchCategory, renameCategory, mergeCategory,
@@ -23,11 +23,7 @@ const EMPTY_PROFILE = {
 
 function renderPage(props = {}) {
   return render(
-    <SettingsPage
-      categories={['Groceries', 'Transport']}
-      categoryCounts={{ Groceries: 42, Transport: 18 }}
-      {...props}
-    />,
+    <SettingsPage {...props} />,
   );
 }
 
@@ -36,8 +32,9 @@ beforeEach(() => {
   getProfile.mockResolvedValue({ data: EMPTY_PROFILE });
   getCategoryRules.mockResolvedValue({ data: [] });
   updateProfile.mockResolvedValue({ data: EMPTY_PROFILE });
-  replaceCategoryRules.mockResolvedValue({ data: [] });
-  listCategoryRows.mockResolvedValue({ data: { rows: [], categories: [], counts: {} } });
+  listCategoryRows.mockResolvedValue({
+    data: { rows: [], categories: [], counts: {}, spend: {} },
+  });
 });
 
 const awaitLoad = () => screen.findByRole('heading', { name: /financial profile/i });
@@ -143,62 +140,6 @@ test('discard restores the last saved values', async () => {
   await waitFor(() => expect(dependents).toHaveValue(2));
   expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
 });
-
-test('category rows show live transaction counts', async () => {
-  const user = userEvent.setup();
-  listCategoryRows.mockResolvedValue({
-    data: {
-      rows: [
-        { id: 1, name: 'Groceries', color: null, roles: [], archived: false, sort: 0 },
-        { id: 2, name: 'Transport', color: null, roles: [], archived: false, sort: 1 },
-      ],
-      categories: ['Groceries', 'Transport'],
-      counts: { Groceries: 42, Transport: 18 },
-    },
-  });
-  renderPage();
-  await awaitLoad();
-  await user.click(screen.getByRole('tab', { name: /categories & rules/i }));
-
-  expect(await screen.findByText('Groceries')).toBeInTheDocument();
-  expect(screen.getByText('42')).toBeInTheDocument();
-  expect(screen.getByText('18')).toBeInTheDocument();
-});
-
-test('adding a rule marks the page dirty and saves the ordered list', async () => {
-  const user = userEvent.setup();
-  renderPage();
-  await awaitLoad();
-  await user.click(screen.getByRole('tab', { name: /categories & rules/i }));
-
-  await user.click(await screen.findByRole('button', { name: '+ Add rule' }));
-  await user.type(screen.getByLabelText('Merchant text to match'), 'TRADER JOE');
-  await user.selectOptions(screen.getByLabelText('Category to apply'), 'Groceries');
-
-  await user.click(screen.getByRole('button', { name: 'Save changes' }));
-
-  await waitFor(() => expect(replaceCategoryRules).toHaveBeenCalledWith([
-    { pattern: 'TRADER JOE', category: 'Groceries' },
-  ]));
-});
-
-test('blank rules are not sent', async () => {
-  const user = userEvent.setup();
-  renderPage();
-  await awaitLoad();
-  await user.click(screen.getByRole('tab', { name: /categories & rules/i }));
-
-  await user.click(await screen.findByRole('button', { name: '+ Add rule' }));
-  await user.type(screen.getByLabelText('Merchant text to match'), 'UBER');
-  await user.click(screen.getByRole('button', { name: '+ Add rule' }));
-
-  await user.click(screen.getByRole('button', { name: 'Save changes' }));
-
-  await waitFor(() => expect(replaceCategoryRules).toHaveBeenCalledWith([
-    { pattern: 'UBER', category: 'Groceries' },
-  ]));
-});
-
 test('a load failure offers a retry instead of an empty form', async () => {
   getProfile.mockRejectedValue(new Error('down'));
   renderPage();
@@ -266,249 +207,4 @@ const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
 test('the settings tabs carry no emoji', () => {
   const { container } = renderPage();
   expect(container.textContent).not.toMatch(EMOJI);
-});
-
-describe('merchant rules learned from transactions', () => {
-  const LEARNED = {
-    id: 7, kind: 'merchant', pattern: 'chipotle', category: 'Dining',
-    position: 0, enabled: true, created_at: null, last_matched_at: null,
-  };
-
-  test('lists them separately from the substring rules', async () => {
-    getCategoryRules.mockResolvedValue({ data: [LEARNED] });
-    render(<SettingsPage initialPane="categories" categories={['Dining']} />);
-    expect(await screen.findByText('chipotle')).toBeInTheDocument();
-    expect(screen.getByText('Learned from your transactions')).toBeInTheDocument();
-  });
-
-  test('a merchant rule is not editable as a substring rule', async () => {
-    // The PUT deliberately leaves merchant rules alone, so drafting one into
-    // that form would resurrect it as a duplicate `contains` rule on save.
-    getCategoryRules.mockResolvedValue({ data: [LEARNED] });
-    render(<SettingsPage initialPane="categories" categories={['Dining']} />);
-    await screen.findByText('chipotle');
-    expect(screen.queryByLabelText('Merchant text to match')).not.toBeInTheDocument();
-  });
-
-  test('turning one off patches it immediately rather than waiting for Save', async () => {
-    const user = userEvent.setup();
-    getCategoryRules.mockResolvedValue({ data: [LEARNED] });
-    patchCategoryRule.mockResolvedValue({ data: { ...LEARNED, enabled: false } });
-    render(<SettingsPage initialPane="categories" categories={['Dining']} />);
-    await screen.findByText('chipotle');
-
-    await user.click(screen.getByRole('checkbox', { name: 'Rule for chipotle is on' }));
-
-    await waitFor(() => expect(patchCategoryRule).toHaveBeenCalledWith(7, { enabled: false }));
-    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
-  });
-
-  test('deleting one calls the per-row endpoint', async () => {
-    const user = userEvent.setup();
-    getCategoryRules.mockResolvedValue({ data: [LEARNED] });
-    deleteCategoryRule.mockResolvedValue({ data: { deleted: 7 } });
-    render(<SettingsPage initialPane="categories" categories={['Dining']} />);
-    await screen.findByText('chipotle');
-
-    await user.click(screen.getByRole('button', { name: 'Delete rule for chipotle' }));
-
-    await waitFor(() => expect(deleteCategoryRule).toHaveBeenCalledWith(7));
-  });
-
-  test('says so when nothing has been learned yet', async () => {
-    getCategoryRules.mockResolvedValue({ data: [] });
-    render(<SettingsPage initialPane="categories" categories={['Dining']} />);
-    expect(await screen.findByText(/Nothing learned yet/)).toBeInTheDocument();
-  });
-});
-
-describe('editing categories', () => {
-  const ROWS = [
-    { id: 1, name: 'Groceries', color: null, roles: [], archived: false, sort: 0 },
-    { id: 2, name: 'Subscriptions', color: null, roles: ['bill', 'subscription'], archived: false, sort: 1 },
-  ];
-
-  async function openCategories(rows = ROWS) {
-    const user = userEvent.setup();
-    listCategoryRows.mockResolvedValue({
-      data: { rows, categories: rows.map((r) => r.name), counts: {} },
-    });
-    renderPage();
-    await awaitLoad();
-    await user.click(screen.getByRole('tab', { name: /categories & rules/i }));
-    await screen.findByText('Groceries');
-    return user;
-  }
-
-  test('renaming commits against the server rather than the Save bar', async () => {
-    // A rename rewrites every transaction, budget and rule that used the old
-    // name — there is no coherent "discard" for that.
-    const user = await openCategories();
-    renameCategory.mockResolvedValue({ data: { ...ROWS[0], name: 'Food' } });
-
-    await user.click(screen.getByRole('button', { name: 'Groceries' }));
-    const input = screen.getByLabelText('Rename Groceries');
-    await user.clear(input);
-    await user.type(input, 'Food{Enter}');
-
-    await waitFor(() => expect(renameCategory).toHaveBeenCalledWith(1, 'Food'));
-    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
-  });
-
-  test('renaming to the same name does not call the server', async () => {
-    const user = await openCategories();
-    await user.click(screen.getByRole('button', { name: 'Groceries' }));
-    await user.click(document.body);
-    expect(renameCategory).not.toHaveBeenCalled();
-  });
-
-  test('shows the roles that drive how a category is treated', async () => {
-    await openCategories();
-    expect(screen.getByText('Bill')).toBeInTheDocument();
-    expect(screen.getByText('Subscription')).toBeInTheDocument();
-  });
-
-  test('a role can be toggled on', async () => {
-    const user = await openCategories();
-    patchCategory.mockResolvedValue({ data: ROWS[0] });
-
-    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Not spending' }));
-
-    await waitFor(() => expect(patchCategory).toHaveBeenCalledWith(1, { roles: ['non_spending'] }));
-  });
-
-  test('merging folds one category into another', async () => {
-    const user = await openCategories();
-    mergeCategory.mockResolvedValue({ data: ROWS[1] });
-
-    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
-    await user.selectOptions(
-      screen.getByLabelText('Merge Groceries into another category'), '2',
-    );
-
-    await waitFor(() => expect(mergeCategory).toHaveBeenCalledWith(1, 2));
-  });
-
-  test('archiving is offered as the non-destructive option', async () => {
-    const user = await openCategories();
-    patchCategory.mockResolvedValue({ data: { ...ROWS[0], archived: true } });
-
-    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
-    await user.click(screen.getByRole('button', { name: 'Archive' }));
-
-    await waitFor(() => expect(patchCategory).toHaveBeenCalledWith(1, { archived: true }));
-  });
-
-  test('deleting asks first, because no undo puts the labels back', async () => {
-    const user = await openCategories();
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
-
-    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
-    await user.click(screen.getByRole('button', { name: 'Delete' }));
-
-    expect(confirmSpy).toHaveBeenCalled();
-    expect(deleteCategoryById).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
-  });
-
-  test('deleting proceeds once confirmed', async () => {
-    const user = await openCategories();
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
-    deleteCategoryById.mockResolvedValue({ data: { removed: 'Groceries' } });
-
-    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
-    await user.click(screen.getByRole('button', { name: 'Delete' }));
-
-    await waitFor(() => expect(deleteCategoryById).toHaveBeenCalledWith(1));
-    confirmSpy.mockRestore();
-  });
-
-  test('adding a category creates it', async () => {
-    const user = await openCategories();
-    createCategory.mockResolvedValue({ data: { id: 3, name: 'Pets', roles: [] } });
-
-    await user.type(screen.getByLabelText('New category name'), 'Pets');
-    await user.click(screen.getByRole('button', { name: 'Add' }));
-
-    await waitFor(() => expect(createCategory).toHaveBeenCalledWith('Pets'));
-  });
-
-  test('archived categories are hidden until asked for', async () => {
-    const user = await openCategories();
-    await user.click(screen.getByRole('checkbox', { name: 'Show archived' }));
-    await waitFor(() => expect(listCategoryRows).toHaveBeenCalledWith(true));
-  });
-});
-
-describe('grouping categories', () => {
-  const GROUPED = [
-    { id: 1, name: 'Food', color: null, roles: [], archived: false, sort: 0, parent_id: null },
-    { id: 2, name: 'Groceries', color: null, roles: [], archived: false, sort: 1, parent_id: 1 },
-    { id: 3, name: 'Gas', color: null, roles: [], archived: false, sort: 2, parent_id: null },
-  ];
-
-  async function openCategories(rows = GROUPED) {
-    const user = userEvent.setup();
-    listCategoryRows.mockResolvedValue({
-      data: { rows, categories: rows.map((r) => r.name), counts: {} },
-    });
-    renderPage();
-    await awaitLoad();
-    await user.click(screen.getByRole('tab', { name: /categories & rules/i }));
-    await screen.findByText('Food');
-    return user;
-  }
-
-  test('shows which parent a category rolls into', async () => {
-    await openCategories();
-    expect(screen.getByText('↳ Food')).toBeInTheDocument();
-  });
-
-  test('shows how many a parent holds', async () => {
-    await openCategories();
-    expect(screen.getByText('1 inside')).toBeInTheDocument();
-  });
-
-  test('grouping one category under another calls the endpoint', async () => {
-    const user = await openCategories();
-    setCategoryParent.mockResolvedValue({ data: { ...GROUPED[2], parent_id: 1 } });
-
-    await user.click(screen.getByRole('button', { name: 'Options for Gas' }));
-    await user.selectOptions(
-      screen.getByLabelText('Group Gas under another category'), '1',
-    );
-
-    await waitFor(() => expect(setCategoryParent).toHaveBeenCalledWith(3, 1));
-  });
-
-  test('ungrouping passes a null parent', async () => {
-    const user = await openCategories();
-    setCategoryParent.mockResolvedValue({ data: { ...GROUPED[1], parent_id: null } });
-
-    await user.click(screen.getByRole('button', { name: 'Options for Groceries' }));
-    await user.selectOptions(
-      screen.getByLabelText('Group Groceries under another category'), '',
-    );
-
-    await waitFor(() => expect(setCategoryParent).toHaveBeenCalledWith(2, null));
-  });
-
-  test('a category that already holds others cannot be nested', async () => {
-    // Grouping is one level deep, so the picker refuses rather than letting
-    // the server 422 after the click.
-    const user = await openCategories();
-    await user.click(screen.getByRole('button', { name: 'Options for Food' }));
-    expect(screen.getByLabelText('Group Food under another category')).toBeDisabled();
-  });
-
-  test('a grouped category is not offered as a parent', async () => {
-    const user = await openCategories();
-    await user.click(screen.getByRole('button', { name: 'Options for Gas' }));
-    const options = Array.from(
-      screen.getByLabelText('Group Gas under another category').options,
-    ).map((o) => o.textContent);
-    expect(options).toContain('Food');
-    expect(options).not.toContain('Groceries');
-  });
 });

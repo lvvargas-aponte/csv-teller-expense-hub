@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getProfile, updateProfile } from '../../api/profile';
-import { getCategoryRules, replaceCategoryRules } from '../../api/categoryRules';
 
 const EMPTY_PROFILE = {
   risk_tolerance: '',
@@ -61,20 +60,6 @@ const draftToPayload = (d) => ({
   notes:                 d.notes ?? '',
 });
 
-// Rules carry a client-side key so React can track rows that have no id
-// yet. It never reaches the server, so it must not count toward dirty.
-const rulesToDraft = (rows) =>
-  (rows || [])
-    .filter((r) => r.kind !== 'merchant')
-    .map((r, i) => ({ key: `r${r.id ?? i}`, pattern: r.pattern, category: r.category }));
-
-// Merchant rules are born in the transactions table, not this form, and the
-// PUT deliberately leaves them alone — so they are shown, not drafted.
-const merchantRules = (rows) => (rows || []).filter((r) => r.kind === 'merchant');
-
-const comparableRules = (rows) =>
-  rows.map(({ pattern, category }) => ({ pattern, category }));
-
 /**
  * Page-wide draft for Profile & Settings.
  *
@@ -84,9 +69,7 @@ const comparableRules = (rows) =>
  */
 export default function useSettingsDraft() {
   const [profile, setProfile] = useState(EMPTY_PROFILE);
-  const [rules, setRules]     = useState([]);
-  const [learned, setLearned] = useState([]);
-  const [saved, setSaved]     = useState({ profile: EMPTY_PROFILE, rules: [] });
+  const [saved, setSaved]     = useState(EMPTY_PROFILE);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [saving, setSaving]   = useState(false);
@@ -95,14 +78,11 @@ export default function useSettingsDraft() {
   const load = useCallback(() => {
     setLoading(true);
     setLoadError(null);
-    Promise.all([getProfile(), getCategoryRules()])
-      .then(([p, r]) => {
-        const nextProfile = profileToDraft(p.data);
-        const nextRules   = rulesToDraft(r.data);
-        setProfile(nextProfile);
-        setRules(nextRules);
-        setLearned(merchantRules(r.data));
-        setSaved({ profile: nextProfile, rules: nextRules });
+    getProfile()
+      .then((p) => {
+        const next = profileToDraft(p.data);
+        setProfile(next);
+        setSaved(next);
       })
       .catch(() => setLoadError('Could not load settings — is the backend running?'))
       .finally(() => setLoading(false));
@@ -112,18 +92,17 @@ export default function useSettingsDraft() {
 
   // Restoring a field to its original value clears the bar, so this is a
   // value comparison rather than a "was touched" flag.
-  const dirty = useMemo(() => (
-    JSON.stringify(profile) !== JSON.stringify(saved.profile)
-    || JSON.stringify(comparableRules(rules)) !== JSON.stringify(comparableRules(saved.rules))
-  ), [profile, rules, saved]);
+  const dirty = useMemo(
+    () => JSON.stringify(profile) !== JSON.stringify(saved),
+    [profile, saved],
+  );
 
   const setProfileField = useCallback((field, value) => {
     setProfile((p) => ({ ...p, [field]: value }));
   }, []);
 
   const discard = useCallback(() => {
-    setProfile(saved.profile);
-    setRules(saved.rules);
+    setProfile(saved);
     setSaveError(null);
   }, [saved]);
 
@@ -131,22 +110,10 @@ export default function useSettingsDraft() {
     setSaving(true);
     setSaveError(null);
     try {
-      // Blank rows are dropped server-side; mirror that locally so the
-      // snapshot we compare against matches what was actually stored.
-      const [p, r] = await Promise.all([
-        updateProfile(draftToPayload(profile)),
-        replaceCategoryRules(
-          rules
-            .filter((x) => x.pattern.trim() && x.category.trim())
-            .map(({ pattern, category }) => ({ pattern: pattern.trim(), category })),
-        ),
-      ]);
-      const nextProfile = profileToDraft(p.data);
-      const nextRules   = rulesToDraft(r.data);
-      setProfile(nextProfile);
-      setRules(nextRules);
-      setLearned(merchantRules(r.data));
-      setSaved({ profile: nextProfile, rules: nextRules });
+      const p = await updateProfile(draftToPayload(profile));
+      const next = profileToDraft(p.data);
+      setProfile(next);
+      setSaved(next);
       return true;
     } catch (e) {
       setSaveError(e.response?.data?.detail || 'Could not save settings — please try again.');
@@ -154,12 +121,10 @@ export default function useSettingsDraft() {
     } finally {
       setSaving(false);
     }
-  }, [profile, rules]);
+  }, [profile]);
 
   return {
     profile, setProfileField,
-    rules, setRules,
-    learned,
     dirty, loading, loadError, saving, saveError,
     save, discard, reload: load,
   };

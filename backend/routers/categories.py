@@ -30,11 +30,30 @@ async def list_categories(include_archived: bool = False) -> Dict[str, Any]:
 
     ``categories`` stays a bare list of names for the clients that only
     populate a picker with it; ``rows`` carries the editable detail.
+
+    ``spend`` is the current calendar month per category, keyed by canonical
+    name — a count alone doesn't say whether a category is worth the row it
+    occupies. It reuses ``group_debit_spending``, so what counts as spending
+    is the same gate the dashboard and the budgets use.
     """
+    from datetime import date
+
+    import analytics
+
     rows = categories_service.list_categories(include_archived=include_archived)
+    today = date.today()
+    month = analytics.group_debit_spending().get(
+        f"{today.year:04d}-{today.month:02d}", {}
+    )
+    by_lower = {k.strip().lower(): v for k, v in month.items()}
+
     return {
         "categories": [c["name"] for c in rows],
         "counts": categories_service.counts(),
+        "spend": {
+            c["name"]: round(by_lower.get(c["name"].strip().lower(), 0.0), 2)
+            for c in rows
+        },
         "rows": rows,
         "roles": list(categories_service.ROLES),
     }

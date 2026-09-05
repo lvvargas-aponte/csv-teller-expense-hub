@@ -67,7 +67,9 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
     if (needsBalances) loadBalances(false);
   }, [needsBalances, loadBalances]);
 
-  const { categories, counts: categoryCounts } = useCategories();
+  // Settings owns the category list now; this only keeps the app-level copy
+  // (the transactions picker) in step when it changes there.
+  const { reload: reloadCategories } = useCategories();
 
   const handleTabNavigate = useCallback((tabId) => {
     navigate(pathForTab(tabId));
@@ -149,8 +151,7 @@ export default function FinancesPage({ section, view, healthScore, healthSignals
           <SimplePage title="Profile & settings">
             <SettingsPage
               initialPane={pane || 'profile'}
-              categories={categories}
-              categoryCounts={categoryCounts}
+              onCategoriesChanged={reloadCategories}
             />
           </SimplePage>
         )}

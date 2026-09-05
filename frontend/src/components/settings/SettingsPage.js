@@ -4,7 +4,9 @@ import Icon from '../ui/Icon';
 import useSettingsDraft from './useSettingsDraft';
 import FinancialProfilePane from './panes/FinancialProfilePane';
 import CategoriesPane from './panes/CategoriesPane';
-import { patchCategoryRule, deleteCategoryRule } from '../../api/categoryRules';
+import {
+  getCategoryRules, patchCategoryRule, deleteCategoryRule, createCategoryRule,
+} from '../../api/categoryRules';
 import {
   listCategoryRows, createCategory, patchCategory, renameCategory, mergeCategory,
   deleteCategoryById, setCategoryParent,
@@ -27,51 +29,35 @@ const TOAST_MS = 2200;
  */
 export default function SettingsPage({
   initialPane = 'profile',
-  categories = [], categoryCounts = {},
   onCategoriesChanged,
 }) {
   const [pane, setPane] = useState(initialPane);
   const [toast, setToast] = useState(false);
-  const [learnedBusy, setLearnedBusy] = useState(false);
   const draft = useSettingsDraft();
   const { dirty, save, discard, saving, saveError, loading, loadError } = draft;
-
-  // Merchant rules are edited one at a time against the server, not drafted
-  // into the form — so they commit immediately and reload rather than
-  // waiting for Save.
-  const withLearnedReload = useCallback(async (fn) => {
-    setLearnedBusy(true);
-    try {
-      await fn();
-      draft.reload();
-    } finally {
-      setLearnedBusy(false);
-    }
-  }, [draft]);
-
-  const toggleLearned = useCallback(
-    (rule, enabled) => withLearnedReload(() => patchCategoryRule(rule.id, { enabled })),
-    [withLearnedReload],
-  );
-
-  const removeLearned = useCallback(
-    (rule) => withLearnedReload(() => deleteCategoryRule(rule.id)),
-    [withLearnedReload],
-  );
 
   // Categories are server rows too. A rename rewrites every transaction,
   // budget and rule that used the old name, so it commits on the spot rather
   // than sitting in the draft the Save bar collects — there is no coherent
   // "discard" for a change that already touched history.
   const [categoryRows, setCategoryRows] = useState([]);
+  const [categorySpend, setCategorySpend] = useState({});
+  const [categoryCountsLive, setCategoryCountsLive] = useState({});
+  const [rules, setRules] = useState([]);
   const [categoriesBusy, setCategoriesBusy] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [categoryError, setCategoryError] = useState(null);
 
   const reloadCategories = useCallback(async (includeArchived = showArchived) => {
     try {
-      const { data } = await listCategoryRows(includeArchived);
-      setCategoryRows(data.rows || []);
+      const [cats, ruleList] = await Promise.all([
+        listCategoryRows(includeArchived),
+        getCategoryRules(),
+      ]);
+      setCategoryRows(cats.data.rows || []);
+      setCategorySpend(cats.data.spend || {});
+      setCategoryCountsLive(cats.data.counts || {});
+      setRules(ruleList.data || []);
       onCategoriesChanged?.();
     } catch {
       setCategoryError('Could not load categories.');
@@ -122,6 +108,25 @@ export default function SettingsPage({
     (category, parentId) => withCategoryReload(
       () => setCategoryParent(category.id, parentId),
     ),
+    [withCategoryReload],
+  );
+
+  // Rules are server rows, edited one at a time — a rule change rewrites
+  // nothing historical, so there is no draft for the save bar to collect.
+  const addRuleRow = useCallback(
+    (category, pattern) => withCategoryReload(
+      () => createCategoryRule(pattern, category.name, { kind: 'contains' }),
+    ),
+    [withCategoryReload],
+  );
+
+  const toggleRuleRow = useCallback(
+    (rule, enabled) => withCategoryReload(() => patchCategoryRule(rule.id, { enabled })),
+    [withCategoryReload],
+  );
+
+  const deleteRuleRow = useCallback(
+    (rule) => withCategoryReload(() => deleteCategoryRule(rule.id)),
     [withCategoryReload],
   );
 
@@ -214,14 +219,9 @@ export default function SettingsPage({
         )}
         {pane === 'categories' && (
           <CategoriesPane
-            categories={categories}
-            counts={categoryCounts}
-            rules={draft.rules}
-            onRulesChange={draft.setRules}
-            learned={draft.learned}
-            onToggleLearned={toggleLearned}
-            onRemoveLearned={removeLearned}
-            learnedBusy={learnedBusy}
+            counts={categoryCountsLive}
+            spend={categorySpend}
+            rules={rules}
             categoryRows={categoryRows}
             categoriesBusy={categoriesBusy}
             showArchived={showArchived}
@@ -232,6 +232,9 @@ export default function SettingsPage({
             onDeleteCategory={deleteCategoryRow}
             onCreateCategory={createCategoryRow}
             onSetCategoryParent={setParentRow}
+            onAddRule={addRuleRow}
+            onToggleRule={toggleRuleRow}
+            onDeleteRule={deleteRuleRow}
           />
         )}
       </div>
