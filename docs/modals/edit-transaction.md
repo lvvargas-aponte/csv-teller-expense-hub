@@ -42,7 +42,7 @@ changes**, plus:
 - **Cancel** — reverts the draft, leaves the row open.
 - **Delete** — removes the transaction.
 
-While a row is expanded, the [supporting rail](../tabs/transactions.md#supporting-rail) offers
+While a row is expanded, the [supporting rail](../tabs/transactions-current.md#supporting-rail) offers
 **Apply to similar**, which pushes the draft's category and shared flag to every other
 transaction from the same merchant.
 

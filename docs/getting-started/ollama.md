@@ -6,9 +6,9 @@ The app uses a **local** Ollama LLM for three features. It runs fine without Oll
 
 | Feature | Endpoint | Where it shows up |
 |---|---|---|
-| Spending Insights | `POST /api/insights/spending-summary` | Finances → Overview |
-| AI Payoff Advice | `POST /api/tools/payoff-advice` | Finances → Overview → Payoff Planner |
-| Virtual Advisor (chat) | `POST /api/advisor/chat` | Finances → AI Advisor |
+| Spending Insights | `POST /api/insights/spending-summary` | Home |
+| Payoff advice | `POST /api/tools/payoff-advice` | Debt → Payoff planner |
+| Fin (chat agent) | `POST /api/advisor/chat/stream` | Ask → Advisor |
 
 ## Install
 

@@ -1,0 +1,338 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+  <style>
+    body {
+      margin: 0;
+      background: #f8fafc;
+      font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { color: #1d4ed8; }
+    * { box-sizing: border-box; }
+    button { font-family: inherit; }
+    input, select { font-family: inherit; }
+    .b-row:hover { background: #f8fafc; }
+    .b-act:hover { border-color: #cbd5e1; color: #0f172a; }
+    .b-del:hover { background: #fef2f2; }
+  </style>
+</helmet>
+
+<div style="min-height: 940px; padding: 24px 32px 48px">
+  <div style="max-width: 900px; margin: 0 auto">
+
+    <h1 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.5px; color: #0f172a">Categories &amp; rules</h1>
+    <p style="margin: 5px 0 0; font-size: 13px; color: #64748b; max-width: 62ch; text-wrap: pretty">
+      One list. Each category carries the rules that pick it, so you never have to
+      match a rule to a category in your head.
+    </p>
+
+    <div style="margin-top: 20px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04); overflow: hidden">
+
+      <!-- Toolbar -->
+      <div style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #e2e8f0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0">
+          <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+        </svg>
+        <input
+          value="{{query}}"
+          onInput="{{onQuery}}"
+          aria-label="Filter categories and rules"
+          placeholder="Filter categories and rules"
+          style="flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: 14px; color: #0f172a" />
+        <span style="font-size: 12px; color: #94a3b8; white-space: nowrap">{{shown}}</span>
+        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #64748b; cursor: pointer; white-space: nowrap">
+          <input type="checkbox" checked="{{showArchived}}" onChange="{{toggleArchived}}" aria-label="Show archived categories" style="accent-color: #2563eb; cursor: pointer" />
+          <span>Archived</span>
+        </label>
+        <button type="button" style="padding: 6px 12px; border-radius: 8px; border: none; background: #eff5ff; color: #0f172a; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap">+ Category</button>
+      </div>
+
+      <!-- Rows -->
+      <sc-for list="{{rows}}" as="row" hint-placeholder-count="6">
+        <div style="border-bottom: 1px solid #eef2f7; opacity: {{row.fade}}">
+          <div
+            class="b-row"
+            role="button"
+            tabindex="0"
+            aria-expanded="{{row.open}}"
+            aria-label="{{row.name}}"
+            onClick="{{row.toggle}}"
+            style="display: flex; align-items: center; gap: 10px; padding: 12px 16px 12px {{row.indent}}; cursor: pointer; background: {{row.bg}}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; transform: rotate({{row.caret}}deg); transition: transform 0.12s">
+              <path d="M9 6l6 6-6 6"></path>
+            </svg>
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: {{row.dot}}; flex-shrink: 0"></span>
+            <span style="font-size: 14px; font-weight: {{row.weight}}; color: #0f172a; white-space: nowrap">{{row.name}}</span>
+
+            <sc-if value="{{row.isParent}}" hint-placeholder-val="{{ true }}">
+              <span style="padding: 1px 7px; border: 1px solid #e2e8f0; border-radius: 99px; background: #f1f5f9; color: #64748b; font-size: 10px; font-weight: 600; white-space: nowrap">group of {{row.childCount}}</span>
+            </sc-if>
+
+            <sc-if value="{{row.archived}}" hint-placeholder-val="{{ false }}">
+              <span style="padding: 1px 7px; border: 1px solid #e2e8f0; border-radius: 99px; background: #f1f5f9; color: #94a3b8; font-size: 10px; font-weight: 600; white-space: nowrap">archived</span>
+            </sc-if>
+
+            <sc-for list="{{row.roles}}" as="role" hint-placeholder-count="1">
+              <span style="padding: 1px 7px; border: 1px solid #2563eb; border-radius: 99px; background: #eff5ff; color: #1d4ed8; font-size: 10px; font-weight: 600; white-space: nowrap">{{role.label}}</span>
+            </sc-for>
+
+            <span style="flex: 1"></span>
+            <span style="font-size: 11px; color: {{row.ruleColor}}; white-space: nowrap">{{row.ruleSummary}}</span>
+            <span style="font-family: 'DM Mono', ui-monospace, monospace; font-size: 12px; color: #94a3b8; white-space: nowrap; min-width: 34px; text-align: right">{{row.count}}</span>
+            <span style="font-family: 'DM Mono', ui-monospace, monospace; font-size: 13px; color: {{row.amountColor}}; min-width: 64px; text-align: right">{{row.amount}}</span>
+          </div>
+
+          <!-- Expanded -->
+          <sc-if value="{{row.open}}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 14px 16px 16px 52px; background: #f8fafc; border-top: 1px solid #eef2f7">
+
+              <!-- Name + grouping -->
+              <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px">
+                <label style="display: flex; flex-direction: column; gap: 5px">
+                  <span style="font-size: 11px; color: #94a3b8">Name</span>
+                  <input
+                    value="{{row.name}}"
+                    aria-label="Rename {{row.name}}"
+                    style="width: 220px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 11px; font-size: 14px; color: #0f172a; outline: none" />
+                </label>
+                <label style="display: flex; flex-direction: column; gap: 5px">
+                  <span style="font-size: 11px; color: #94a3b8">Grouped under</span>
+                  <select
+                    aria-label="Group {{row.name}} under another category"
+                    disabled="{{row.isParent}}"
+                    style="width: 180px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 11px; font-size: 14px; color: {{row.groupColor}}; outline: none">
+                    <option>{{row.parentLabel}}</option>
+                  </select>
+                </label>
+                <span style="flex: 1"></span>
+                <div style="display: flex; gap: 6px; padding-bottom: 1px">
+                  <button type="button" class="b-act" style="padding: 7px 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; color: #475569; font-size: 12px; font-weight: 600; cursor: pointer">Merge into…</button>
+                  <button type="button" class="b-act" style="padding: 7px 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; color: #475569; font-size: 12px; font-weight: 600; cursor: pointer">{{row.archiveLabel}}</button>
+                  <button type="button" class="b-del" style="padding: 7px 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #dc2626; font-size: 12px; font-weight: 600; cursor: pointer">Delete</button>
+                </div>
+              </div>
+
+              <p style="margin: 0 0 16px; font-size: 11.5px; color: #94a3b8; text-wrap: pretty">
+                {{row.renameNote}}
+              </p>
+
+              <!-- Rules -->
+              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px">
+                <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em">Rules that pick it</span>
+                <span style="font-size: 11px; color: #94a3b8">merchant rules first, then text rules in order</span>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px">
+                <sc-for list="{{row.rules}}" as="rule" hint-placeholder-count="2">
+                  <div style="display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff; opacity: {{rule.fade}}">
+                    <span style="width: 18px; font-family: 'DM Mono', ui-monospace, monospace; font-size: 11px; color: #94a3b8; text-align: right; flex-shrink: 0">{{rule.order}}</span>
+                    <span style="padding: 1px 6px; border-radius: 5px; background: {{rule.kindBg}}; color: {{rule.kindFg}}; font-size: 10px; font-weight: 600; white-space: nowrap; flex-shrink: 0">{{rule.kind}}</span>
+                    <code style="font-family: 'DM Mono', ui-monospace, monospace; font-size: 12px; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{rule.pattern}}</code>
+                    <span style="flex: 1"></span>
+                    <span style="font-size: 11px; color: #94a3b8; white-space: nowrap">{{rule.caughtLabel}}</span>
+                    <span style="font-size: 11px; color: {{rule.usedColor}}; white-space: nowrap; min-width: 74px; text-align: right">{{rule.used}}</span>
+                    <label style="display: inline-flex; align-items: center; padding: 4px; cursor: pointer; flex-shrink: 0">
+                      <input type="checkbox" checked="{{rule.on}}" aria-label="{{rule.ariaLabel}}" onChange="{{rule.toggle}}" style="accent-color: #2563eb; cursor: pointer" />
+                    </label>
+                  </div>
+                </sc-for>
+
+                <sc-if value="{{row.noRules}}" hint-placeholder-val="{{ false }}">
+                  <p style="margin: 0; font-size: 12px; color: #94a3b8; text-wrap: pretty">
+                    No rules yet. Categorize a transaction and say yes when it offers to
+                    remember the merchant — that writes one here.
+                  </p>
+                </sc-if>
+
+                <button type="button" style="align-self: flex-start; margin-top: 2px; padding: 6px 11px; border-radius: 8px; border: 1px dashed #cbd5e1; background: transparent; color: #64748b; font-size: 12px; font-weight: 600; cursor: pointer">+ Text rule</button>
+              </div>
+
+              <!-- Roles -->
+              <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px">How it behaves</div>
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 18px">
+                <sc-for list="{{row.roleChecks}}" as="r" hint-placeholder-count="5">
+                  <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer">
+                    <input type="checkbox" checked="{{r.on}}" aria-label="{{r.ariaLabel}}" onChange="{{r.toggle}}" style="margin-top: 2px; accent-color: #2563eb; cursor: pointer; flex-shrink: 0" />
+                    <span style="min-width: 0">
+                      <span style="display: block; font-size: 12.5px; font-weight: 500; color: {{r.labelColor}}">{{r.label}}</span>
+                      <span style="display: block; font-size: 11px; color: #94a3b8; text-wrap: pretty">{{r.hint}}</span>
+                    </span>
+                  </label>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+
+      <sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 28px 16px; text-align: center; font-size: 13px; color: #94a3b8">
+          Nothing matches that.
+        </div>
+      </sc-if>
+    </div>
+
+    <p style="margin: 12px 2px 0; font-size: 11.5px; color: #94a3b8; max-width: 72ch; text-wrap: pretty">
+      A merchant rule matches one merchant exactly, so store numbers and card-processor
+      prefixes fall out — those are checked before any text rule. Text rules match any
+      description containing the text, and the numbers above are the order they run in.
+    </p>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      open: { 2: true },
+      query: '',
+      enabled: {},
+      roles: {},
+      showArchived: false,
+    };
+  }
+
+  roleMeta() {
+    return [
+      { key: 'non_spending',     label: 'Not spending',     hint: 'Moves money between your own accounts — kept out of spending totals' },
+      { key: 'always_recurring', label: 'Varies monthly',   hint: 'Still a recurring bill when the amount swings' },
+      { key: 'bill',             label: 'Bill',             hint: 'Shows under Bills' },
+      { key: 'subscription',     label: 'Subscription',     hint: 'Shows under Commitments, and counts toward overlap warnings' },
+      { key: 'non_commitment',   label: 'Not a commitment', hint: 'A consequence of a balance, like interest or fees' },
+    ];
+  }
+
+  // parent carries the parent's id, matching how the real table models it — a
+  // boolean would say a row is nested without saying under what.
+  data() {
+    return [
+      { id: 1, name: 'Food', isParent: true, childCount: 3, count: 143, amount: '$1,204', dot: '#2563eb', roles: [], rules: [] },
+      { id: 2, name: 'Groceries', parent: 1, count: 62, amount: '$612', dot: '#7c3aed', roles: [],
+        rules: [
+          { id: 21, kind: 'merchant', pattern: 'trader joe', caught: 31, used: 'yesterday' },
+          { id: 22, kind: 'merchant', pattern: 'whole foods', caught: 18, used: '4 days ago' },
+        ] },
+      { id: 3, name: 'Dining', parent: 1, count: 58, amount: '$421', dot: '#ea580c', roles: [],
+        rules: [{ id: 31, kind: 'merchant', pattern: 'chipotle', caught: 14, used: '2 days ago' }] },
+      { id: 4, name: 'Coffee', parent: 1, count: 23, amount: '$171', dot: '#0891b2', roles: [],
+        rules: [{ id: 41, kind: 'merchant', pattern: 'blue bottle', caught: 9, used: '5 days ago' }] },
+      { id: 5, name: 'Subscriptions', count: 31, amount: '$264', dot: '#db2777', roles: ['bill', 'subscription'],
+        rules: [
+          { id: 51, kind: 'text', pattern: 'NETFLIX', caught: 5, used: 'last month' },
+          { id: 52, kind: 'text', pattern: 'SPOTIFY', caught: 5, used: '9 days ago' },
+        ] },
+      { id: 6, name: 'Utilities', count: 18, amount: '$392', dot: '#65a30d', roles: ['bill', 'always_recurring'],
+        rules: [{ id: 61, kind: 'merchant', pattern: 'duke energy', caught: 6, used: 'last month' }] },
+      { id: 7, name: 'CC Payment', count: 12, amount: '$0', dot: '#94a3b8', roles: ['non_spending'],
+        rules: [{ id: 71, kind: 'text', pattern: 'PAYMENT THANK', caught: 0, used: 'never', off: true }] },
+      { id: 8, name: 'Merchandise', archived: true, count: 4, amount: '$0', dot: '#94a3b8', roles: [], rules: [] },
+    ];
+  }
+
+  renderVals() {
+    const st = this.state;
+    const meta = this.roleMeta();
+    const all = this.data();
+
+    const label = (k) => (meta.find((r) => r.key === k) || {}).label || k;
+    const chip = (kind) => (kind === 'merchant'
+      ? { kindBg: '#eff5ff', kindFg: '#1d4ed8' }
+      : { kindBg: '#f1f5f9', kindFg: '#64748b' });
+    const nameOf = (id) => (all.find((c) => c.id === id) || {}).name || '';
+
+    const q = st.query.trim().toLowerCase();
+    const matches = (c) => !q
+      || c.name.toLowerCase().includes(q)
+      || c.rules.some((r) => r.pattern.toLowerCase().includes(q));
+
+    const visible = all.filter((c) => (st.showArchived || !c.archived) && matches(c));
+
+    const rows = visible.map((c) => {
+      const open = !!st.open[c.id];
+      const n = c.rules.length;
+
+      // Merchant rules are exact and always run first; only the text rules
+      // have an order worth showing, which is the one thing this layout
+      // otherwise hides.
+      let textSeen = 0;
+      const rules = c.rules.map((r) => {
+        const on = st.enabled[r.id] !== undefined ? st.enabled[r.id] : !r.off;
+        if (r.kind === 'text') textSeen += 1;
+        return {
+          ...r,
+          ...chip(r.kind),
+          on,
+          fade: on ? '1' : '0.55',
+          order: r.kind === 'text' ? `${textSeen}.` : '—',
+          caughtLabel: r.caught === 0 ? 'caught nothing' : `caught ${r.caught}`,
+          usedColor: r.used === 'never' ? '#94a3b8' : '#475569',
+          ariaLabel: `Rule ${r.pattern} is on`,
+          toggle: () => this.setState({ enabled: { ...st.enabled, [r.id]: !on } }),
+        };
+      });
+
+      return {
+        ...c,
+        open,
+        toggle: () => this.setState({ open: { ...st.open, [c.id]: !open } }),
+        caret: open ? '90' : '0',
+        indent: c.parent ? '34px' : '16px',
+        weight: c.isParent ? '600' : '400',
+        isParent: !!c.isParent,
+        archived: !!c.archived,
+        childCount: c.childCount || 0,
+        fade: c.archived ? '0.6' : '1',
+        bg: open ? '#ffffff' : 'transparent',
+        count: String(c.count),
+        amountColor: c.amount === '$0' ? '#94a3b8' : '#0f172a',
+        roles: (c.roles || []).map((r) => ({ label: label(r) })),
+        ruleSummary: n === 0 ? 'no rules' : `${n} rule${n === 1 ? '' : 's'}`,
+        ruleColor: n === 0 ? '#cbd5e1' : '#94a3b8',
+        noRules: n === 0,
+        rules,
+        parentLabel: c.parent ? nameOf(c.parent) : 'Not grouped',
+        groupColor: c.parent ? '#0f172a' : '#64748b',
+        archiveLabel: c.archived ? 'Un-archive' : 'Archive',
+        renameNote: c.isParent
+          ? 'Renaming updates every transaction, budget and rule that uses it. Spending from the three categories inside rolls up here.'
+          : 'Renaming updates every transaction, budget and rule that uses it.',
+        roleChecks: meta.map((r) => {
+          const key = `${c.id}:${r.key}`;
+          const on = key in st.roles ? st.roles[key] : (c.roles || []).includes(r.key);
+          return {
+            ...r,
+            on,
+            labelColor: on ? '#0f172a' : '#475569',
+            ariaLabel: `${r.label} — ${c.name}`,
+            toggle: () => this.setState({ roles: { ...st.roles, [key]: !on } }),
+          };
+        }),
+      };
+    });
+
+    return {
+      rows,
+      empty: rows.length === 0,
+      shown: `${rows.length} of ${all.length}`,
+      query: st.query,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      showArchived: st.showArchived,
+      toggleArchived: () => this.setState({ showArchived: !st.showArchived }),
+    };
+  }
+}
+</script>
+</body>
+</html>

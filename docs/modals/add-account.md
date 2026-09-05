@@ -2,7 +2,7 @@
 
 > Source: `frontend/src/components/finances/BalancesSection.js`, `frontend/src/components/finances/AccountsTab.js`, `backend/routers/balances.py`
 
-Opens from **+ Add Account** in the Balances section (Overview tab) or the cash list (Accounts tab).
+Opens from **+ Add account** on [Accounts](../tabs/accounts.md) — the page actions row, or the “+ Add” at the foot of any section — and from **+ Add credit card or loan** on [Debt](../tabs/debt.md).
 
 ## Purpose
 
@@ -22,7 +22,7 @@ These show a **Manual** badge and survive restarts.
 | **Institution** | Bank / brokerage name |
 | **Nickname** | Free text; shown in lists |
 | **Balance** | Current balance — for credit cards, enter as a **positive number** for amount owed |
-| **APR** (credit only) | Used by the [Payoff Planner](../tabs/finances-overview.md#payoff-planner) |
+| **APR** (credit only) | Used by the [Payoff Planner](../tabs/debt.md#payoff-planner) |
 | **Credit limit** (credit only) | Drives utilization % |
 
 ## Updating

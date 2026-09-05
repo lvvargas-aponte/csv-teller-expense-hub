@@ -18,7 +18,7 @@ SnapTrade has **no sandbox/production switch** — these two credentials are the
 
 ## Connecting a brokerage
 
-1. Open **Finances → Investments**.
+1. Open **Invest**.
 2. Click **+ Connect a brokerage**. The app opens SnapTrade's connection portal in a popup.
 3. Pick your brokerage, sign in with the broker's credentials, authorize SnapTrade.
 4. Close the popup. The app detects the close, runs a sync, and your holdings appear in the holdings tables grouped by account.
@@ -29,7 +29,7 @@ You can connect more than one brokerage — repeat the flow.
 
 On first connect the app registers a household-level SnapTrade `userId` + `userSecret` and persists them in Postgres (`json_stores` row `snaptrade_creds`/`household`). They are **never written to `.env`**.
 
-To revoke, delete the row directly in Postgres or use `DELETE /api/snaptrade/connections/{id}` to remove individual brokerage links. See the [API reference](../reference/api.md#snaptrade-investments-sync).
+To revoke, delete the row directly in Postgres or use `DELETE /api/snaptrade/connections/{id}` to remove individual brokerage links. See the [API reference](../reference/api.md#investments-snaptrade).
 
 ## What gets pulled per sync
 
@@ -44,8 +44,8 @@ The current price is bundled with each position — there is no separate quote A
 ## What it's used for
 
 - The **Investments** tab — holdings table grouped by account, allocation breakdown, unrealized gain/loss.
-- The dashboard **PortfolioCard** — total value, allocation, top positions.
+- [Home](../tabs/home.md) — synced values roll into net worth and its composition bar.
 - Net worth (`/api/balances/summary`) — investment account values are added to `total_investments` and `net_worth`.
-- The **AI advisor** — Fin sees the `investments` block in its grounding snapshot (per-holding cost basis, allocation, concentration) and can advise on structural fit with your risk tolerance and time horizon. Fin does **not** have live market prices or news — see [AI advisor](../tabs/finances-advisor.md).
+- The **AI advisor** — Fin sees the `investments` block in its grounding snapshot (per-holding cost basis, allocation, concentration) and can advise on structural fit with your risk tolerance and time horizon. Fin does **not** have live market prices or news — see [AI advisor](../tabs/ask-advisor.md).
 
-See also: [Investments tab](../tabs/finances-investments.md), [Data model](../concepts/data-model.md).
+See also: [Investments tab](../tabs/invest.md), [Data model](../concepts/data-model.md).

@@ -1,10 +1,10 @@
 # Quick Start Checklist
 
-Follow these steps to get csv-teller-expense-hub running:
+Follow these steps to get Financial Freedom running:
 
 ## ✅ Pre-Setup
 
-- [ ] Clone the repo: `git clone https://github.com/lvvargas-aponte/csv-teller-expense-hub.git`
+- [ ] Clone the repo: `git clone https://github.com/lvvargas-aponte/financial-freedom.git`
 - [ ] Have Docker installed on your machine
 
 ## ✅ Google Cloud Setup (one-time)
@@ -86,9 +86,9 @@ Drop CSV files into `csv_imports/` and they'll auto-import. Processed files move
 ## ✅ Optional: Ollama (AI features)
 
 Ollama powers three features in the app:
-- **Spending Insights** — natural-language summary of your monthly spending on the Finances page
+- **Spending Insights** — natural-language summary of your monthly spending, on Home
 - **AI Advisor (one-shot)** — personalized payoff advice in the Debt Payoff Planner
-- **Virtual Advisor (chat)** — a multi-turn chat that sees your transactions, balances, and shared splits (Finances → **🤖 Advisor** tab)
+- **Virtual Advisor (chat)** — Fin, a local chat agent with tools over your transactions, balances, debts and documents (**Ask → Advisor**)
 
 The app runs fine without Ollama. When Ollama isn't detected, those sections show a setup nudge instead of an error.
 

@@ -2,12 +2,12 @@
 
 > Source: `frontend/src/components/transactions/HistoryPage.js`, `backend/routers/transactions.py`
 
-Reached from **Transactions → History** in the sidebar (🕓). Where [Current](transactions.md)
+Reached from **Transactions → History** in the sidebar (🕓). Where [Current](transactions-current.md)
 is a review queue for what just came in, History is the full record — every transaction ever
 synced or uploaded, regardless of reviewed state — for cleaning up categories after the fact.
 
 It reuses the same filter bar, table, detail editor, and
-[supporting rail](transactions.md#supporting-rail) as Current.
+[supporting rail](transactions-current.md#supporting-rail) as Current.
 
 ## What you see
 
@@ -70,5 +70,5 @@ Nothing is deleted without the confirmation prompt.
 - Transactions endpoint: `GET /api/transactions/all`
 - Single edit: `PUT /api/transactions/{id}`
 - Bulk reviewed flag: `PUT /api/transactions/bulk/reviewed`
-- Bulk suggest: `POST /api/suggest-categories/bulk`
+- Bulk suggest: `POST /api/transactions/suggest-categories/bulk`
 - Duplicate preview / apply: `POST /api/transactions/dedupe` with `mode: "preview"` or `"apply"`

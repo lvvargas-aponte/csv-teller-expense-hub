@@ -1,8 +1,10 @@
-# Transactions tab
+# Transactions → Current
 
 > Source: `frontend/src/App.js`, `frontend/src/components/transactions/*`, `backend/routers/transactions.py`
 
-The home tab. A review queue of every transaction (SimpleFIN-synced + CSV-uploaded) where you mark splits, add notes, categorize, and send shared expenses to Google Sheets.
+Reached at `/transactions`. A review queue of every transaction (SimpleFIN-synced + CSV-uploaded) where you mark splits, add notes, categorize, and send shared expenses to Google Sheets.
+
+The three Transactions views split by purpose: **Current** is the review queue, [**Shared**](transactions-shared.md) is where the two-person settle-up happens, and [**History**](transactions-history.md) is the full record for cleaning up categories after the fact.
 
 ## What you see
 
@@ -17,7 +19,7 @@ The home tab. A review queue of every transaction (SimpleFIN-synced + CSV-upload
 
 ## Supporting rail
 
-A column of cards to the right of the table, on both **Transactions** and **Historical transactions**. Every figure is computed from the *currently filtered* rows, not the whole account.
+A column of cards to the right of the table, on both **Current** and **History**. Every figure is computed from the *currently filtered* rows, not the whole account.
 
 | Card | What it shows |
 |---|---|
@@ -87,5 +89,5 @@ See also: [Bank sync concept](../concepts/bank-sync.md).
 - Transactions endpoint: `GET /api/transactions/all`
 - Single edit: `PUT /api/transactions/{id}`
 - Bulk edit: `PUT /api/transactions/bulk`
-- Bulk suggest: `POST /api/suggest-categories/bulk`
+- Bulk suggest: `POST /api/transactions/suggest-categories/bulk`
 - Send to Sheet: `POST /api/send-to-gsheet`

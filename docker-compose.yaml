@@ -2,9 +2,9 @@ services:
   db:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_DB: expense_hub
-      POSTGRES_USER: expense
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-expense_dev}
+      POSTGRES_DB: financial_freedom
+      POSTGRES_USER: finfree
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finfree_dev}
     ports:
       # Host 15432 avoids collision with a locally installed Postgres.
       - "15432:5432"
@@ -12,7 +12,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U expense -d expense_hub"]
+      test: ["CMD-SHELL", "pg_isready -U finfree -d financial_freedom"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -29,7 +29,7 @@ services:
       # host.docker.internal resolves to the Docker host on Docker Desktop (Windows/Mac).
       # Override if Ollama runs on a different host/port.
       - OLLAMA_HOST=http://host.docker.internal:11434
-      - DATABASE_URL=postgresql+asyncpg://expense:${POSTGRES_PASSWORD:-expense_dev}@db:5432/expense_hub
+      - DATABASE_URL=postgresql+asyncpg://finfree:${POSTGRES_PASSWORD:-finfree_dev}@db:5432/financial_freedom
     volumes:
       - ./backend:/app
       # Built mkdocs site for the in-app Help button (served at /help).

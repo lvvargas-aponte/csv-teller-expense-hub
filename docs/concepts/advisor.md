@@ -48,20 +48,20 @@ Proposed facts appear in the Memory panel for confirm/reject; confirmed facts ar
 | `get_category_spending` | `analytics.category_spending_summary` | "how much did I spend on X this year" |
 | `get_investments` | `analytics._investments_snapshot` | portfolio, allocation, concentration |
 | `project_cashflow` | recurring outflow + income estimate + inbound transfers | "what does the next 30 days look like" |
-| `search_documents` | pgvector over the Knowledge library | "what does the IRS say about Roth limits" |
+| `search_documents` | pgvector over the document library | "what does the IRS say about Roth limits" |
 | `recall_past_conversation` | pgvector over past chat turns | "like we talked about last time" |
 | `remember_about_user` / `recall_about_user` | `user_facts` + embeddings | personal memory |
 | `sync_transactions` | `POST /simplefin/sync` logic | "what did I spend today?" — pulls latest bank transactions first |
 | `refresh_balances` | `GET /balances/summary?force=true` logic | "what do I have right now?" — live balance refresh |
 | `sync_investments` | `POST /snaptrade/sync` logic | refresh brokerage holdings before portfolio advice |
 | `schedule_sync` / `list_scheduled_tasks` / `cancel_scheduled_task` | `scheduled_tasks` table + `backend/scheduler.py` | "sync my transactions every week" — recurring background syncs |
-
-**Scheduler** (`backend/scheduler.py`): an asyncio loop started in the FastAPI lifespan polls `scheduled_tasks` (Alembic `0014`) every 60 s and runs due jobs — the same sync coroutines the endpoints and tools use. Each run records `last_status`/`last_result` on the row and rolls `next_run_at` forward by `interval_days`.
 | `web_search` | DuckDuckGo via `ddgs` | market news, rate benchmarks, candidate tickers |
 | `fetch_webpage` | `url_fetcher` (SSRF-guarded, allowlist off) + `document_extractor` | read one promising search result |
 | `get_stock_quote` / `get_stock_history` / `get_stock_fundamentals` | `yfinance` | live prices, trends, PE/yield/analyst targets |
 
-The web + market tools are gated by `ADVISOR_WEB_TOOLS_ENABLED` (default `true`). Set it `false` for offline installs — Fin degrades to DB-grounded answers. The `fetch_webpage` path keeps all of `url_fetcher`'s SSRF defenses (https-only, DNS/private-IP guard, manual redirect re-validation) but skips the host allowlist, with a 2 MiB / 20 s cap; the Knowledge-tab import path keeps its allowlist unchanged.
+**Scheduler** (`backend/scheduler.py`): an asyncio loop started in the FastAPI lifespan polls `scheduled_tasks` (Alembic `0014`) every 60 s and runs due jobs — the same sync coroutines the endpoints and tools use. Each run records `last_status`/`last_result` on the row and rolls `next_run_at` forward by `interval_days`.
+
+The web + market tools are gated by `ADVISOR_WEB_TOOLS_ENABLED` (default `true`). Set it `false` for offline installs — Fin degrades to DB-grounded answers. The `fetch_webpage` path keeps all of `url_fetcher`'s SSRF defenses (https-only, DNS/private-IP guard, manual redirect re-validation) but skips the host allowlist, with a 2 MiB / 20 s cap; the [Ask → Memory](../tabs/ask-memory.md) import path keeps its allowlist unchanged.
 
 ## Guards
 
@@ -117,4 +117,4 @@ ORDER BY id DESC LIMIT 5;
 
 Live-model smoke testing (real Ollama, real prompts) is intentionally **not** in CI — run it manually after changing prompts or tools.
 
-See also: [AI Advisor tab](../tabs/finances-advisor.md), [Embeddings & RAG](embeddings.md), [Environment variables](../getting-started/env-vars.md).
+See also: [Ask → Advisor](../tabs/ask-advisor.md), [Embeddings & RAG](embeddings.md), [Environment variables](../getting-started/env-vars.md).

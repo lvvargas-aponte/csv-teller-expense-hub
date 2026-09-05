@@ -1,5 +1,5 @@
-site_name: Fin — Help
-site_description: User and developer knowledge base for Fin, a personal finance app with a local AI virtual financial advisor.
+site_name: Financial Freedom — Help
+site_description: User and developer knowledge base for Financial Freedom, a personal finance app with Fin, a local AI virtual financial advisor.
 site_url: http://localhost:8000/help/
 docs_dir: docs
 site_dir: site
@@ -69,20 +69,21 @@ nav:
       - SnapTrade (investments): getting-started/snaptrade.md
       - Google Sheets: getting-started/google-sheets.md
       - Environment variables: getting-started/env-vars.md
-  - Tabs & Pages:
-      - Transactions: tabs/transactions.md
+  - Pages:
+      - Home: tabs/home.md
+      - Transactions → Current: tabs/transactions-current.md
+      - Transactions → Shared: tabs/transactions-shared.md
       - Transactions → History: tabs/transactions-history.md
       - Transaction detail: modals/edit-transaction.md
-      - Finances → Dashboard: tabs/finances-dashboard.md
-      - Finances → Overview: tabs/finances-overview.md
-      - Finances → Accounts: tabs/finances-accounts.md
-      - Finances → Investments: tabs/finances-investments.md
-      - Finances → Budgets: tabs/finances-budgets.md
-      - Finances → Goals: tabs/finances-goals.md
-      - Finances → Bills: tabs/finances-bills.md
-      - Finances → Subscriptions: tabs/finances-subscriptions.md
-      - Finances → Knowledge: tabs/finances-knowledge.md
-      - Finances → AI Advisor: tabs/finances-advisor.md
+      - Accounts: tabs/accounts.md
+      - Debt: tabs/debt.md
+      - Invest: tabs/invest.md
+      - Plan → Budgets: tabs/plan-budgets.md
+      - Plan → Goals: tabs/plan-goals.md
+      - Plan → Commitments: tabs/plan-commitments.md
+      - Ask → Advisor: tabs/ask-advisor.md
+      - Ask → Memory: tabs/ask-memory.md
+      - Settings: tabs/settings.md
   - Modals:
       - Upload CSV: modals/upload-csv.md
       - Sync Bank: modals/sync-bank.md

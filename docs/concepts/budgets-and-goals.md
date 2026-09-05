@@ -21,7 +21,7 @@ Computed at read time:
 - `current_month_spent` — sum of transactions matching the category in the current month
 - `over_budget` — derived flag
 
-When a budget is exceeded, [AlertsCard](../tabs/finances-dashboard.md) surfaces it and the advisor sees it in context.
+When a budget is exceeded, Home's [Needs you feed](../tabs/home.md#needs-you) surfaces it and Fin sees it through `get_budget_status`.
 
 ## Goals
 
@@ -43,5 +43,5 @@ Computed:
 
 - **Budgets tab** — full table editor.
 - **Goals tab** — full editor with kind / priority / link selectors.
-- **Dashboard** — `BudgetsCard` and `GoalsCard` summarize current month / pace.
+- **Home** — the Budgets card summarises current-month progress; goal pace surfaces in the Needs-you feed.
 - **Advisor** — sees the full list each turn, can answer "am I on track for X?"

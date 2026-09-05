@@ -1,8 +1,8 @@
-# Finances → Budgets
+# Plan → Budgets
 
 > Source: `frontend/src/components/finances/BudgetsSection.js`, `backend/routers/budgets.py`
 
-Set a monthly spending limit per category. The dashboard's **BudgetsCard** and **AlertsCard** read from these.
+Reached at `/plan/budgets`. Set a monthly spending limit per category. Home's **Budgets** card and its **Needs you** feed both read from these.
 
 ## What you see
 
@@ -25,6 +25,6 @@ A table of categories with:
 - `PUT /api/budgets/{category}` — upsert a limit
 - `DELETE /api/budgets/{category}` — remove
 
-Budget over-runs surface in [AlertsCard](finances-dashboard.md) and influence the AI advisor's context.
+Budget over-runs surface in the [Needs you feed](home.md#needs-you) and are visible to Fin through its `get_budget_status` tool.
 
 See also: [Budgets & goals concept](../concepts/budgets-and-goals.md).

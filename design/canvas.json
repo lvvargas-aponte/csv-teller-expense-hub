@@ -1,0 +1,37 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Categories & rules" },
+    { "id": "page-2", "name": "Not chosen" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1000, "h": 1060, "title": "Categories & rules", "page": "page-1", "is_interactive": true },
+    { "file": "DirectionA.dc.html", "x": 0, "y": 0, "w": 1280, "h": 1000, "title": "A — List + detail (not chosen)", "page": "page-2", "is_interactive": true }
+  ],
+  "annotations": [
+    {
+      "id": "note-final",
+      "x": 1080,
+      "y": 0,
+      "w": 400,
+      "page": "page-1",
+      "text": "Direction B, built out.\n\nOne list, expand in place. Children indent under their group; the row carries the group chip, the roles that change behaviour, how many rules feed it, transaction count and month spend.\n\nExpanding gives you the name, the grouping, merge/archive/delete, the rules that pick it, and the roles with what each one actually does.\n\nAdded since the sketch: archived categories (toggle in the toolbar), an empty state, per-rule last-used, and the numbering below.\n\nSample data — clickable."
+    },
+    {
+      "id": "note-order",
+      "x": 1080,
+      "y": 400,
+      "w": 400,
+      "page": "page-1",
+      "text": "The one thing B hid, now fixed.\n\nFirst match wins, so order decides the answer. Merchant rules are exact and always run first — they show \"—\" because nothing about their order is a choice. Text rules are numbered in the order they run.\n\nThat keeps the tradeoff you accepted (rules live with their category) without leaving the ordering invisible."
+    },
+    {
+      "id": "note-a",
+      "x": 1360,
+      "y": 0,
+      "w": 400,
+      "page": "page-2",
+      "text": "A — list + detail. Not chosen; kept for reference."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

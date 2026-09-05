@@ -1,0 +1,439 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+  <style>
+    body {
+      margin: 0;
+      background: #f8fafc;
+      font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { color: #1d4ed8; }
+    * { box-sizing: border-box; }
+    button { font-family: inherit; }
+    input { font-family: inherit; }
+    .cat-row:hover { background: #f8fafc; }
+    .lnk:hover { color: #1d4ed8; }
+  </style>
+</helmet>
+
+<div style="min-height: 900px; padding: 24px 32px 48px">
+
+  <!-- Page header -->
+  <div style="max-width: 1200px; margin: 0 auto">
+    <h1 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.5px; color: #0f172a">Categories &amp; rules</h1>
+    <p style="margin: 5px 0 0; font-size: 13px; color: #64748b; max-width: 62ch; text-wrap: pretty">
+      Categories are what your spending is grouped by. Rules decide which one a
+      transaction gets, before the automatic guess is asked.
+    </p>
+
+    <!-- Segmented switch -->
+    <div style="display: flex; gap: 4px; margin: 20px 0 0; border-bottom: 1px solid #e2e8f0">
+      <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="2">
+        <button
+          type="button"
+          onClick="{{tab.pick}}"
+          style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border: none; border-bottom: 2px solid {{tab.line}}; background: transparent; font-size: 13.5px; font-weight: {{tab.weight}}; color: {{tab.color}}; white-space: nowrap; cursor: pointer; margin-bottom: -1px">
+          <span>{{tab.label}}</span>
+          <span style="padding: 1px 6px; border-radius: 99px; background: {{tab.pillBg}}; color: {{tab.pillFg}}; font-size: 11px; font-weight: 600">{{tab.count}}</span>
+        </button>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ============================ CATEGORIES ============================ -->
+  <sc-if value="{{onCategories}}" hint-placeholder-val="{{ true }}">
+  <div style="max-width: 1200px; margin: 20px auto 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start">
+
+    <!-- Left: the list -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04); overflow: hidden">
+
+      <div style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #e2e8f0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0">
+          <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+        </svg>
+        <input
+          value="{{query}}"
+          onInput="{{onQuery}}"
+          aria-label="Filter categories"
+          placeholder="Filter categories"
+          style="flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: 14px; color: #0f172a" />
+        <span style="font-size: 12px; color: #94a3b8; white-space: nowrap">{{shownCount}} of {{totalCount}}</span>
+      </div>
+
+      <!-- Rows -->
+      <sc-for list="{{rows}}" as="row" hint-placeholder-count="6">
+        <div
+          class="cat-row"
+          role="button"
+          tabindex="0"
+          aria-label="{{row.name}}"
+          onClick="{{row.pick}}"
+          style="display: flex; align-items: center; gap: 10px; padding: 11px 16px 11px {{row.indent}}; border-bottom: 1px solid #eef2f7; cursor: pointer; background: {{row.bg}}; box-shadow: {{row.rail}}">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: {{row.dot}}; flex-shrink: 0"></span>
+          <span style="font-size: 14px; font-weight: {{row.weight}}; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{row.name}}</span>
+
+          <sc-if value="{{row.isParent}}" hint-placeholder-val="{{ true }}">
+            <span style="padding: 1px 7px; border: 1px solid #e2e8f0; border-radius: 99px; background: #f1f5f9; color: #64748b; font-size: 10px; font-weight: 600; white-space: nowrap">group of {{row.childCount}}</span>
+          </sc-if>
+
+          <sc-for list="{{row.roles}}" as="role" hint-placeholder-count="1">
+            <span style="padding: 1px 7px; border: 1px solid #2563eb; border-radius: 99px; background: #eff5ff; color: #1d4ed8; font-size: 10px; font-weight: 600; white-space: nowrap">{{role.label}}</span>
+          </sc-for>
+
+          <span style="flex: 1"></span>
+          <span style="font-family: 'DM Mono', ui-monospace, monospace; font-size: 12px; color: #94a3b8; white-space: nowrap">{{row.count}}</span>
+          <span style="font-family: 'DM Mono', ui-monospace, monospace; font-size: 13px; color: {{row.amountColor}}; white-space: nowrap; min-width: 68px; text-align: right">{{row.amount}}</span>
+        </div>
+      </sc-for>
+
+      <!-- Add -->
+      <div style="display: flex; align-items: center; gap: 8px; padding: 12px 16px">
+        <input
+          aria-label="New category name"
+          placeholder="New category"
+          style="width: 200px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 9px 12px; font-size: 14px; color: #0f172a; outline: none" />
+        <button type="button" style="padding: 6px 14px; border-radius: 8px; border: none; background: #eff5ff; color: #0f172a; font-size: 13px; font-weight: 600; cursor: pointer">Add</button>
+        <span style="flex: 1"></span>
+        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #64748b; cursor: pointer">
+          <input type="checkbox" style="accent-color: #2563eb; cursor: pointer" />
+          <span>Show archived</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Right: detail for the selected category -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04); overflow: hidden; position: sticky; top: 24px">
+
+      <div style="padding: 16px 18px 14px; border-bottom: 1px solid #e2e8f0">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: {{sel.dot}}; flex-shrink: 0"></span>
+          <input
+            value="{{sel.name}}"
+            aria-label="Category name"
+            style="flex: 1; min-width: 0; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; margin-left: -6px; background: transparent; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; color: #0f172a; outline: none" />
+        </div>
+        <p style="margin: 6px 0 0; font-size: 11.5px; color: #94a3b8; text-wrap: pretty">
+          Renaming updates every transaction, budget and rule that uses it.
+        </p>
+      </div>
+
+      <div style="padding: 16px 18px; border-bottom: 1px solid #e2e8f0">
+        <div style="display: flex; gap: 20px">
+          <div>
+            <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700">Transactions</div>
+            <div style="margin-top: 3px; font-family: 'DM Mono', ui-monospace, monospace; font-size: 17px; font-weight: 500; color: #0f172a">{{sel.count}}</div>
+          </div>
+          <div>
+            <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700">This month</div>
+            <div style="margin-top: 3px; font-family: 'DM Mono', ui-monospace, monospace; font-size: 17px; font-weight: 500; color: #0f172a">{{sel.amount}}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Roles -->
+      <div style="padding: 16px 18px; border-bottom: 1px solid #e2e8f0">
+        <div style="font-size: 12px; font-weight: 700; color: #0f172a">How it behaves</div>
+        <p style="margin: 3px 0 10px; font-size: 11.5px; color: #94a3b8; text-wrap: pretty">
+          These change what counts as spending and what shows up under Bills.
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 9px">
+          <sc-for list="{{roleRows}}" as="r" hint-placeholder-count="5">
+            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer">
+              <input type="checkbox" checked="{{r.on}}" aria-label="{{r.ariaLabel}}" onChange="{{r.toggle}}" style="margin-top: 2px; accent-color: #2563eb; cursor: pointer" />
+              <span style="min-width: 0">
+                <span style="display: block; font-size: 13px; font-weight: 500; color: {{r.labelColor}}">{{r.label}}</span>
+                <span style="display: block; font-size: 11.5px; color: #94a3b8; text-wrap: pretty">{{r.hint}}</span>
+              </span>
+            </label>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- Grouping -->
+      <div style="padding: 16px 18px; border-bottom: 1px solid #e2e8f0">
+        <label style="display: block; font-size: 12px; font-weight: 700; color: #0f172a; margin-bottom: 8px" for="grp">Grouped under</label>
+        <select id="grp" style="width: 100%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 9px 12px; font-size: 14px; color: #0f172a; outline: none">
+          <option>Not grouped</option>
+          <option>Food</option>
+          <option>Home</option>
+          <option>Transport</option>
+        </select>
+      </div>
+
+      <!-- Rules targeting this category -->
+      <div style="padding: 16px 18px; border-bottom: 1px solid #e2e8f0">
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px">
+          <span style="font-size: 12px; font-weight: 700; color: #0f172a">Rules that pick it</span>
+          <span style="font-size: 11px; color: #94a3b8">{{sel.ruleCount}}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <sc-for list="{{sel.rules}}" as="rule" hint-placeholder-count="2">
+            <div style="display: flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc">
+              <span style="padding: 1px 6px; border-radius: 4px; background: {{rule.kindBg}}; color: {{rule.kindFg}}; font-size: 10px; font-weight: 600; white-space: nowrap">{{rule.kind}}</span>
+              <code style="font-family: 'DM Mono', ui-monospace, monospace; font-size: 12px; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{rule.pattern}}</code>
+              <span style="flex: 1"></span>
+              <span style="font-size: 11px; color: #94a3b8; white-space: nowrap">{{rule.used}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px; padding: 14px 18px">
+        <button type="button" style="padding: 6px 14px; border-radius: 8px; border: none; background: #eff5ff; color: #0f172a; font-size: 13px; font-weight: 600; cursor: pointer">Merge into…</button>
+        <button type="button" style="padding: 6px 14px; border-radius: 8px; border: none; background: #eff5ff; color: #0f172a; font-size: 13px; font-weight: 600; cursor: pointer">Archive</button>
+        <span style="flex: 1"></span>
+        <button type="button" style="padding: 6px 10px; border-radius: 8px; border: none; background: transparent; color: #dc2626; font-size: 13px; font-weight: 600; cursor: pointer">Delete</button>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ============================== RULES ============================== -->
+  <sc-if value="{{onRules}}" hint-placeholder-val="{{ false }}">
+  <div style="max-width: 1200px; margin: 20px auto 0">
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04); overflow: hidden">
+
+      <div style="display: flex; align-items: center; gap: 10px; padding: 13px 18px; border-bottom: 1px solid #e2e8f0">
+        <span style="font-size: 13.5px; font-weight: 700; color: #0f172a">All rules</span>
+        <span style="font-size: 12px; color: #94a3b8">checked top to bottom, first match wins</span>
+        <span style="flex: 1"></span>
+        <div style="display: inline-flex; background: #eff5ff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 3px; gap: 2px">
+          <sc-for list="{{ruleTabs}}" as="rt" hint-placeholder-count="3">
+            <button type="button" onClick="{{rt.pick}}" style="padding: 4px 10px; border: none; border-radius: 6px; background: {{rt.bg}}; color: {{rt.fg}}; font-size: 12px; font-weight: 600; cursor: pointer">{{rt.label}}</button>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- Column header -->
+      <div style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 200px 120px 92px 40px; gap: 12px; align-items: center; padding: 8px 18px; background: #f8fafc; border-bottom: 1px solid #e2e8f0">
+        <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em">Kind</span>
+        <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em">Matches</span>
+        <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em">Category</span>
+        <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em">Last used</span>
+        <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em">Caught</span>
+        <span></span>
+      </div>
+
+      <sc-for list="{{ruleRows}}" as="rule" hint-placeholder-count="6">
+        <div style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 200px 120px 92px 40px; gap: 12px; align-items: center; padding: 11px 18px; border-bottom: 1px solid #eef2f7; opacity: {{rule.fade}}">
+          <span>
+            <span style="padding: 2px 7px; border-radius: 5px; background: {{rule.kindBg}}; color: {{rule.kindFg}}; font-size: 10px; font-weight: 600; white-space: nowrap">{{rule.kind}}</span>
+          </span>
+          <code style="font-family: 'DM Mono', ui-monospace, monospace; font-size: 13px; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{rule.pattern}}</code>
+          <span style="display: inline-flex; align-items: center; gap: 7px; min-width: 0">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: {{rule.dot}}; flex-shrink: 0"></span>
+            <span style="font-size: 13px; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{rule.category}}</span>
+          </span>
+          <span style="font-size: 12px; color: {{rule.usedColor}}">{{rule.used}}</span>
+          <span style="font-family: 'DM Mono', ui-monospace, monospace; font-size: 13px; color: #475569">{{rule.caught}}</span>
+          <label style="display: inline-flex; justify-content: flex-end; cursor: pointer">
+            <input type="checkbox" checked="{{rule.on}}" aria-label="{{rule.ariaLabel}}" onChange="{{rule.toggle}}" style="accent-color: #2563eb; cursor: pointer" />
+          </label>
+        </div>
+      </sc-for>
+
+      <div style="display: flex; align-items: center; gap: 10px; padding: 13px 18px">
+        <button type="button" style="padding: 6px 14px; border-radius: 8px; border: none; background: #eff5ff; color: #0f172a; font-size: 13px; font-weight: 600; cursor: pointer">+ Add a text rule</button>
+        <span style="font-size: 11.5px; color: #94a3b8; text-wrap: pretty">
+          Merchant rules are added from the transactions table — categorize a row and say yes when it offers to remember it.
+        </span>
+      </div>
+    </div>
+
+    <p style="margin: 12px 2px 0; font-size: 11.5px; color: #94a3b8; max-width: 70ch; text-wrap: pretty">
+      A merchant rule matches one merchant exactly, so store numbers and card-processor
+      prefixes fall out. A text rule matches any description containing the text, and runs
+      after every merchant rule.
+    </p>
+  </div>
+  </sc-if>
+
+</div>
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      tab: 'categories',
+      selected: 2,
+      query: '',
+      ruleFilter: 'all',
+      roles: { non_spending: false, always_recurring: false, bill: false, subscription: false, non_commitment: false },
+      enabled: {},
+    };
+  }
+
+  categories() {
+    return [
+      { id: 1, name: 'Food',       parent: null, isParent: true, childCount: 3, count: 143, amount: '$1,204', roles: [], dot: '#2563eb' },
+      { id: 2, name: 'Groceries',  parent: 1,    count: 62,  amount: '$612', roles: [], dot: '#7c3aed' },
+      { id: 3, name: 'Dining',     parent: 1,    count: 58,  amount: '$421', roles: [], dot: '#ea580c' },
+      { id: 4, name: 'Coffee',     parent: 1,    count: 23,  amount: '$171', roles: [], dot: '#0891b2' },
+      { id: 5, name: 'Subscriptions', parent: null, count: 31, amount: '$264', roles: ['bill', 'subscription'], dot: '#db2777' },
+      { id: 6, name: 'Utilities',  parent: null, count: 18,  amount: '$392', roles: ['bill'], dot: '#65a30d' },
+      { id: 7, name: 'CC Payment', parent: null, count: 12,  amount: '$0', roles: ['non_spending'], dot: '#94a3b8' },
+      { id: 8, name: 'Transport',  parent: null, count: 44,  amount: '$318', roles: [], dot: '#4338ca' },
+    ];
+  }
+
+  roleMeta() {
+    return [
+      { key: 'non_spending',     label: 'Not spending',     hint: 'Moves money between your own accounts — kept out of spending totals' },
+      { key: 'always_recurring', label: 'Varies monthly',   hint: 'Still a recurring bill when the amount swings' },
+      { key: 'bill',             label: 'Bill',             hint: 'Shows under Bills' },
+      { key: 'subscription',     label: 'Subscription',     hint: 'Shows under Commitments, and counts toward overlap warnings' },
+      { key: 'non_commitment',   label: 'Not a commitment', hint: 'A consequence of a balance, like interest or fees' },
+    ];
+  }
+
+  rules() {
+    return [
+      { id: 1, kind: 'merchant', pattern: 'chipotle',        category: 'Dining',        dot: '#ea580c', used: '2 days ago', caught: 14 },
+      { id: 2, kind: 'merchant', pattern: 'trader joe',      category: 'Groceries',     dot: '#7c3aed', used: 'yesterday',  caught: 31 },
+      { id: 3, kind: 'merchant', pattern: 'blue bottle',     category: 'Coffee',        dot: '#0891b2', used: '5 days ago', caught: 9 },
+      { id: 4, kind: 'merchant', pattern: 'duke energy',     category: 'Utilities',     dot: '#65a30d', used: 'last month', caught: 6 },
+      { id: 5, kind: 'text',     pattern: 'NETFLIX',         category: 'Subscriptions', dot: '#db2777', used: 'last month', caught: 5 },
+      { id: 6, kind: 'text',     pattern: 'PAYMENT THANK',   category: 'CC Payment',    dot: '#94a3b8', used: 'never',      caught: 0 },
+    ];
+  }
+
+  renderVals() {
+    const st = this.state;
+    const cats = this.categories();
+    const rules = this.rules();
+    const onCategories = st.tab === 'categories';
+
+    const tabs = [
+      { key: 'categories', label: 'Categories', count: cats.length },
+      { key: 'rules',      label: 'Rules',      count: rules.length },
+    ].map((t) => {
+      const active = st.tab === t.key;
+      return {
+        ...t,
+        pick: () => this.setState({ tab: t.key }),
+        color: active ? '#2563eb' : '#64748b',
+        weight: active ? '600' : '500',
+        line: active ? '#2563eb' : 'transparent',
+        pillBg: active ? '#eff5ff' : '#f1f5f9',
+        pillFg: active ? '#1d4ed8' : '#94a3b8',
+      };
+    });
+
+    const q = st.query.trim().toLowerCase();
+    const parentName = (c) => {
+      const p = cats.find((x) => x.id === c.parent);
+      return p ? p.name : '';
+    };
+    const visible = cats.filter(
+      (c) => !q || c.name.toLowerCase().includes(q) || parentName(c).toLowerCase().includes(q),
+    );
+
+    const roleLabel = (key) => (this.roleMeta().find((r) => r.key === key) || {}).label || key;
+
+    const rows = visible.map((c) => {
+      const active = c.id === st.selected;
+      return {
+        ...c,
+        pick: () => this.setState({ selected: c.id }),
+        indent: c.parent ? '38px' : '16px',
+        bg: active ? '#eff5ff' : 'transparent',
+        rail: active ? 'inset 3px 0 0 #2563eb' : 'none',
+        weight: c.isParent ? '600' : '400',
+        isParent: !!c.isParent,
+        childCount: c.childCount || 0,
+        roles: (c.roles || []).map((r) => ({ label: roleLabel(r) })),
+        amountColor: c.amount === '$0' ? '#94a3b8' : '#0f172a',
+      };
+    });
+
+    const selected = cats.find((c) => c.id === st.selected) || cats[0];
+    const selRules = rules.filter((r) => r.category === selected.name);
+
+    // Keyed per category, and an explicit override beats the seeded default —
+    // a single global map would leak one category's roles onto every other,
+    // and OR-ing against the default makes an owned role impossible to switch
+    // off.
+    const roleRows = this.roleMeta().map((r) => {
+      const key = `${selected.id}:${r.key}`;
+      const on = key in st.roles ? st.roles[key] : (selected.roles || []).includes(r.key);
+      return {
+        ...r,
+        on,
+        ariaLabel: `${r.label} — ${selected.name}`,
+        toggle: () => this.setState({ roles: { ...st.roles, [key]: !on } }),
+        labelColor: on ? '#0f172a' : '#475569',
+      };
+    });
+
+    const kindChip = (kind) => (kind === 'merchant'
+      ? { kindBg: '#eff5ff', kindFg: '#1d4ed8', kind: 'merchant' }
+      : { kindBg: '#f1f5f9', kindFg: '#64748b', kind: 'text' });
+
+    const ruleTabs = [
+      { key: 'all', label: 'All' },
+      { key: 'merchant', label: 'Merchant' },
+      { key: 'text', label: 'Text' },
+    ].map((t) => {
+      const active = st.ruleFilter === t.key;
+      return {
+        ...t,
+        pick: () => this.setState({ ruleFilter: t.key }),
+        bg: active ? '#ffffff' : 'transparent',
+        fg: active ? '#1d4ed8' : '#64748b',
+      };
+    });
+
+    const ruleRows = rules
+      .filter((r) => st.ruleFilter === 'all' || r.kind === st.ruleFilter)
+      .map((r) => {
+        const on = st.enabled[r.id] !== false;
+        return {
+          ...r,
+          ...kindChip(r.kind),
+          on,
+          ariaLabel: `Rule ${r.pattern} is on`,
+          toggle: () => this.setState({ enabled: { ...st.enabled, [r.id]: !on } }),
+          fade: on ? '1' : '0.5',
+          usedColor: r.used === 'never' ? '#94a3b8' : '#475569',
+          caught: String(r.caught),
+        };
+      });
+
+    return {
+      tabs,
+      onCategories,
+      onRules: !onCategories,
+      rows,
+      shownCount: String(rows.length),
+      totalCount: String(cats.length),
+      query: st.query,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      roleRows,
+      ruleTabs,
+      ruleRows,
+      sel: {
+        name: selected.name,
+        dot: selected.dot,
+        count: String(selected.count),
+        amount: selected.amount,
+        ruleCount: selRules.length ? `${selRules.length}` : 'none yet',
+        rules: selRules.map((r) => ({ ...r, ...kindChip(r.kind), used: `used ${r.used}` })),
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

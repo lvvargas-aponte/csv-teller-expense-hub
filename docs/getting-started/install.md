@@ -14,8 +14,8 @@
 ## Option A — Docker (recommended)
 
 ```bash
-git clone https://github.com/lvvargas-aponte/csv-teller-expense-hub.git
-cd csv-teller-expense-hub
+git clone https://github.com/lvvargas-aponte/financial-freedom.git
+cd financial-freedom
 
 # Copy environment template and edit
 cp .env.example .env

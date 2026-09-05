@@ -141,4 +141,4 @@ One Postgres = one operational story (one backup, one connection pool, one trans
 | Style-notes reflection (👍/👎 → prompt) | `backend/style_reflection.py`, `backend/db/style_profile_repo.py` |
 | Vector schema + HNSW indexes | `backend/alembic/versions/0001_initial.py`, `0003_transaction_embeddings.py`, `0005_documents.py` |
 
-See also: [AI advisor](advisor.md), [Finances → Knowledge tab](../tabs/finances-knowledge.md).
+See also: [AI advisor](advisor.md), [Ask → Memory](../tabs/ask-memory.md).
