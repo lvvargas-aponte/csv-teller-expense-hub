@@ -1,0 +1,89 @@
+# Throwaway demo stack — a parallel db/backend/frontend on their own ports and
+# their own volume, seeded with fictitious data by `scripts/seed_demo.py`.
+# It exists so the README screenshots can show a populated UI without exposing
+# real balances, and so nothing here can read or write the real stack's data.
+#
+#   docker compose -f docker-compose.demo.yaml -p finfree-demo up -d
+#   docker compose -f docker-compose.demo.yaml -p finfree-demo run --rm backend python -m scripts.seed_demo
+#   docker compose -f docker-compose.demo.yaml -p finfree-demo down -v   # -v drops the demo volume
+#
+# Every credential inherited from .env is blanked below: the demo instance
+# cannot reach SimpleFIN, SnapTrade or the Google Sheet.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: financial_freedom_demo
+      POSTGRES_USER: finfree
+      POSTGRES_PASSWORD: finfree_demo
+    ports:
+      - "15433:5432"
+    volumes:
+      - pgdata_demo:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finfree -d financial_freedom_demo"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - demo-network
+
+  backend:
+    # Reuses the image the main stack already built (docker-ca/ is not in the repo).
+    image: csv-teller-expense-hub-backend:latest
+    ports:
+      - "8010:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://finfree:finfree_demo@db:5432/financial_freedom_demo
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      # Fictitious household — real names must never reach a committed screenshot.
+      - PERSON_1_NAME=Alex
+      - PERSON_2_NAME=Sam
+      - INSTANCE_PERSON_SLOT=1
+      # Blanked so the demo instance cannot touch real bank/brokerage/Sheet data.
+      - SIMPLEFIN_ACCESS_URLS=
+      - SNAPTRADE_CLIENT_ID=
+      - SNAPTRADE_CONSUMER_KEY=
+      - SPREADSHEET_ID=
+      - SHEET_SYNC_ENABLED=false
+    volumes:
+      - ./backend:/app
+      - ./site:/site:ro
+    networks:
+      - demo-network
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: csv-teller-expense-hub-frontend:latest
+    ports:
+      - "3010:3000"
+    environment:
+      - REACT_APP_BACKEND_URL=http://localhost:8010
+      - HOST=0.0.0.0
+      # No hot-reload here: two dev servers watching the same mounted source
+      # made this one reload in a loop, so pages never finished loading.
+      # The dev-server client defaults to the container port (3000), which on
+      # the host is the real stack — it kept telling this page to reload.
+      - WDS_SOCKET_PORT=3010
+      - FAST_REFRESH=false
+      - CHOKIDAR_USEPOLLING=false
+      - WATCHPACK_POLLING=false
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - demo-network
+    depends_on:
+      - backend
+
+networks:
+  demo-network:
+    driver: bridge
+
+volumes:
+  pgdata_demo:
