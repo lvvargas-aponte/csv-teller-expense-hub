@@ -93,3 +93,91 @@ def stamp_ingest(txn: Dict[str, Any]) -> Dict[str, Any]:
     """
     txn["category_source"] = BANK if _clean(txn.get("category")) else None
     return txn
+
+
+# ---------------------------------------------------------------------------
+# Applying a rule to transactions that already exist
+# ---------------------------------------------------------------------------
+#
+# A rule the user writes today is usually about spending they have already
+# imported, so both the "…and 23 past transactions" count in the prompt and
+# the sweep behind it live here — the precedence check is what makes the
+# sweep safe to offer at all.
+
+
+def _matches(txn: Dict[str, Any], rule: Dict[str, Any], alias_map) -> bool:
+    import category_rules
+
+    matched = category_rules.match_rule(
+        txn.get("description") or "", [rule], alias_map
+    )
+    return matched is not None
+
+
+def preview_rule(rule: Dict[str, Any]) -> Dict[str, Any]:
+    """How many existing transactions ``rule`` would claim, and a sample.
+
+    ``matched`` counts every transaction the rule describes; ``claimable``
+    excludes the ones a higher source already owns, which is the number the
+    user actually cares about before pressing apply.
+    """
+    import merchant_key
+    import state
+
+    alias_map = merchant_key.aliases()
+    matched = 0
+    claimable = 0
+    sample: list = []
+
+    for txn in state.stored_transactions.values():
+        if not _matches(txn, rule, alias_map):
+            continue
+        matched += 1
+        if can_assign(txn, RULE):
+            claimable += 1
+            if len(sample) < 5:
+                sample.append({
+                    "id": txn.get("id") or txn.get("transaction_id"),
+                    "date": txn.get("date"),
+                    "description": txn.get("description"),
+                    "amount": txn.get("amount"),
+                    "category": txn.get("category"),
+                })
+
+    return {
+        "matched": matched,
+        "claimable": claimable,
+        "protected": matched - claimable,
+        "sample": sample,
+    }
+
+
+def apply_rule(rule: Dict[str, Any]) -> Dict[str, Any]:
+    """Set ``rule``'s category on every transaction it claims.
+
+    Rows owned by a higher source are counted and skipped, never
+    overwritten — that is the whole reason provenance exists. Returns the
+    same shape as :func:`preview_rule` minus the sample, with ``updated``
+    being what actually changed.
+    """
+    import merchant_key
+    import state
+
+    alias_map = merchant_key.aliases()
+    matched = 0
+    updated = 0
+
+    for tid, txn in list(state.stored_transactions.items()):
+        if not _matches(txn, rule, alias_map):
+            continue
+        matched += 1
+        if apply(txn, rule.get("category"), RULE):
+            state.stored_transactions[tid] = txn  # write-back per PgStore contract
+            updated += 1
+
+    if updated:
+        import category_rules
+
+        category_rules.touch([rule["id"]] if rule.get("id") else [])
+
+    return {"matched": matched, "updated": updated, "protected": matched - updated}

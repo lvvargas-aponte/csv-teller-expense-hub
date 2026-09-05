@@ -3,7 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SettingsPage from '../SettingsPage';
 import { getProfile, updateProfile } from '../../../api/profile';
-import { getCategoryRules, replaceCategoryRules } from '../../../api/categoryRules';
+import {
+  getCategoryRules, replaceCategoryRules, patchCategoryRule, deleteCategoryRule,
+} from '../../../api/categoryRules';
 
 jest.mock('../../../api/profile');
 jest.mock('../../../api/categoryRules');
@@ -160,7 +162,7 @@ test('adding a rule marks the page dirty and saves the ordered list', async () =
   await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
   await waitFor(() => expect(replaceCategoryRules).toHaveBeenCalledWith([
-    { match: 'TRADER JOE', category: 'Groceries' },
+    { pattern: 'TRADER JOE', category: 'Groceries' },
   ]));
 });
 
@@ -177,7 +179,7 @@ test('blank rules are not sent', async () => {
   await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
   await waitFor(() => expect(replaceCategoryRules).toHaveBeenCalledWith([
-    { match: 'UBER', category: 'Groceries' },
+    { pattern: 'UBER', category: 'Groceries' },
   ]));
 });
 
@@ -248,4 +250,58 @@ const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
 test('the settings tabs carry no emoji', () => {
   const { container } = renderPage();
   expect(container.textContent).not.toMatch(EMOJI);
+});
+
+describe('merchant rules learned from transactions', () => {
+  const LEARNED = {
+    id: 7, kind: 'merchant', pattern: 'chipotle', category: 'Dining',
+    position: 0, enabled: true, created_at: null, last_matched_at: null,
+  };
+
+  test('lists them separately from the substring rules', async () => {
+    getCategoryRules.mockResolvedValue({ data: [LEARNED] });
+    render(<SettingsPage initialPane="categories" categories={['Dining']} />);
+    expect(await screen.findByText('chipotle')).toBeInTheDocument();
+    expect(screen.getByText('Learned from your transactions')).toBeInTheDocument();
+  });
+
+  test('a merchant rule is not editable as a substring rule', async () => {
+    // The PUT deliberately leaves merchant rules alone, so drafting one into
+    // that form would resurrect it as a duplicate `contains` rule on save.
+    getCategoryRules.mockResolvedValue({ data: [LEARNED] });
+    render(<SettingsPage initialPane="categories" categories={['Dining']} />);
+    await screen.findByText('chipotle');
+    expect(screen.queryByLabelText('Merchant text to match')).not.toBeInTheDocument();
+  });
+
+  test('turning one off patches it immediately rather than waiting for Save', async () => {
+    const user = userEvent.setup();
+    getCategoryRules.mockResolvedValue({ data: [LEARNED] });
+    patchCategoryRule.mockResolvedValue({ data: { ...LEARNED, enabled: false } });
+    render(<SettingsPage initialPane="categories" categories={['Dining']} />);
+    await screen.findByText('chipotle');
+
+    await user.click(screen.getByRole('checkbox'));
+
+    await waitFor(() => expect(patchCategoryRule).toHaveBeenCalledWith(7, { enabled: false }));
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+  });
+
+  test('deleting one calls the per-row endpoint', async () => {
+    const user = userEvent.setup();
+    getCategoryRules.mockResolvedValue({ data: [LEARNED] });
+    deleteCategoryRule.mockResolvedValue({ data: { deleted: 7 } });
+    render(<SettingsPage initialPane="categories" categories={['Dining']} />);
+    await screen.findByText('chipotle');
+
+    await user.click(screen.getByRole('button', { name: 'Delete rule for chipotle' }));
+
+    await waitFor(() => expect(deleteCategoryRule).toHaveBeenCalledWith(7));
+  });
+
+  test('says so when nothing has been learned yet', async () => {
+    getCategoryRules.mockResolvedValue({ data: [] });
+    render(<SettingsPage initialPane="categories" categories={['Dining']} />);
+    expect(await screen.findByText(/Nothing learned yet/)).toBeInTheDocument();
+  });
 });

@@ -1,4 +1,5 @@
 """Pydantic request/response models for all route handlers."""
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -104,6 +105,10 @@ class AccountBalance(BaseModel):
     # a native manual account. None for both fresh manuals and live rows.
     disconnected_from: Optional[str] = None
     disconnected_at: Optional[str] = None
+    # Mirrors account_details.closed_on so consumers see it without a second
+    # fetch. A closed row is still returned here (the UI lists it under
+    # "Closed") but contributes to no total on this summary.
+    closed_on: Optional[str] = None
     # Real assets only: the ISO date the user last set this account's value.
     # Nothing estimates a house or a car — the app only reports how stale the
     # number the user typed has become.
@@ -130,6 +135,12 @@ class AccountDetailsIn(BaseModel):
     statement_day: Optional[int] = None   # 1-31 (day of month the statement cuts)
     due_day: Optional[int] = None         # 1-31 (day of month the payment is due)
     opened_on: Optional[str] = None       # YYYY-MM-DD, user-entered
+    # YYYY-MM-DD the user declared this account closed. SimpleFIN has no
+    # status field (the protocol has no open/closed concept at all), so a
+    # closed account keeps being returned on every fetch and this is the only
+    # way to say so. It stops the account counting toward any total; it does
+    # not stop it syncing.
+    closed_on: Optional[str] = None
     valuation_updated_on: Optional[str] = None  # YYYY-MM-DD, real assets only
     secured_by_account_id: Optional[str] = None  # real assets: the loan behind it
     # How the balance is taxed. None means unanswered — the app shows an
@@ -193,18 +204,52 @@ class UserProfileOut(BaseModel):
 
 
 class CategoryRuleIn(BaseModel):
-    match: str
+    pattern: str
     category: str
+    enabled: bool = True
 
 
 class CategoryRule(CategoryRuleIn):
     id: int
     position: int
+    # 'merchant' matches the whole normalized merchant key; 'contains' is
+    # the substring test the settings form writes.
+    kind: str
+    created_at: Optional[datetime] = None
+    last_matched_at: Optional[datetime] = None
 
 
 class CategoryRulesReplace(BaseModel):
-    """Whole-list replace — list order *is* the evaluation order."""
+    """Whole-list replace — list order *is* the evaluation order.
+
+    Covers the substring rules the settings form owns. Merchant rules are
+    created from the transactions table and are not in this payload.
+    """
     rules: List[CategoryRuleIn]
+
+
+class CategoryRuleCreate(BaseModel):
+    """One new rule, from the "always categorize X as Y" prompt."""
+    pattern: str
+    category: str
+    kind: str = "merchant"
+    # Sweep the transactions already imported, not just future ones.
+    apply_to_existing: bool = False
+
+
+class CategoryRulePatch(BaseModel):
+    """Partial edit — every field optional, None means leave alone."""
+    pattern: Optional[str] = None
+    category: Optional[str] = None
+    enabled: Optional[bool] = None
+    position: Optional[int] = None
+
+
+class RulePreviewRequest(BaseModel):
+    """Ask what a rule would do before committing to it."""
+    pattern: str
+    category: str
+    kind: str = "merchant"
 
 
 class ManualAccountUpdate(BaseModel):

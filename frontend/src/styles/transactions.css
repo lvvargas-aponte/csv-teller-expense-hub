@@ -1004,3 +1004,61 @@ tr.tx-detail-row > td {
   .tx-table { min-width: 480px; }
 }
 
+
+/* "Always categorize X as Y" — offered under the row you just categorized.
+   Shares the detail row's inset accent bar so it reads as belonging to that
+   transaction rather than floating above the table. */
+tr.tx-rule-prompt-row > td {
+  padding: 0;
+  background: var(--accent-wash);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.tx-rule-prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 18px;
+}
+.tx-rule-prompt-icon {
+  color: var(--accent);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+.tx-rule-prompt-body { flex: 1; min-width: 0; }
+.tx-rule-prompt-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.tx-rule-prompt-check input { accent-color: var(--accent); cursor: pointer; }
+.tx-rule-prompt-check code {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.tx-rule-prompt-check--sub {
+  margin-top: 5px;
+  padding-left: 21px;
+  color: var(--text-secondary);
+}
+.tx-rule-prompt-note {
+  margin: 5px 0 0 21px;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.tx-rule-prompt-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+  .tx-rule-prompt { flex-wrap: wrap; }
+  .tx-rule-prompt-actions { width: 100%; justify-content: flex-end; }
+}

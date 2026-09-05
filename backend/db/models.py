@@ -301,11 +301,21 @@ class CategoryRule(Base):
     __tablename__ = "category_rules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    match: Mapped[str] = mapped_column(Text, nullable=False)
+    # 'merchant' compares the whole normalized merchant key; 'contains' is
+    # the case-insensitive substring test rules started out as.
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default="contains")
+    pattern: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str] = mapped_column(Text, nullable=False)
     # First match wins, so ordering is data the user authored — not a
     # display preference the client may re-sort.
     position: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_matched_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True)
+    )
 
 
 class TransactionEmbedding(Base):

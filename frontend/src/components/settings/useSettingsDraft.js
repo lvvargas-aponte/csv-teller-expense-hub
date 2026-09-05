@@ -64,10 +64,16 @@ const draftToPayload = (d) => ({
 // Rules carry a client-side key so React can track rows that have no id
 // yet. It never reaches the server, so it must not count toward dirty.
 const rulesToDraft = (rows) =>
-  (rows || []).map((r, i) => ({ key: `r${r.id ?? i}`, match: r.match, category: r.category }));
+  (rows || [])
+    .filter((r) => r.kind !== 'merchant')
+    .map((r, i) => ({ key: `r${r.id ?? i}`, pattern: r.pattern, category: r.category }));
+
+// Merchant rules are born in the transactions table, not this form, and the
+// PUT deliberately leaves them alone — so they are shown, not drafted.
+const merchantRules = (rows) => (rows || []).filter((r) => r.kind === 'merchant');
 
 const comparableRules = (rows) =>
-  rows.map(({ match, category }) => ({ match, category }));
+  rows.map(({ pattern, category }) => ({ pattern, category }));
 
 /**
  * Page-wide draft for Profile & Settings.
@@ -79,6 +85,7 @@ const comparableRules = (rows) =>
 export default function useSettingsDraft() {
   const [profile, setProfile] = useState(EMPTY_PROFILE);
   const [rules, setRules]     = useState([]);
+  const [learned, setLearned] = useState([]);
   const [saved, setSaved]     = useState({ profile: EMPTY_PROFILE, rules: [] });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -94,6 +101,7 @@ export default function useSettingsDraft() {
         const nextRules   = rulesToDraft(r.data);
         setProfile(nextProfile);
         setRules(nextRules);
+        setLearned(merchantRules(r.data));
         setSaved({ profile: nextProfile, rules: nextRules });
       })
       .catch(() => setLoadError('Could not load settings — is the backend running?'))
@@ -129,14 +137,15 @@ export default function useSettingsDraft() {
         updateProfile(draftToPayload(profile)),
         replaceCategoryRules(
           rules
-            .filter((x) => x.match.trim() && x.category.trim())
-            .map(({ match, category }) => ({ match: match.trim(), category })),
+            .filter((x) => x.pattern.trim() && x.category.trim())
+            .map(({ pattern, category }) => ({ pattern: pattern.trim(), category })),
         ),
       ]);
       const nextProfile = profileToDraft(p.data);
       const nextRules   = rulesToDraft(r.data);
       setProfile(nextProfile);
       setRules(nextRules);
+      setLearned(merchantRules(r.data));
       setSaved({ profile: nextProfile, rules: nextRules });
       return true;
     } catch (e) {
@@ -150,6 +159,7 @@ export default function useSettingsDraft() {
   return {
     profile, setProfileField,
     rules, setRules,
+    learned,
     dirty, loading, loadError, saving, saveError,
     save, discard, reload: load,
   };

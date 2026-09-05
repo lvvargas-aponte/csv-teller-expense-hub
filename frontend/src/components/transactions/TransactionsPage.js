@@ -9,7 +9,8 @@ import FilterBar        from './FilterBar';
 import TransactionTable from './TransactionTable';
 import SuggestPreviewModal from './SuggestPreviewModal';
 import TransactionsRail from './TransactionsRail';
-import { bulkSuggestCategories, applyCategoryAssignments, deleteTransaction, previewDuplicates, applyDeduplication } from '../../api/transactions';
+import { bulkSuggestCategories, applyCategoryAssignments, deleteTransaction, previewDuplicates, applyDeduplication, putTransactionFields } from '../../api/transactions';
+import { getRuleForMerchant, previewCategoryRule, createCategoryRule } from '../../api/categoryRules';
 import HistoryPage      from './HistoryPage';
 import SharedPage       from '../shared/SharedPage';
 import { useTransactions } from '../../hooks/useTransactions';
@@ -79,12 +80,11 @@ export default function TransactionsPage({ view }) {
   });
 
   // ── single-row split toggle (P / ½) ────────────────────────────────────────
-  // Personal = decision is done → auto-reviewed.
-  // Shared   = still pending Google Sheet send → DO NOT auto-review; sending
-  //           to Sheets removes the row from the queue entirely (sheets.py).
+  // Neither side auto-reviews — the row stays on Current until it's reviewed
+  // explicitly. Shared rows also leave the queue when sent to Sheets (sheets.py).
   const handleSplitChange = useCallback(async (txn, isShared) => {
     const half = calculateHalf(txn.amount);
-    const nextReviewed = isShared ? !!txn.reviewed : true;
+    const nextReviewed = !!txn.reviewed;
     await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
       is_shared: isShared,
       person_1_owes: isShared ? half : 0,
@@ -154,27 +154,78 @@ export default function TransactionsPage({ view }) {
     }
   }, [setTransactions, setError]);
 
+  // Merchants the prompt has already asked about this session. Declining
+  // once should not mean being asked again on the next row from the same
+  // merchant.
+  const [askedMerchants] = useState(() => new Set());
+  const [rulePrompt, setRulePrompt] = useState(null);
+  const [rulePromptSaving, setRulePromptSaving] = useState(false);
+
+  const offerRule = useCallback(async (txn, category) => {
+    try {
+      const { data } = await getRuleForMerchant(txn.description || '');
+      const merchant = data.merchant_key;
+      if (!merchant || data.rule || askedMerchants.has(merchant)) return;
+
+      const { data: preview } = await previewCategoryRule(merchant, category);
+      setRulePrompt({
+        txnId: txn.id,
+        merchant,
+        category,
+        // The row just categorized is itself a match; the offer is about
+        // the others.
+        claimable: Math.max(0, (preview.claimable || 0) - 1),
+        protected: preview.protected || 0,
+      });
+    } catch {
+      // Offering to remember is a convenience — a failure here must not
+      // look like the category failed to save, because it did save.
+    }
+  }, [askedMerchants]);
+
   const handleCategoryChange = useCallback(async (txn, nextCategory) => {
     const trimmed = (nextCategory || '').trim();
     try {
-      await axios.put(`${API}/api/transactions/${encodeURIComponent(txn.id)}`, {
-        is_shared:     !!txn.is_shared,
-        who:           txn.who   || '',
-        what:          txn.what  || '',
-        notes:         txn.notes || '',
-        person_1_owes: txn.person_1_owes || 0,
-        person_2_owes: txn.person_2_owes || 0,
-        reviewed:      !!txn.reviewed,  // category is prep, don't flip reviewed
-        category:      trimmed,
-      });
+      // category is prep, don't flip reviewed
+      await putTransactionFields(txn, { category: trimmed });
       setTransactions((prev) => prev.map((t) =>
-        t.id !== txn.id ? t : { ...t, category: trimmed }
+        t.id !== txn.id ? t : { ...t, category: trimmed, category_source: 'manual' }
       ));
-      if (trimmed) addCategoryLocal(trimmed);
+      if (trimmed) {
+        addCategoryLocal(trimmed);
+        offerRule(txn, trimmed);
+      } else {
+        setRulePrompt(null);
+      }
     } catch {
       setError('Could not save category — please try again.');
     }
-  }, [setTransactions, setError, addCategoryLocal]);
+  }, [setTransactions, setError, addCategoryLocal, offerRule]);
+
+  const dismissRulePrompt = useCallback(() => {
+    setRulePrompt((p) => {
+      if (p) askedMerchants.add(p.merchant);
+      return null;
+    });
+  }, [askedMerchants]);
+
+  const confirmRulePrompt = useCallback(async ({ remember, applyExisting }) => {
+    if (!rulePrompt || !remember) { dismissRulePrompt(); return; }
+    setRulePromptSaving(true);
+    try {
+      await createCategoryRule(rulePrompt.merchant, rulePrompt.category, {
+        kind: 'merchant',
+        applyToExisting: applyExisting,
+      });
+      askedMerchants.add(rulePrompt.merchant);
+      setRulePrompt(null);
+      if (applyExisting) await reload();
+    } catch {
+      setError('Could not save the rule — please try again.');
+    } finally {
+      setRulePromptSaving(false);
+    }
+  }, [rulePrompt, dismissRulePrompt, askedMerchants, reload, setError]);
 
   const handleRemoveCategory = useCallback(async (name) => {
     const result = await removeCategoryRemote(name);
@@ -450,6 +501,10 @@ export default function TransactionsPage({ view }) {
                   editableCategory
                   categories={categories}
                   onCategoryChange={handleCategoryChange}
+                  rulePrompt={rulePrompt}
+                  rulePromptSaving={rulePromptSaving}
+                  onRulePromptConfirm={confirmRulePrompt}
+                  onRulePromptDismiss={dismissRulePrompt}
                   onRemoveCategory={handleRemoveCategory}
                   onOpenDetail={openDetail}
                   detailId={detailId}

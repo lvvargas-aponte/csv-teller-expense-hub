@@ -9,10 +9,10 @@ function RuleRow({ rule, categories, onChange, onRemove }) {
         <span className="set-rule-prefix">When the merchant contains</span>
         <input
           className="form-input set-input--mono"
-          value={rule.match}
+          value={rule.pattern}
           placeholder="TRADER JOE"
           aria-label="Merchant text to match"
-          onChange={(e) => onChange({ ...rule, match: e.target.value })}
+          onChange={(e) => onChange({ ...rule, pattern: e.target.value })}
         />
       </div>
       <div className="set-rule-col">
@@ -32,7 +32,7 @@ function RuleRow({ rule, categories, onChange, onRemove }) {
       <button
         type="button"
         className="set-rule-del"
-        aria-label={`Delete rule for ${rule.match || 'new rule'}`}
+        aria-label={`Delete rule for ${rule.pattern || 'new rule'}`}
         onClick={onRemove}
       >
         ×
@@ -41,11 +41,70 @@ function RuleRow({ rule, categories, onChange, onRemove }) {
   );
 }
 
-export default function CategoriesPane({ categories, counts, rules, onRulesChange }) {
+function fmtLastUsed(iso) {
+  if (!iso) return 'not used yet';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'not used yet';
+  return `last used ${d.toLocaleDateString()}`;
+}
+
+// Merchant rules are written by categorizing a transaction, so this card
+// reports and manages them rather than offering a form to author one.
+function LearnedRuleRow({ rule, onToggle, onRemove, busy }) {
+  return (
+    <div className={`set-rule-row set-rule-row--learned${rule.enabled ? '' : ' set-rule-row--off'}`}>
+      <div className="set-rule-col">
+        <span className="set-rule-prefix">Always</span>
+        <code className="set-rule-merchant">{rule.pattern}</code>
+      </div>
+      <div className="set-rule-col">
+        <span className="set-rule-prefix">Categorize as</span>
+        <span className="set-rule-cat">
+          <span
+            className="set-chip-dot"
+            style={{ background: categoryColor(rule.category) }}
+            aria-hidden="true"
+          />
+          {rule.category}
+        </span>
+      </div>
+      <span className="set-rule-meta">{fmtLastUsed(rule.last_matched_at)}</span>
+      <label className="set-rule-toggle">
+        <input
+          type="checkbox"
+          checked={rule.enabled}
+          disabled={busy}
+          onChange={(e) => onToggle(rule, e.target.checked)}
+        />
+        <span className="set-rule-toggle-text">On</span>
+      </label>
+      <button
+        type="button"
+        className="set-rule-del"
+        disabled={busy}
+        aria-label={`Delete rule for ${rule.pattern}`}
+        onClick={() => onRemove(rule)}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+export default function CategoriesPane({
+  categories,
+  counts,
+  rules,
+  onRulesChange,
+  learned = [],
+  onToggleLearned,
+  onRemoveLearned,
+  learnedBusy = false,
+}) {
   const addRule = () => {
     onRulesChange([
       ...rules,
-      { key: `new${Date.now()}`, match: '', category: categories[0] || '' },
+      { key: `new${Date.now()}`, pattern: '', category: categories[0] || '' },
     ]);
   };
 
@@ -62,9 +121,10 @@ export default function CategoriesPane({ categories, counts, rules, onRulesChang
       <div className="set-pane-head">
         <h2 className="set-pane-title">Categories &amp; rules</h2>
         <p className="set-pane-desc">
-          Transactions are categorized automatically. Rules run in order, top
-          to bottom — the first match wins, and a rule always beats the
-          automatic guess.
+          Transactions are categorized automatically, and a rule always beats
+          the automatic guess. Merchant rules are checked first — they come
+          from categorizing a transaction and match that merchant exactly.
+          The text rules below run after, in order, first match winning.
         </p>
       </div>
 
@@ -85,6 +145,27 @@ export default function CategoriesPane({ categories, counts, rules, onRulesChang
             </span>
           ))}
         </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="Learned from your transactions"
+        hint={learned.length ? `${learned.length} merchant${learned.length === 1 ? '' : 's'}` : undefined}
+        flush
+      >
+        {learned.length === 0 ? (
+          <div className="set-empty">
+            Nothing learned yet — categorize a transaction and say yes when it
+            offers to remember the merchant.
+          </div>
+        ) : learned.map((rule) => (
+          <LearnedRuleRow
+            key={rule.id}
+            rule={rule}
+            busy={learnedBusy}
+            onToggle={onToggleLearned}
+            onRemove={onRemoveLearned}
+          />
+        ))}
       </SettingsCard>
 
       <SettingsCard title="Auto-categorization rules" hint="first match wins" flush>

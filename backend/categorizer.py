@@ -103,13 +103,14 @@ async def suggest_category(
     amount: float,
     known: Optional[List[str]] = None,
     rules: Optional[List[Dict[str, Any]]] = None,
+    alias_map: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Suggest a category — user rules first, then Ollama.
 
     Returns ``{"category": str|None, "ai_available": bool, "source":
-    "rule"|"ai"|None, "candidates": list[str]}``. ``candidates`` is the
-    same list the LLM was constrained to, so the client can also show it
-    as a datalist for manual entry.
+    "rule"|"ai"|None, "rule_id": int|None, "candidates": list[str]}``.
+    ``candidates`` is the same list the LLM was constrained to, so the
+    client can also show it as a datalist for manual entry.
 
     ``ai_available`` carries the same meaning as everywhere else in this
     codebase (see ``llm_client``): whether Ollama answered. It says nothing
@@ -118,24 +119,25 @@ async def suggest_category(
 
     A matching rule short-circuits the model entirely: it's the answer
     the user wrote down, it costs no round-trip, and it still works with
-    Ollama down. ``rules`` can be passed in so a bulk caller reads the table
-    once instead of once per transaction.
+    Ollama down. ``rules`` and ``alias_map`` can be passed in so a bulk
+    caller reads each table once instead of once per transaction.
     """
     candidates = known if known is not None else known_categories()
 
-    ruled = category_rules.match(description, rules)
+    ruled = category_rules.match_rule(description, rules, alias_map)
     if ruled:
         return {
-            "category": ruled,
+            "category": ruled["category"],
             "ai_available": False,
             "source": "rule",
+            "rule_id": ruled.get("id"),
             "candidates": candidates,
         }
 
     if not candidates:
         return {
             "category": None, "ai_available": False,
-            "source": None, "candidates": [],
+            "source": None, "rule_id": None, "candidates": [],
         }
 
     prompt = _build_prompt(description, amount, candidates)
@@ -143,7 +145,7 @@ async def suggest_category(
     if not result["ai_available"]:
         return {
             "category": None, "ai_available": False,
-            "source": None, "candidates": candidates,
+            "source": None, "rule_id": None, "candidates": candidates,
         }
 
     picked = _parse_response(result.get("text"), candidates)
@@ -151,5 +153,6 @@ async def suggest_category(
         "category": picked,
         "ai_available": True,
         "source": "ai" if picked else None,
+        "rule_id": None,
         "candidates": candidates,
     }

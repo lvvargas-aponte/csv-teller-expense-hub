@@ -455,11 +455,14 @@ async def bulk_suggest_categories(req: BulkSuggestRequest):
     caller previews the suggestions and confirms via PUT /transactions/categories.
     """
     import category_rules
+    import merchant_key
     from categorizer import suggest_category, known_categories
 
     candidates = known_categories()
-    # Read once for the whole batch rather than per transaction.
+    # Both read once for the whole batch rather than per transaction —
+    # merchant matching resolves aliases, which is a query of its own.
     rules = category_rules.rules_for_matching()
+    alias_map = merchant_key.aliases()
     results: List[Dict[str, Any]] = []
     skipped_ids: List[str] = []
     not_found: List[str] = []
@@ -484,6 +487,7 @@ async def bulk_suggest_categories(req: BulkSuggestRequest):
             amount=amount,
             known=candidates,
             rules=rules,
+            alias_map=alias_map,
         )
         # A rule answered means Ollama was never asked, so its flag says
         # nothing about the model's health and must not trip the banner.

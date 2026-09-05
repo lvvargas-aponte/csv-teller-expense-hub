@@ -4,6 +4,7 @@ import Icon from '../ui/Icon';
 import useSettingsDraft from './useSettingsDraft';
 import FinancialProfilePane from './panes/FinancialProfilePane';
 import CategoriesPane from './panes/CategoriesPane';
+import { patchCategoryRule, deleteCategoryRule } from '../../api/categoryRules';
 import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext';
 
 const PANES = [
@@ -26,8 +27,32 @@ export default function SettingsPage({
 }) {
   const [pane, setPane] = useState(initialPane);
   const [toast, setToast] = useState(false);
+  const [learnedBusy, setLearnedBusy] = useState(false);
   const draft = useSettingsDraft();
   const { dirty, save, discard, saving, saveError, loading, loadError } = draft;
+
+  // Merchant rules are edited one at a time against the server, not drafted
+  // into the form — so they commit immediately and reload rather than
+  // waiting for Save.
+  const withLearnedReload = useCallback(async (fn) => {
+    setLearnedBusy(true);
+    try {
+      await fn();
+      draft.reload();
+    } finally {
+      setLearnedBusy(false);
+    }
+  }, [draft]);
+
+  const toggleLearned = useCallback(
+    (rule, enabled) => withLearnedReload(() => patchCategoryRule(rule.id, { enabled })),
+    [withLearnedReload],
+  );
+
+  const removeLearned = useCallback(
+    (rule) => withLearnedReload(() => deleteCategoryRule(rule.id)),
+    [withLearnedReload],
+  );
 
   // Deep links from the Accounts page land on a specific pane.
   useEffect(() => { setPane(initialPane); }, [initialPane]);
@@ -111,6 +136,10 @@ export default function SettingsPage({
             counts={categoryCounts}
             rules={draft.rules}
             onRulesChange={draft.setRules}
+            learned={draft.learned}
+            onToggleLearned={toggleLearned}
+            onRemoveLearned={removeLearned}
+            learnedBusy={learnedBusy}
           />
         )}
       </div>

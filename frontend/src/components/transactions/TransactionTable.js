@@ -5,6 +5,7 @@ import SplitAdjustRow from './SplitAdjustRow';
 import TransferExpandRow from './TransferExpandRow';
 import TransactionDetailRow from './TransactionDetailRow';
 import IconLegend from './IconLegend';
+import RulePromptRow from './RulePromptRow';
 
 const BASE_COL_COUNT = 7;
 
@@ -39,6 +40,10 @@ export default function TransactionTable({
   onSaveDetail,
   onCloseDetail,
   onDetailDraftChange,
+  rulePrompt = null,
+  rulePromptSaving = false,
+  onRulePromptConfirm,
+  onRulePromptDismiss,
 }) {
   const colCount = BASE_COL_COUNT + (editableCategory ? 1 : 0);
 
@@ -189,6 +194,18 @@ export default function TransactionTable({
                       colSpan={colCount}
                       onSave={(accountId) => onSaveTransfer(txn, accountId)}
                       onClose={onCloseExpand}
+                    />
+                  )}
+                  {rulePrompt?.txnId === txn.id && (
+                    <RulePromptRow
+                      colSpan={colCount}
+                      merchant={rulePrompt.merchant}
+                      category={rulePrompt.category}
+                      claimable={rulePrompt.claimable}
+                      protectedCount={rulePrompt.protected}
+                      saving={rulePromptSaving}
+                      onConfirm={onRulePromptConfirm}
+                      onDismiss={onRulePromptDismiss}
                     />
                   )}
                   {txn.id === detailId && (
