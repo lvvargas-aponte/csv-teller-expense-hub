@@ -26,6 +26,25 @@ function catIconFor(cat) {
   return CAT_ICONS[key] || null;
 }
 
+// Where a category came from. "manual" is the expected case and stays
+// unmarked — the badge exists to explain a label you didn't type.
+const CAT_SOURCE_LABELS = {
+  rule:  ['rule', 'Set by one of your auto-categorization rules'],
+  bank:  ['bank', 'Reported by the bank feed or the imported CSV'],
+  ai:    ['auto', 'Suggested automatically; change it to make it yours'],
+};
+
+function CategorySourceBadge({ source }) {
+  const entry = CAT_SOURCE_LABELS[source];
+  if (!entry) return null;
+  const [label, title] = entry;
+  return (
+    <span className={`tx-cat-source tx-cat-source--${source}`} title={title}>
+      {label}
+    </span>
+  );
+}
+
 function fmtShortDate(s) {
   // Match the design's MM/DD/YY format using DM Mono.
   if (!s) return '';
@@ -130,6 +149,7 @@ export default function TxnRow({
           <div className="tx-desc-cat">
             {catIcon && <span className="tx-desc-cat-icon" aria-hidden="true">{catIcon}</span>}
             {catLabel}
+            <CategorySourceBadge source={txn.category_source} />
           </div>
         )}
       </td>
@@ -143,6 +163,7 @@ export default function TxnRow({
               onChange={(next) => onCategoryChange && onCategoryChange(txn, next)}
               onRemoveCategory={onRemoveCategory}
             />
+            <CategorySourceBadge source={txn.category_source} />
           </div>
         </td>
       )}

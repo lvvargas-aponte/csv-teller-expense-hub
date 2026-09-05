@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 
+import categorization_service
 import state
 from category_normalizer import normalize as normalize_category
 from csv_parser import Transaction as CsvTransaction, BankType, dedupe_key
@@ -166,14 +167,22 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                         txn.transaction_id not in state.stored_transactions
                         and key not in existing_keys
                     ):
-                        state.stored_transactions[txn.transaction_id] = txn.to_dict()
+                        state.stored_transactions[txn.transaction_id] = (
+                            categorization_service.stamp_ingest(txn.to_dict())
+                        )
                         existing_keys.add(key)
                         added += 1
                     elif txn.transaction_id in state.stored_transactions:
                         existing = state.stored_transactions[txn.transaction_id]
-                        for field in ("transaction_type", "account_type", "category",
+                        for field in ("transaction_type", "account_type",
                                       "institution", "description", "amount", "date"):
                             existing[field] = getattr(txn, field)
+                        # Category goes through the precedence check instead:
+                        # a re-sync refreshes the feed's own label but must not
+                        # undo one the user or a rule set.
+                        categorization_service.apply(
+                            existing, txn.category, categorization_service.BANK
+                        )
                         # transaction_type may have flipped on re-sync; keep the
                         # canonical direction field consistent with it.
                         existing["direction"] = derive_direction(txn.transaction_type)

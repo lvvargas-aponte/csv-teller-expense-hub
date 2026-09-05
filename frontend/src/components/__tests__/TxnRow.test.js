@@ -194,3 +194,32 @@ test('shows DR badge for debit and CR badge for credit', () => {
   );
   expect(screen.getByText('CR')).toBeInTheDocument();
 });
+
+describe('category provenance badge', () => {
+  test('marks a category the bank reported', () => {
+    renderRow({ category: 'Dining', category_source: 'bank' });
+    expect(screen.getByTitle(/Reported by the bank feed/)).toHaveTextContent('bank');
+  });
+
+  test('marks a category one of your rules set', () => {
+    renderRow({ category: 'Dining', category_source: 'rule' });
+    expect(screen.getByText('rule')).toBeInTheDocument();
+  });
+
+  test('marks an automatic suggestion', () => {
+    renderRow({ category: 'Dining', category_source: 'ai' });
+    expect(screen.getByText('auto')).toBeInTheDocument();
+  });
+
+  test('leaves a category you set unmarked', () => {
+    // A label you typed needs no explanation — the badge is there to explain
+    // the ones you didn't.
+    renderRow({ category: 'Dining', category_source: 'manual' });
+    expect(screen.queryByText(/^(rule|bank|auto)$/)).not.toBeInTheDocument();
+  });
+
+  test('renders nothing for a transaction with no provenance recorded', () => {
+    renderRow({ category: 'Dining' });
+    expect(screen.queryByText(/^(rule|bank|auto)$/)).not.toBeInTheDocument();
+  });
+});

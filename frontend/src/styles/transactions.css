@@ -388,6 +388,28 @@
 }
 .tx-desc-cat-icon { font-size: 10px; line-height: 1; }
 
+/* Provenance of a category the user didn't type. "manual" renders nothing —
+   a label you set needs no explanation. */
+.tx-cat-source {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: 99px;
+  background: var(--surface-muted);
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  letter-spacing: 0.02em;
+  cursor: help;
+}
+.tx-cat-source--rule {
+  border-color: var(--accent-mid);
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+}
+.tx-cat-cell .tx-cat-source { margin-left: 4px; }
+
 .tx-table-cb {
   cursor: pointer;
   accent-color: var(--accent);

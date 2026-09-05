@@ -247,7 +247,11 @@ class TestApplyCategoriesEndpoint:
             "items": [{"transaction_id": ids[0], "category": ""}],
         })
         assert r.status_code == 200
-        assert state.stored_transactions[ids[0]]["category"] == ""
+        # A cleared category is stored as None, the same representation
+        # DELETE /categories/{name} and the CSV ingest use. Readers all go
+        # through ``(txn.get("category") or "")``, so one is enough.
+        assert state.stored_transactions[ids[0]]["category"] is None
+        assert state.stored_transactions[ids[0]]["category_source"] is None
 
     def test_unknown_ids_in_not_found_no_500(self, client):
         ids = self._upload_two(client)

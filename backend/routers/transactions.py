@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile, File
 
+import categorization_service
 import state
 from csv_parser import CSVProcessorService, dedupe_key
 from helpers import _decode_csv_bytes, derive_direction
@@ -206,7 +207,9 @@ async def upload_csv(
             ):
                 duplicates += 1
             else:
-                state.stored_transactions[transaction.transaction_id] = transaction.to_dict()
+                state.stored_transactions[transaction.transaction_id] = (
+                    categorization_service.stamp_ingest(transaction.to_dict())
+                )
                 existing_keys.add(key)
                 new_transactions.append(transaction)
 
@@ -424,7 +427,9 @@ async def bulk_update_transactions(update: BulkTransactionUpdate):
         t["reviewed"] = True if update.reviewed is None else bool(update.reviewed)
 
         if update.category is not None:
-            t["category"] = update.category
+            categorization_service.apply(
+                t, update.category, categorization_service.MANUAL
+            )
 
         if transfer_target is not None:
             t["transfer_to_account_id"] = transfer_target or None
@@ -569,7 +574,9 @@ async def delete_category(name: str) -> Dict[str, Any]:
     for tid, txn in list(state.stored_transactions.items()):
         current = (txn.get("category") or "").strip().lower()
         if current == target:
-            txn["category"] = None
+            # The user asked for this category to stop existing, so the clear
+            # outranks whatever set it.
+            categorization_service.apply(txn, None, categorization_service.MANUAL)
             state.stored_transactions[tid] = txn
             cleared += 1
 
@@ -605,7 +612,7 @@ async def apply_categories(req: ApplyCategoriesRequest):
             not_found.append(item.transaction_id)
             continue
         t = state.stored_transactions[item.transaction_id]
-        t["category"] = item.category
+        categorization_service.apply(t, item.category, categorization_service.MANUAL)
         t["reviewed"] = True
         state.stored_transactions[item.transaction_id] = t
         updated.append(t)
@@ -670,7 +677,9 @@ async def update_transaction(transaction_id: str, update: TransactionUpdate):
         transaction["amount"] = update.amount
 
     if update.category is not None:
-        transaction["category"] = update.category
+        categorization_service.apply(
+            transaction, update.category, categorization_service.MANUAL
+        )
 
     if update.transaction_type is not None:
         transaction["transaction_type"] = update.transaction_type
